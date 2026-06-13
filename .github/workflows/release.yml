@@ -1,0 +1,62 @@
+name: Release — pantheon-harness
+# ─────────────────────────────────────────────────────────────────
+# BEFORE FIRST RELEASE: Search for "TODO" in this file and configure:
+#   - Deployment target (hosting platform, credentials)
+#   - Environment variables and secrets
+# The Phase 3→4 gate will warn if TODOs remain unconfigured.
+# Light-track projects: this pipeline is optional for internal-only use.
+# ─────────────────────────────────────────────────────────────────
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Generate SBOM
+        run: npx @cyclonedx/cyclonedx-npm --output-file sbom.json
+        # If not using Node.js, replace the command above with your ecosystem's tool:
+        #   Python:   pip install cyclonedx-bom && cyclonedx-py environment --output sbom.json
+        #   Rust:     cargo install cargo-cyclonedx && cargo cyclonedx --format json
+        #   Go:       go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@latest && cyclonedx-gomod app -output sbom.json
+        #   .NET:     dotnet tool install --global CycloneDX && dotnet CycloneDX [project].csproj -o sbom.json
+
+      - name: Deploy
+        run: echo "TODO — deploy to hosting platform"
+        # TODO: Deploy to your hosting platform. Examples:
+        #   Vercel:   npx vercel --prod --token ${{ secrets.VERCEL_TOKEN }}
+        #   Railway:  railway up --service ${{ vars.RAILWAY_SERVICE }}
+        #   Netlify:  npx netlify deploy --prod --dir=dist
+
+      - name: DAST scan
+        # Set PREVIEW_URL in repository variables. This should point to your
+        # deployed staging or production URL. DAST runs after deploy so the
+        # application is live and reachable.
+        run: >
+          docker run -t zaproxy/zap-stable
+          zap-baseline.py -t ${{ vars.PREVIEW_URL }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: sbom.json

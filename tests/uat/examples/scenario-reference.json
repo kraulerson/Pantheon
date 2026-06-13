@@ -1,0 +1,7 @@
+{
+  "id": 1,
+  "feature": 2,
+  "title": "Authenticated form submit returns 201 and persists the record",
+  "steps": "You are logged in at the app URL (see 'Before you start') with the default test account.\n\nThis scenario creates test data and cleans it up at the end. Do not close the tab mid-scenario.\n\n1. Navigate to /items/new via the top-nav 'Create Item' link.\n\n2. Fill in:\n   - Title: UAT-item-<paste-your-tester-name-here>\n   - Description: probe\n   - Category: general\n\n3. Open browser devtools (F12), switch to the Network tab, filter on 'Fetch/XHR'.\n\n4. Click Submit.\n\n5. In devtools Network, find the POST to /api/items. Note the HTTP status and response body.\n\n6. Navigate to /items and confirm your item appears in the list (sorted by newest).\n\n7. Cleanup: on the item's detail page, click Delete, confirm the prompt. Confirm the item no longer appears in the /items list.",
+  "expected": "Step 5: POST /api/items returns HTTP 201 Created. Response body is JSON with an 'id' field (integer) and 'title' matching what you typed.\n\nStep 6: The new item is visible at the top of /items, showing your unique title and the 'general' category tag.\n\nStep 7: After deletion, /items no longer shows the item; a GET /api/items/<id> in devtools Network would return 404.\n\nPASS if the 201 response, the list visibility, AND the post-delete absence all confirm. FAIL if the POST returned a non-201 status, the item didn't appear in the list, or the cleanup left the item behind (ask the Orchestrator to purge it manually if so)."
+}

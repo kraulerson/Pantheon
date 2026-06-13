@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "resolved_at": "2026-06-13",
+  "context": {
+    "dev_os": "darwin",
+    "platform": "web",
+    "language": "typescript",
+    "track": "standard"
+  },
+  "substitutions": {},
+  "additions": [],
+  "skipped": [],
+  "installed": {
+    "phase_0": [
+      "Git",
+      "jq",
+      "Node.js",
+      "Docker",
+      "Colima",
+      "GPG"
+    ],
+    "phase_1": [
+      "Node.js",
+      "Semgrep",
+      "gitleaks",
+      "Snyk CLI",
+      "Claude Code",
+      "Development Guardrails for Claude Code",
+      "Superpowers",
+      "Context7 MCP",
+      "Qdrant MCP",
+      "Lighthouse"
+    ]
+  }
+}

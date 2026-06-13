@@ -1,0 +1,19 @@
+<div class="fixture-ref">
+  <strong>System under test:</strong> Web app running at the URL below. Tested with Chromium-based browser (Chrome 122+ / Edge 122+ / Brave). Firefox 124+ should also work unless a scenario explicitly says otherwise.<br>
+  <strong>App URL:</strong> <code>http://localhost:5173</code> (local dev) — or the staging URL provided by the Orchestrator.<br>
+  <strong>Test environment:</strong> Backend services must be running. See <code>docs/setup.md</code> if the dev stack isn't already up. Network must be reachable.<br>
+  <strong>Accounts / credentials:</strong> Use the <code>testuser@example.com</code> / <code>testpass123</code> account seeded in the dev database. If scenarios need multiple users, additional credentials are listed inline.<br>
+  <em>Optional:</em> browser devtools (scenarios 3, 5 use Network tab for assertions).<br>
+  <br>
+  <strong>One-time setup before any scenario:</strong><br>
+  1. Open the app URL in your browser.<br>
+  2. Sign in with the test credentials above.<br>
+  3. Confirm you land on the home/dashboard page with no console errors (F12 → Console).<br>
+  <br>
+  Every scenario below assumes:<br>
+  1. You are logged in at the app URL (as in the setup).<br>
+  2. Browser devtools are available (F12) if a scenario needs them.<br>
+  3. If a scenario creates test data, it says so and removes it at the end.<br>
+  <br>
+  <strong>How to run a scenario:</strong> click "details" on the scenario card, follow the numbered steps in the browser, compare observed behavior and any devtools output to the "Expected" block, then click Pass / Fail / Skip. Use the Notes field for anything surprising or out of scope.
+</div>
