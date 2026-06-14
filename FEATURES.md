@@ -49,4 +49,26 @@ hardening follow-up). Live provisioning requires the operator at the keyboard.
 
 ---
 
+## Feature 3: Claude-CLI Terminal WebSocket Bridge
+
+**Phase Built:** 2
+**Status:** Complete (backend + route; xterm.js tab + harness frame are sub-tasks d/e)
+**Summary:** Bridges a browser xterm.js terminal to a remote SSH PTY (ADR-0005 §9 C.6). A
+`ManagedTerminal` wraps the SSH `TerminalSession` with bounded scrollback and an attach/detach
+lifecycle so a dropped WebSocket does not kill the shell — the operator reconnects and reattaches to
+the live session (replaying recent scrollback). The `attachSocket` bridge speaks a small JSON frame
+protocol and forwards **only** operator keystrokes to the PTY (never recalled `trusted:false`
+content — closes the TM-020 RCE concern). `openTerminalForMachine` fails closed on
+unknown/unprovisioned/disabled machines before dialing. Exposed as `GET /terminal/:logicalName`.
+**Key Interfaces:** `src/devmachine/terminal-gateway.ts`, `src/http/routes/terminal.ts`.
+**Related ADRs:** ADR-0005.
+**Test Coverage:** Unit (`terminal-gateway.test.ts` — scrollback, attach/detach reconnect, frame
+parsing, registry eviction, openTerminal fail-closed); integration (`terminal-route.test.ts` — real
+in-process WebSocket via `injectWS`: ready frame, input→PTY, PTY output→client, unprovisioned error).
+**Known Limitations:** The xterm.js terminal tab + harness frame (d/e) are not built. The route must
+be mounted behind the #9/admin guard; browser WS auth (cookie/ticket) is wired in sub-task (e). Live
+end-to-end against a real machine is covered by the deferred live UAT.
+
+---
+
 <!-- Copy the section above for each new feature. Number sequentially. -->

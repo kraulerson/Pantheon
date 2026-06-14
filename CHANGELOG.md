@@ -47,6 +47,13 @@ for handoff clarity. Categories are ordered by impact severity.
   `enabled`, `created_at`, `updated_at`). Carries no recalled content and no `trusted` provenance.
 
 ### Added
+- Claude-CLI terminal WebSocket bridge (`src/devmachine/terminal-gateway.ts`,
+  `src/http/routes/terminal.ts`, ADR-0005 §9 C.6): `ManagedTerminal` (bounded scrollback +
+  attach/detach so a dropped socket doesn't kill the SSH session — reconnectable), `TerminalRegistry`
+  (auto-evicts on close), `attachSocket` (JSON frame protocol; forwards only operator input — closes
+  the TM-020 #9 RCE concern), `openTerminalForMachine` (fail-closed resolve→connect→register), and a
+  Fastify `GET /terminal/:logicalName` WebSocket route (`?session=<id>` reattaches). New deps:
+  `@fastify/websocket@11.2.0`, `@types/ws@8.18.1` (prod audit clean).
 - Claude-CLI SSH backend (`src/devmachine/`, ADR-0005): `FileKeyCustody` for the harness keypair;
   `provisionMachine` (one-time `ssh-copy-id` ceremony) + `provisionAndRecord` (registry bridge);
   `connectTerminal` — a key-only ssh2 connection that opens a remote PTY and returns a reconnectable

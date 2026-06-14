@@ -36,3 +36,13 @@ export { ChildProcessRunner } from "./runner.js";
 export { SshKeygenGenerator } from "./keygen.js";
 
 export { provisionAndRecord, type RegistryPort, type ProvisionAndRecordDeps } from "./provision-and-record.js";
+
+export {
+  ManagedTerminal,
+  TerminalRegistry,
+  TerminalError,
+  attachSocket,
+  openTerminalForMachine,
+  type DuplexSocket,
+  type OpenTerminalDeps
+} from "./terminal-gateway.js";

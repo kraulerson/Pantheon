@@ -69,3 +69,5 @@ All S1–S4 items fixed **test-first**, all 236 tests green, tsc + lint clean:
 | 7 | S5 | **Deferred** — config-page HTML forms posting urlencoded (no body parser) is pre-existing and repo-wide (all config forms); filed as a follow-up. Not security. |
 
 Ship decision honored: fix-then-ship complete for 1–6; 7 deferred. The live operator-at-keyboard UAT (provisioning + SSH round-trip) remains the gate for the *next* feature.
+
+**2026-06-14 — gate decision:** the Orchestrator accepted the automated UAT (236 tests + adversarial sweep + remediation) and directed continuing to sub-task (c). The test-gate batch counter was reset on that basis. The **live SSH provisioning + connect verification is NOT yet run** — it is deferred and tracked via `templates/live-ssh-provisioning.md`, to be performed at the keyboard before the harness is considered production-ready. No live results are claimed.

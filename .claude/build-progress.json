@@ -1,14 +1,15 @@
 {
   "features_completed": [
     "devmachine-registry",
-    "devmachine-ssh-connection"
+    "devmachine-ssh-connection",
+    "terminal-websocket-bridge"
   ],
-  "features_since_last_test": 2,
-  "features_since_last_health_check": 2,
+  "features_since_last_test": 1,
+  "features_since_last_health_check": 3,
   "test_interval": 2,
-  "last_test_session": null,
-  "testing_required": true,
+  "last_test_session": "2026-06-14",
+  "testing_required": false,
   "tester_count": 1,
   "bug_tracker": "github_issues",
-  "sessions_completed": 0
+  "sessions_completed": 1
 }
