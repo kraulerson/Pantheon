@@ -20,6 +20,7 @@ import type { Preprocessor } from "../preprocessor/index.js";
 import { registerChatCompletionsRoute } from "./routes/chat-completions.js";
 import { registerInspectorRoute } from "./routes/inspector.js";
 import { registerApprovalsRoutes, type ApprovalsBackend } from "./routes/approvals.js";
+import { registerHarnessRoutes, HARNESS_ASSET_PATHS } from "./routes/harness.js";
 
 /** Result of an admin-tier check. `ok:false` carries the HTTP status to fail closed with. */
 export type GuardResult = { ok: true } | { ok: false; status: 401 | 403; reason: string };
@@ -52,7 +53,7 @@ export interface AppOptions {
  * Public, non-admin routes (identity-gated, fail-closed in their own handlers). The admin guard
  * is NOT applied to these: LibreChat is not an admin, it presents an operator identity header.
  */
-const PUBLIC_PATHS: ReadonlySet<string> = new Set(["/v1/chat/completions"]);
+const PUBLIC_PATHS: ReadonlySet<string> = new Set(["/v1/chat/completions", ...HARNESS_ASSET_PATHS]);
 
 function constantTimeEquals(a: string, b: string): boolean {
   const ab = Buffer.from(a);
@@ -187,6 +188,9 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.delete<{ Params: { id: string } }>("/api/mcp-servers/:id", async (_req, reply) => {
     reply.code(204);
   });
+
+  // ---- Harness UI (frame + xterm.js terminal tabs + public xterm assets) — ADR-0005 §9 C.1/C.6 ----
+  registerHarnessRoutes(app, { registry });
 
   // ---- Config page (server-rendered, behind the guard) ----
   app.get("/admin/config", async (_req, reply) => {

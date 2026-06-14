@@ -71,4 +71,27 @@ end-to-end against a real machine is covered by the deferred live UAT.
 
 ---
 
+## Feature 4: Harness Frame + xterm.js Terminal Tab
+
+**Phase Built:** 2
+**Status:** Complete (server-rendered UI + routes; live/visual verification is in the deferred UAT)
+**Summary:** The top-level harness UI (ADR-0005 §9 C.1/C.6, amends ADR-0001). A server-rendered frame
+behind #9 auth hosts both modalities — LibreChat chat tabs and xterm.js terminal tabs — with a New
+Session popup (AI SYSTEM × IDENTITY) that routes a "Claude CLI → dev machine" choice to a terminal
+tab by logicalName (#14a). The terminal page is colorblind-safe (the four §9 C.6 states each carry a
+text label + glyph + `data-state`, never color alone), loads xterm.js from the control-plane's own
+origin, and opens the broker WebSocket; the SSH key never reaches the browser. All output is escaped
+in both HTML and inline-JS contexts.
+**Key Interfaces:** `src/http/harness-frame.ts`, `src/http/terminal-tab.ts`, `src/http/routes/harness.ts`
+(routes `/harness`, `/harness/terminal/:logicalName`, public `/assets/xterm.*`).
+**Related ADRs:** ADR-0005.
+**Test Coverage:** Unit (`harness-frame.test.ts`, `terminal-tab.test.ts` — popup, routing, the four
+states, colorblind tokens, HTML/JS escaping); integration (`http-app.test.ts` — guarded pages, public
+assets, populated terminal tab).
+**Known Limitations:** Interactive behavior (xterm rendering, reconnect, state transitions) is verified
+in the deferred live browser UAT, not unit tests. Browser session auth (cookie/ticket from #9 login)
+and a CSP are tracked follow-ups for the #9 integration; the guard is currently bearer-token.
+
+---
+
 <!-- Copy the section above for each new feature. Number sequentially. -->

@@ -1,5 +1,20 @@
 # Pantheon Harness — Session Handoff (2026-06-13)
 
+> **UPDATE 2026-06-14 (session 2): Task #16 build COMPLETE (a–e).** DevMachine registry, SSH backend
+> (custody/provisioning/connection + CLI + `scripts/install-debian.sh`), the SSH→PTY→WebSocket bridge,
+> and the harness frame + xterm.js terminal tab are all built with TDD, security-audited
+> (`docs/security-audits/`), and committed to `main`. 271 tests pass. UAT-1 (automated + adversarial)
+> ran and 6 SEV-1/2 findings were fixed (`tests/uat/sessions/2026-06-14-session-1/`).
+> **The "▶ START HERE" section below is DONE.** Remaining before production:
+> 1. **Live UAT at the keyboard** (the one thing not yet done): provision a dev machine
+>    (`node dist/cli/provision-devmachine.js <name>`, type the password once) and run the live SSH +
+>    browser-terminal checks — template at `tests/uat/sessions/2026-06-14-session-1/templates/live-ssh-provisioning.md`.
+> 2. **#9 browser session auth** (cookie/ticket from LibreChat login) for the harness pages + the WS —
+>    the guard is bearer-token today; a browser can't present it. Plus a CSP.
+> 3. **Deploy LibreChat + Peta**, wire LibreChat's custom endpoint to the pre-processor; **rotate** the
+>    transcript-exposed Gitea + Bridge tokens.
+> 4. Remaining seams: Anthropic-translation + streaming in `src/backend`; full new-identity provisioning UX.
+
 **Phase state:** `current_phase: 2` (Construction). Track: Standard. Gates 0→1 and 1→2 recorded + green (`scripts/check-phase-gate.sh`), snapshots in `docs/snapshots/`.
 **Resume:** `cd pantheon-harness && bash scripts/resume.sh`; read `PROJECT_BIBLE.md` + this file. Re-verify all tests with the commands at the bottom.
 

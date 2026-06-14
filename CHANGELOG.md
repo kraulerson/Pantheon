@@ -47,6 +47,13 @@ for handoff clarity. Categories are ordered by impact severity.
   `enabled`, `created_at`, `updated_at`). Carries no recalled content and no `trusted` provenance.
 
 ### Added
+- Harness frame + xterm.js terminal tab (`src/http/harness-frame.ts`, `src/http/terminal-tab.ts`,
+  `src/http/routes/harness.ts`, ADR-0005 §9 C.1/C.6): the top-level UI behind #9 auth hosting chat +
+  terminal modalities; a New Session popup (AI SYSTEM × IDENTITY) routing "Claude CLI → dev machine"
+  (by logicalName) to a terminal tab; a colorblind-safe xterm.js terminal page (four §9 C.6 states:
+  text label + glyph + `data-state`) that opens the broker WebSocket. Routes `/harness`,
+  `/harness/terminal/:logicalName` (guarded) and public `/assets/xterm.*` (served from the
+  control-plane, offline-safe). Output escaped in HTML + JS contexts. New dep: `@xterm/xterm@6.0.0`.
 - Claude-CLI terminal WebSocket bridge (`src/devmachine/terminal-gateway.ts`,
   `src/http/routes/terminal.ts`, ADR-0005 §9 C.6): `ManagedTerminal` (bounded scrollback +
   attach/detach so a dropped socket doesn't kill the SSH session — reconnectable), `TerminalRegistry`

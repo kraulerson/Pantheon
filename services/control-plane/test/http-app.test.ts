@@ -220,6 +220,40 @@ describe("Service-endpoints API (via inject)", () => {
   });
 });
 
+describe("Harness UI routes (frame + terminal tab + public assets)", () => {
+  it("serves the harness frame (guarded) with the New Session popup", async () => {
+    const { app } = makeApp();
+    expect((await app.inject({ method: "GET", url: "/harness" })).statusCode).toBe(401); // guarded
+    const res = await app.inject({ method: "GET", url: "/harness", headers: auth });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatch(/New Session/i);
+  });
+
+  it("serves a terminal tab page for a provisioned machine (with the WebSocket wiring)", async () => {
+    const repo = new SqliteRegistry(":memory:");
+    const registry = new RegistryService(repo);
+    const m = registry.createDevMachine({ logicalName: "mac-studio", host: "192.168.1.192", user: "karl", enabled: true });
+    registry.markProvisioned(m.id, "harness");
+    const mcp = new McpRegistrationService({ createServer: vi.fn(), getServers: vi.fn(async () => ({ success: true, servers: [] })) } as never);
+    const app = buildApp({ adminToken: TOKEN, registry, mcp });
+
+    const res = await app.inject({ method: "GET", url: "/harness/terminal/mac-studio", headers: auth });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain("mac-studio");
+    expect(res.body).toMatch(/new WebSocket\(/);
+    expect(res.body).toContain("/terminal/mac-studio");
+  });
+
+  it("serves xterm.js assets WITHOUT auth (public) so the browser can load them", async () => {
+    const { app } = makeApp();
+    const js = await app.inject({ method: "GET", url: "/assets/xterm.js" });
+    expect(js.statusCode).toBe(200);
+    expect(js.headers["content-type"]).toMatch(/javascript/);
+    const css = await app.inject({ method: "GET", url: "/assets/xterm.css" });
+    expect(css.statusCode).toBe(200);
+  });
+});
+
 describe("Dev-machines API (via inject)", () => {
   let app: FastifyInstance;
   beforeEach(() => {
