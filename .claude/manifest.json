@@ -71,5 +71,8 @@
     "futurePlatforms": null,
     "discoveryDate": "2026-06-13",
     "lastReviewDate": "2026-06-13"
-  }
+  },
+  "host": "github",
+  "mode": "personal",
+  "remote_url": ""
 }

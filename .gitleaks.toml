@@ -1,0 +1,21 @@
+# gitleaks configuration for pantheon-harness.
+#
+# Extends the full default ruleset (useDefault = true) and adds a NARROW allowlist for specific
+# test files that contain intentionally-fake key material / deterministic crypto test vectors —
+# NOT real secrets. Real secrets live in gitignored .env.local and gateway/vault custody (§7);
+# nothing here exempts source or config files from secret scanning.
+
+title = "pantheon-harness gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test fixtures with fake keys / test vectors (not real secrets)"
+# Scoped to the exact test files that hold synthetic key material:
+#  - peta-crypto.test.ts : HMAC/token crypto test vectors
+#  - devmachine-*.test.ts: fake OpenSSH keys used to prove custody REJECTS / never leaks them
+paths = [
+  '''services/control-plane/test/peta-crypto\.test\.ts$''',
+  '''services/control-plane/test/devmachine-[a-z-]*\.test\.ts$''',
+]

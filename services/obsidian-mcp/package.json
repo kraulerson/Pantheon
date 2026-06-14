@@ -1,0 +1,37 @@
+{
+  "name": "@pantheon-harness/obsidian-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pantheon Harness Obsidian/filesystem MCP server (#8): vault-confined read/write tools behind Peta. Pure vault core + thin StreamableHTTP transport.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "obsidian-mcp": "dist/server.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "test:cov": "vitest run --coverage",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "express": "^4.21.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/express": "4.17.21",
+    "@types/node": "20.17.6",
+    "@typescript-eslint/eslint-plugin": "8.46.0",
+    "@typescript-eslint/parser": "8.46.0",
+    "@eslint/js": "9.39.4",
+    "@vitest/coverage-v8": "3.2.4",
+    "eslint": "9.39.4",
+    "typescript": "5.7.2",
+    "typescript-eslint": "8.46.0",
+    "vitest": "3.2.4"
+  }
+}
