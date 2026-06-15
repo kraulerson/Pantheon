@@ -61,6 +61,10 @@ describe("provisionMachine", () => {
     expect(args).toContain("karl@192.168.1.192");
     expect(args).toContain("-p");
     expect(args).toContain("22");
+    // -f (force): install the public key WITHOUT requiring the matching private key beside it —
+    // the private key stays in custody, never in the scratch dir (TM-020). Without -f, macOS
+    // ssh-copy-id strips `.pub`, looks for the private key in scratch, and fails (UAT-1 live bug).
+    expect(args).toContain("-f");
   });
 
   it("reuses an existing keypair on subsequent provisions (no keygen)", async () => {

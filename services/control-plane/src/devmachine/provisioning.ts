@@ -76,7 +76,11 @@ export async function provisionMachine(target: SshTarget, handle: string, deps: 
   const pubFile = join(scratch, `${handle}.pub`);
   try {
     await writeFile(pubFile, publicKey, { mode: 0o644 });
+    // -f (force): install the PUBLIC key without ssh-copy-id checking for the matching private key
+    // beside it. The private key lives only in custody (TM-020/#14b) — never written to scratch — so
+    // without -f, ssh-copy-id strips `.pub`, looks for the private key in the scratch dir, and fails.
     const code = await runner.runInteractive("ssh-copy-id", [
+      "-f",
       "-i",
       pubFile,
       "-p",
