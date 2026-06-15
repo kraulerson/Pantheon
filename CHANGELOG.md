@@ -47,6 +47,12 @@ for handoff clarity. Categories are ordered by impact severity.
   `enabled`, `created_at`, `updated_at`). Carries no recalled content and no `trusted` provenance.
 
 ### Added
+- Runnable server entrypoint (`src/server.ts`, `npm start`) composing the whole control-plane —
+  registry + Config page + harness frame + Claude-CLI terminal WebSocket (key-only via custody) +
+  static xterm assets — fail-closed on a missing `ADMIN_API_TOKEN`; the terminal WS route inherits
+  the admin guard. Plus a `register-devmachine` CLI to add a DevMachine row directly (so it can be
+  provisioned before the guarded API is reachable). Smoke-verified end to end (`/harness` 401→200,
+  assets public).
 - Harness frame + xterm.js terminal tab (`src/http/harness-frame.ts`, `src/http/terminal-tab.ts`,
   `src/http/routes/harness.ts`, ADR-0005 §9 C.1/C.6): the top-level UI behind #9 auth hosting chat +
   terminal modalities; a New Session popup (AI SYSTEM × IDENTITY) routing "Claude CLI → dev machine"

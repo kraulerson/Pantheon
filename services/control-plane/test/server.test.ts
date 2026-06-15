@@ -1,0 +1,69 @@
+/**
+ * Server entrypoint — Task #16f. `createServer` composes the whole control-plane into one runnable
+ * Fastify app (registry + harness UI + terminal WebSocket + config), so `npm start` serves the
+ * Config page, harness frame, and Claude-CLI terminals. Tested via inject (no real listen).
+ */
+
+import { describe, it, expect, afterEach } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { FastifyInstance } from "fastify";
+import { createServer } from "../src/server.js";
+
+const TOKEN = "admin-token-0123456789abcdef0123456789abcdef";
+const auth = { authorization: `Bearer ${TOKEN}` };
+
+let app: FastifyInstance | undefined;
+let keyDir: string;
+afterEach(async () => {
+  await app?.close();
+  app = undefined;
+  if (keyDir) rmSync(keyDir, { recursive: true, force: true });
+});
+
+async function makeServer(): Promise<FastifyInstance> {
+  keyDir = mkdtempSync(join(tmpdir(), "pantheon-srv-keys-"));
+  return createServer({ adminToken: TOKEN, dbPath: ":memory:", keyDir });
+}
+
+describe("createServer", () => {
+  it("serves the harness frame behind auth and the public xterm assets", async () => {
+    app = await makeServer();
+    expect((await app.inject({ method: "GET", url: "/harness" })).statusCode).toBe(401);
+    const frame = await app.inject({ method: "GET", url: "/harness", headers: auth });
+    expect(frame.statusCode).toBe(200);
+    expect(frame.body).toMatch(/New Session/i);
+    expect((await app.inject({ method: "GET", url: "/assets/xterm.js" })).statusCode).toBe(200); // public
+  });
+
+  it("wires the DevMachine registry: create via API, then it appears + serves a terminal tab", async () => {
+    app = await makeServer();
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/dev-machines",
+      headers: auth,
+      payload: { logicalName: "mac-studio", host: "192.168.1.192", user: "karl", enabled: true }
+    });
+    expect(created.statusCode).toBe(201);
+
+    const list = await app.inject({ method: "GET", url: "/api/dev-machines", headers: auth });
+    expect(list.json().some((m: { logicalName: string }) => m.logicalName === "mac-studio")).toBe(true);
+
+    const tab = await app.inject({ method: "GET", url: "/harness/terminal/mac-studio", headers: auth });
+    expect(tab.statusCode).toBe(200);
+    expect(tab.body).toContain("mac-studio");
+    expect(tab.body).toMatch(/new WebSocket\(/);
+  });
+
+  it("gates the terminal WebSocket route behind the admin guard (#9/TM-020)", async () => {
+    app = await makeServer();
+    // A plain GET (no auth) must be rejected by the guard before any upgrade.
+    expect((await app.inject({ method: "GET", url: "/terminal/mac-studio" })).statusCode).toBe(401);
+  });
+
+  it("requires an admin token (throws if missing)", async () => {
+    keyDir = mkdtempSync(join(tmpdir(), "pantheon-srv-keys-"));
+    await expect(createServer({ adminToken: "", dbPath: ":memory:", keyDir })).rejects.toThrow();
+  });
+});

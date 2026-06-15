@@ -94,4 +94,24 @@ and a CSP are tracked follow-ups for the #9 integration; the guard is currently 
 
 ---
 
+## Feature 5: Runnable Server Entrypoint + register-devmachine CLI
+
+**Phase Built:** 2
+**Status:** Complete
+**Summary:** Makes the control-plane runnable. `createServer`/`configFromEnv` compose every piece —
+registry, Config page, harness frame, the Claude-CLI terminal WebSocket (key-only via custody), and
+the public xterm assets — into one Fastify app, with an `npm start` entrypoint that listens. It fails
+closed without `ADMIN_API_TOKEN`, and the terminal WS route inherits the admin guard. The
+`register-devmachine` CLI inserts a DevMachine row directly (via the same validated write path) so an
+operator can register a machine and provision it without first standing up the guarded API.
+**Key Interfaces:** `src/server.ts` (`npm start`), `src/cli/register-devmachine.ts`.
+**Related ADRs:** ADR-0005.
+**Test Coverage:** Unit (`register-cli.test.ts` — arg parsing); integration (`server.test.ts` — harness
+behind auth, public assets, registry round-trip + terminal tab, guarded WS route, missing-token
+rejection); manual smoke test (server boots, `/harness` 401→200, assets 200).
+**Known Limitations:** The chat pre-processor (`/v1/chat/completions`) is not mounted by the entrypoint
+yet. Browser/WS session auth and TLS/bind-host are deployment follow-ups (the guard is bearer-token).
+
+---
+
 <!-- Copy the section above for each new feature. Number sequentially. -->

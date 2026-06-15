@@ -113,21 +113,26 @@ cat <<EOF
 
 $(c_ok "Base install complete.")
 
-Remaining manual steps (each Claude-CLI dev machine):
-  1. Register the machine on the Configuration page (logicalName, host/IP, port, user).
+Run the control-plane (serves the Config page + harness frame + terminals):
+
+     cd "$CONTROL_PLANE"
+     ADMIN_API_TOKEN=<a strong token> \\
+     PANTHEON_DB="$DATA_DIR/control-plane.db" PANTHEON_KEY_DIR="$KEY_DIR" \\
+     npm start            # listens on PORT (default 8088); open /harness
+
+Per Claude-CLI dev machine (env shared with the steps above):
+  1. Register it (logicalName, host/IP, user[, --port]):
+       node dist/cli/register-devmachine.js --name <logicalName> --host <ip> --user <you>
+     (or add it on the Configuration page once the server is running)
   2. Provision it ONCE — installs the harness public key, you type the machine password once:
-
-       cd "$CONTROL_PLANE"
-       PANTHEON_DB="$DATA_DIR/control-plane.db" \\
-       PANTHEON_KEY_DIR="$KEY_DIR" \\
        node dist/cli/provision-devmachine.js <logicalName>
-
      After this, all terminal sessions to that machine connect key-only.
 
 Secrets (gitignored .env.local in $CONTROL_PLANE), set before live runs:
-     ADMIN_API_TOKEN, GITEA_BASE_URL, GITEA_TOKEN, BRIDGE_MCP_URL, BRIDGE_MCP_TOKEN
+     ADMIN_API_TOKEN, GITEA_BASE_URL, GITEA_TOKEN, BRIDGE_MCP_URL, BRIDGE_MCP_TOKEN,
+     and PETA_URL + PETA_ADMIN_TOKEN for MCP-server registration.
 
 Not handled here (separate components — see docs/SESSION-HANDOFF): deploying LibreChat and Peta,
-and wiring LibreChat's custom endpoint to the control-plane. Consider a systemd unit to run the
-control-plane on boot once its server entrypoint is finalized.
+and wiring LibreChat's custom endpoint to the control-plane. Consider a systemd unit running
+\`npm start\` to bring the control-plane up on boot, behind your reverse proxy + TLS (wss://).
 EOF
