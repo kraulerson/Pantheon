@@ -117,8 +117,12 @@ Run the control-plane (serves the Config page + harness frame + terminals):
 
      cd "$CONTROL_PLANE"
      ADMIN_API_TOKEN=<a strong token> \\
+     PANTHEON_OPERATOR_PASSWORD=<your login passphrase> PANTHEON_SECURE_COOKIES=true \\
      PANTHEON_DB="$DATA_DIR/control-plane.db" PANTHEON_KEY_DIR="$KEY_DIR" \\
-     npm start            # listens on PORT (default 8088); open /harness
+     npm start            # listens on PORT (default 8088); open /harness → /login
+
+     (PANTHEON_OPERATOR_PASSWORD enables the browser login at /login; set
+      PANTHEON_SECURE_COOKIES=true only when served over HTTPS via your reverse proxy.)
 
 Per Claude-CLI dev machine (env shared with the steps above):
   1. Register it (logicalName, host/IP, user[, --port]):

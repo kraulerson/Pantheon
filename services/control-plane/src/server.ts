@@ -4,7 +4,9 @@
  * frame, and Claude-CLI terminal tabs.
  *
  * Config via env (see {@link configFromEnv}):
- *   ADMIN_API_TOKEN  (required)  — the admin/#9 bearer guard
+ *   ADMIN_API_TOKEN  (required)  — the admin bearer guard (API/headless)
+ *   PANTHEON_OPERATOR_PASSWORD   (optional)    — enables #9 browser login (/login) + cookie auth
+ *   PANTHEON_SECURE_COOKIES=true (behind HTTPS) — add Secure to the session cookie
  *   PANTHEON_DB      (./data/control-plane.db) — registry SQLite path (persistent)
  *   PANTHEON_KEY_DIR (~/.pantheon/keys)        — harness SSH key custody dir
  *   PETA_URL + PETA_ADMIN_TOKEN  (optional)    — Peta admin API for MCP-server registration
@@ -37,6 +39,10 @@ export interface ServerConfig {
   readonly dbPath: string;
   readonly keyDir: string;
   readonly peta?: { readonly url: string; readonly token: string };
+  /** Operator passphrase for #9 browser login (§7). When set, /login is enabled. */
+  readonly operatorPassword?: string;
+  /** Add `Secure` to the session cookie (set true behind HTTPS/your reverse proxy). */
+  readonly secureCookies?: boolean;
   /** Injected fetch for the Peta client (tests). */
   readonly fetchFn?: typeof fetch;
 }
@@ -62,7 +68,13 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
     : unconfiguredPeta();
   const mcp = new McpRegistrationService(petaAdmin);
 
-  const app = buildApp({ adminToken: cfg.adminToken, registry, mcp });
+  const app = buildApp({
+    adminToken: cfg.adminToken,
+    registry,
+    mcp,
+    ...(cfg.operatorPassword ? { operatorPassword: cfg.operatorPassword } : {}),
+    ...(cfg.secureCookies !== undefined ? { secureCookies: cfg.secureCookies } : {})
+  });
 
   // Terminal modality (ADR-0005): key-only SSH brokered server-side from custody.
   const custody = new FileKeyCustody(cfg.keyDir);
@@ -83,7 +95,9 @@ export function configFromEnv(env: Record<string, string | undefined>): ServerCo
     adminToken,
     dbPath: env["PANTHEON_DB"] ?? resolve("data/control-plane.db"),
     keyDir: env["PANTHEON_KEY_DIR"] ?? defaultKeyDir(),
-    ...(peta ? { peta } : {})
+    ...(peta ? { peta } : {}),
+    ...(env["PANTHEON_OPERATOR_PASSWORD"] ? { operatorPassword: env["PANTHEON_OPERATOR_PASSWORD"] } : {}),
+    ...(env["PANTHEON_SECURE_COOKIES"] === "true" ? { secureCookies: true } : {})
   };
 }
 

@@ -20,6 +20,13 @@ for handoff clarity. Categories are ordered by impact severity.
 ## [Unreleased]
 
 ### Security
+- #9 browser auth (§7 tier-1): control-plane-native operator login — passphrase
+  (`PANTHEON_OPERATOR_PASSWORD`) → 256-bit server-side session in an httpOnly, SameSite=Lax cookie,
+  constant-time password compare (SHA-256 digests, no length leak). The admin guard now accepts the
+  cookie OR the bearer, so a browser authenticates the harness pages **and** the same-origin terminal
+  WebSocket by cookie (live-verified: cookie-only WS round-trips a real shell; unauth WS → 401).
+  Logged-out browser navigations redirect to `/login`; `/logout` invalidates server-side. The D6
+  passkey step-up remains a separate seam. New dep: `@fastify/formbody@8.0.2`.
 - UAT-1 hardening (adversarial sweep, `tests/uat/sessions/2026-06-14-session-1/TRIAGE.md`):
   `provisioned`/`sshKeyHandle` are no longer settable via the generic `PUT /api/dev-machines/:id`
   (un-forgeable — set only by `markProvisioned` after `ssh-copy-id` succeeds); editing host/port/user

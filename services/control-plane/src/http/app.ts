@@ -13,6 +13,7 @@
 
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { timingSafeEqual } from "node:crypto";
+import formbody from "@fastify/formbody";
 import { RegistryService, ValidationError } from "../registry/service.js";
 import type { McpRegistrationService } from "../registry/mcp-registration.js";
 import { renderConfigPage } from "./config-page.js";
@@ -21,6 +22,8 @@ import { registerChatCompletionsRoute } from "./routes/chat-completions.js";
 import { registerInspectorRoute } from "./routes/inspector.js";
 import { registerApprovalsRoutes, type ApprovalsBackend } from "./routes/approvals.js";
 import { registerHarnessRoutes, HARNESS_ASSET_PATHS } from "./routes/harness.js";
+import { SessionStore } from "./auth/session.js";
+import { operatorGuard, registerAuthRoutes, AUTH_PUBLIC_PATHS } from "./auth/operator-auth.js";
 
 /** Result of an admin-tier check. `ok:false` carries the HTTP status to fail closed with. */
 export type GuardResult = { ok: true } | { ok: false; status: 401 | 403; reason: string };
@@ -47,13 +50,27 @@ export interface AppOptions {
    * GET /approvals + POST /approvals/:id/decide routes are mounted (proxy listApprovals/decide).
    */
   readonly peta?: ApprovalsBackend;
+  /**
+   * Operator passphrase for #9 browser login (§7 tier-1). When set, /login + /logout are mounted and
+   * the guard also accepts the resulting session cookie; logged-out browser navigations redirect to
+   * /login. Omit to keep bearer-token-only auth (API/headless).
+   */
+  readonly operatorPassword?: string;
+  /** Session store backing the login cookie (defaults to a fresh in-memory store when login is on). */
+  readonly sessions?: SessionStore;
+  /** Add `Secure` to the session cookie (set true behind HTTPS). */
+  readonly secureCookies?: boolean;
 }
 
 /**
  * Public, non-admin routes (identity-gated, fail-closed in their own handlers). The admin guard
  * is NOT applied to these: LibreChat is not an admin, it presents an operator identity header.
  */
-const PUBLIC_PATHS: ReadonlySet<string> = new Set(["/v1/chat/completions", ...HARNESS_ASSET_PATHS]);
+const PUBLIC_PATHS: ReadonlySet<string> = new Set([
+  "/v1/chat/completions",
+  ...HARNESS_ASSET_PATHS,
+  ...AUTH_PUBLIC_PATHS
+]);
 
 function constantTimeEquals(a: string, b: string): boolean {
   const ab = Buffer.from(a);
@@ -97,18 +114,41 @@ export function verifyStepUp(_req: FastifyRequest): GuardResult {
 export function buildApp(opts: AppOptions): FastifyInstance {
   const app = Fastify({ logger: false });
   const { registry, mcp } = opts;
-  const guard: AdminGuard = opts.guard ?? bearerGuard(opts.adminToken);
+
+  // #9 browser login (§7 tier-1): when an operator passphrase is configured, the guard also accepts
+  // a session cookie and logged-out browser navigations redirect to /login.
+  const loginEnabled = typeof opts.operatorPassword === "string" && opts.operatorPassword.length > 0;
+  const sessions = opts.sessions ?? (loginEnabled ? new SessionStore() : undefined);
+  const guard: AdminGuard = opts.guard ?? operatorGuard(opts.adminToken, sessions);
+
+  // Parse application/x-www-form-urlencoded so the login form (and config-page forms) submit.
+  app.register(formbody);
 
   // Admin-tier guard on every ADMIN route (fail-closed). Public, identity-gated routes
-  // (the pre-processor chat entry) are exempted — they fail closed in their own handlers.
+  // (the pre-processor chat entry, login page, static assets) are exempted.
   app.addHook("onRequest", async (req, reply) => {
     if (PUBLIC_PATHS.has(req.routeOptions.url ?? req.url.split("?")[0] ?? "")) return;
     const result = await guard(req);
     if (!result.ok) {
-      // Sanitized body: a code only, never the token or raw exception text (§8/TM-008).
+      // A logged-out BROWSER navigation → redirect to the login page (no metadata leaked, §7);
+      // an API caller → sanitized status code only (never the token or raw exception text, §8/TM-008).
+      const wantsHtml = req.method === "GET" && (req.headers.accept ?? "").includes("text/html");
+      if (wantsHtml && loginEnabled) {
+        reply.redirect("/login");
+        return;
+      }
       reply.code(result.status).send({ error: result.reason });
     }
   });
+
+  // ---- #9 login/logout (public) ----
+  if (loginEnabled && sessions) {
+    registerAuthRoutes(app, {
+      operatorPassword: opts.operatorPassword as string,
+      sessions,
+      ...(opts.secureCookies !== undefined ? { secureCookies: opts.secureCookies } : {})
+    });
+  }
 
   // Centralized error handling: ValidationError → 400 (no mutation happened, validation is pre-write).
   app.setErrorHandler((err, _req, reply) => {

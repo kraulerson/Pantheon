@@ -114,4 +114,23 @@ yet. Browser/WS session auth and TLS/bind-host are deployment follow-ups (the gu
 
 ---
 
-<!-- Copy the section above for each new feature. Number sequentially. -->
+## Feature 6: Operator Browser Auth (#9)
+
+**Phase Built:** 2
+**Status:** Complete (tier-1 UI auth; D6 passkey step-up remains a separate future layer)
+**Summary:** The #9 UI auth gate (§7 tier-1) as a control-plane-native operator login, since LibreChat
+isn't deployed to delegate to. The operator passphrase mints a 256-bit server-side session carried in
+an httpOnly/SameSite=Lax cookie; the admin guard accepts that cookie OR the admin bearer. This lets a
+**browser** authenticate the harness pages and — critically — the same-origin **terminal WebSocket**,
+which can't carry an Authorization header. Logged-out browser navigations redirect to `/login`;
+`/logout` invalidates the session server-side.
+**Key Interfaces:** `src/http/auth/session.ts`, `src/http/auth/operator-auth.ts`, `src/http/app.ts`
+(guard + `/login`/`/logout` + redirect), `src/server.ts` (`PANTHEON_OPERATOR_PASSWORD`).
+**Related ADRs:** ADR-0005; PROJECT_BIBLE §7.
+**Test Coverage:** Unit (`session-auth.test.ts` — id entropy, TTL/expiry, logout); integration
+(`browser-auth.test.ts` — login form, wrong/right password, cookie-authed page, HTML redirect vs API
+401, bearer still works, logout); manual live (login → cookie → real terminal WS round-trip; unauth WS
+rejected).
+**Known Limitations:** `Secure` cookie + `wss://` require TLS (set `PANTHEON_SECURE_COOKIES=true` behind
+the reverse proxy); no login rate-limiting or CSRF token yet (SameSite=Lax is the current CSRF
+control); in-memory sessions reset on restart. The D6 privileged step-up (passkey/WebAuthn) is unbuilt.

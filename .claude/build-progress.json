@@ -4,13 +4,14 @@
     "devmachine-ssh-connection",
     "terminal-websocket-bridge",
     "harness-frame-and-terminal-tab",
-    "runnable-server-and-register-cli"
+    "runnable-server-and-register-cli",
+    "operator-browser-auth"
   ],
-  "features_since_last_test": 1,
-  "features_since_last_health_check": 1,
+  "features_since_last_test": 2,
+  "features_since_last_health_check": 2,
   "test_interval": 2,
   "last_test_session": "2026-06-15",
-  "testing_required": false,
+  "testing_required": true,
   "tester_count": 1,
   "bug_tracker": "github_issues",
   "sessions_completed": 2
