@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/server.js",
+    "start": "node --env-file-if-exists=.env.local dist/server.js",
     "test": "vitest run",
     "test:cov": "vitest run --coverage",
     "lint": "eslint ."
