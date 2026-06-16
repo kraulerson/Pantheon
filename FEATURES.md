@@ -75,13 +75,14 @@ end-to-end against a real machine is covered by the deferred live UAT.
 
 **Phase Built:** 2
 **Status:** Complete (server-rendered UI + routes; live/visual verification is in the deferred UAT)
-**Summary:** The top-level harness UI (ADR-0005 §9 C.1/C.6, amends ADR-0001). A server-rendered frame
-behind #9 auth hosts both modalities — LibreChat chat tabs and xterm.js terminal tabs — with a New
-Session popup (AI SYSTEM × IDENTITY) that routes a "Claude CLI → dev machine" choice to a terminal
-tab by logicalName (#14a). The terminal page is colorblind-safe (the four §9 C.6 states each carry a
-text label + glyph + `data-state`, never color alone), loads xterm.js from the control-plane's own
-origin, and opens the broker WebSocket; the SSH key never reaches the browser. All output is escaped
-in both HTML and inline-JS contexts.
+**Summary:** The top-level harness UI (ADR-0005 §9 C.1/C.6, amends ADR-0001) — a **single-page tabbed
+shell** behind #9 auth. New Session (AI SYSTEM × IDENTITY) and per-machine shortcuts open Claude-CLI
+terminals as **in-app, closeable, switchable tabs** (not new browser windows); each tab embeds an
+xterm terminal + its own WebSocket to the broker (by logicalName, #14a), and closing a tab disconnects
+it. Colorblind-safe state labels; xterm.js served from the control-plane's own origin; the SSH key
+never reaches the browser; dynamic values escaped (HTML) or set via `textContent` (JS). Tab behavior
+is jsdom-tested (`harness-shell.test.ts`). [The standalone `/harness/terminal/:name` page +
+`terminal-tab.ts` also remain for direct links.]
 **Key Interfaces:** `src/http/harness-frame.ts`, `src/http/terminal-tab.ts`, `src/http/routes/harness.ts`
 (routes `/harness`, `/harness/terminal/:logicalName`, public `/assets/xterm.*`).
 **Related ADRs:** ADR-0005.

@@ -107,13 +107,11 @@ async function main(): Promise<void> {
   const port = Number(process.env["PORT"] ?? "8088");
   const host = process.env["HOST"] ?? "0.0.0.0";
   await app.listen({ port, host });
-  // eslint-disable-next-line no-console
   console.error(`pantheon control-plane listening on http://${host}:${port}  (harness: /harness)`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
   main().catch((err: unknown) => {
-    // eslint-disable-next-line no-console
     console.error(`server failed to start: ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);
   });

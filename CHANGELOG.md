@@ -86,7 +86,15 @@ for handoff clarity. Categories are ordered by impact severity.
   Configuration page with text+shape provisioning/enabled status (CC1).
 
 ### Changed
+- Harness frame is now a real single-page **tabbed shell** (replacing the stub that opened terminals
+  in new browser windows): New Session → Start opens an in-app tab; machine shortcuts and the popup
+  open xterm terminals as **closeable, switchable in-app tabs**, each with its own WebSocket; closing
+  a tab disconnects its session. Behavior is jsdom-tested (xterm + WebSocket stubbed). Found via live
+  use. Dev dep: `jsdom` (tests only).
+
 ### Fixed
+- New Session "Start" did nothing and terminals opened in detached browser windows with no way back —
+  both fixed by the tabbed shell.
 ### Removed
 ### Infrastructure
 ### Documentation
