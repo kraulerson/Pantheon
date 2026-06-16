@@ -70,4 +70,26 @@ All S1–S4 items fixed **test-first**, all 236 tests green, tsc + lint clean:
 
 Ship decision honored: fix-then-ship complete for 1–6; 7 deferred. The live operator-at-keyboard UAT (provisioning + SSH round-trip) remains the gate for the *next* feature.
 
-**2026-06-14 — gate decision:** the Orchestrator accepted the automated UAT (236 tests + adversarial sweep + remediation) and directed continuing to sub-task (c). The test-gate batch counter was reset on that basis. The **live SSH provisioning + connect verification is NOT yet run** — it is deferred and tracked via `templates/live-ssh-provisioning.md`, to be performed at the keyboard before the harness is considered production-ready. No live results are claimed.
+**2026-06-14 — gate decision:** the Orchestrator accepted the automated UAT (236 tests + adversarial sweep + remediation) and directed continuing to sub-task (c). The test-gate batch counter was reset on that basis. The live verification was deferred to the keyboard.
+
+## Live UAT executed — 2026-06-15 — PASSED
+
+Run from the Pantheon host (Mac mini, `192.168.1.192`) against a real remote dev machine
+**`linux-box` = `192.168.1.202`** (user `karl`, Linux `7.0.0-22-generic`). The other candidates were
+unavailable (`.78` powered off; `.190` MacBook had Remote Login off; `.192` is the host itself).
+
+| # | Scenario | Result |
+|---|---|---|
+| Register | `register-devmachine --name linux-box --host 192.168.1.202 --user karl` | ✅ row created, `provisioned=0` |
+| Provision | `provision-devmachine linux-box` | ✅ harness pubkey installed via `ssh-copy-id -f`; `provisioned=1`. **No password prompt** (operator's existing key let copy-id in). |
+| Key-only auth | `ssh -i custody/harness … karl@192.168.1.202` | ✅ `HARNESS_KEY_OK` (key-only, no password) |
+| ssh2 broker round-trip | `devmachine-ssh.live.integration.test.ts` (guarded) | ✅ PTY opened, `echo` round-tripped |
+| **Full server → WS → PTY** | running `npm start`, WS client → `/terminal/linux-box` (bearer auth) | ✅ `ready` frame + session id; sent `echo …$((1+1))`, got back `…_2` — **a real remote shell evaluating**, through the guarded WS route → `connectTerminal` → real PTY |
+
+**Bug found & fixed (the value of live testing):** macOS `ssh-copy-id -i foo.pub` strips `.pub` and
+demands the private key beside it (which we keep in custody, never in scratch) → provisioning failed.
+Fixed test-first with `-f` (commit `95c754a`). Re-ran: green.
+
+**Outcome:** Task #16 verified working end-to-end against a real remote machine. The Mac mini now has a
+working control-plane + provisioned `linux-box`. Remaining for production are the tracked follow-ups
+(browser session auth for #9, CSP, LibreChat/Peta deploy, token rotation) — none are Task #16 defects.
