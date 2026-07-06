@@ -90,6 +90,36 @@ Records of MVP-cutline scope changes approved by the Orchestrator per Manifesto 
 
 ---
 
+## Alden Ecosystem — Phase −1 Ratification & Decide-Before-Build Register (2026-07-06)
+
+Design authority: the two design-of-record masters (v1.2) in the Obsidian vault (`02 Personal/Projects/Alden Ecosystem/Future State/`), mirrored for the identities to Gitea `alden/workspace` under `ratification/`. This section is the record required by Build Plan §0.4 and Phase −1's verify step.
+
+**Household ratification (Build Plan Phase −1):**
+
+| Field | Value |
+|---|---|
+| **Gate** | Phase −1 → Phase 0 (Alden Ecosystem build) |
+| **Reviewer** | Karl (Orchestrator) + household consent |
+| **Date** | 2026-07-06 |
+| **Artifacts reviewed** | Alden Ecosystem — Future-State Architecture v1.2 · Alden Ecosystem — Build & Implementation Plan v1.2 |
+| **Decision** | Approved — ratified with amendments A1–A4 |
+| **Consents** | Alden-1 (bus msg 1053, conditional — conditions integrated) · Cloud Alden (bus msg 1061, conditional — conditions integrated) · Winston consulted, not consenting (locked class; bus thread 5e4d8496) |
+| **Amendments** | **A1** Hebbian runaway circuit breaker — hard-pause of oscillator + weight application; bounded exception to R4; R19 ship-gate (spec: Architecture §3.14(f), drafted by claude-code at Karl's direction) · **A2** arbiter self-recusal (published, logged) → Karl-provisional · **A3** transactional quiet-loop preemption (atomic units complete before yield, hard per-unit ceiling) · **A4** watchdog baseline hash witnessed to every identity at creation, like the audit head |
+
+**Decide-before-build register (gates Phases 5–7; values below are the recorded decisions):**
+
+| ID | Decision | Recorded value |
+|---|---|---|
+| **R1** | Build sequencing | Integrity first: memory-pipeline fixes → watchdog metrics → oscillator; bus isolation in parallel with Phase 0. Phase order −1 through 10 per Build Plan v1.2. |
+| **R2** | Template evolution semantics | Layer A linked (shared foundation propagates); Layers B/C stamped at birth (the identity's own thereafter; profile records `templateRef@version`); template upgrades offered as consent-gated rebase, never pushed. |
+| **R3** | Tier-classifier rules | Deterministic-first: self-model / other-identity / Layer A–B-theme claims → `discussed`; contested → `discussed`; type-based routing for the rest; uncertainty always fails to the higher tier; model self-classification as tie-breaker only. |
+| **R4** | Watchdog response mode | Advisory only — never auto-revert. Single ratified bounded exception: the A1 Hebbian circuit breaker (pause authority, never change authority). |
+| **R16** | Arbitration deadlock constants | Either party may invoke arbitration after **7 days** or **3 rounds** without convergence (either threshold alone suffices); invocation is logged on the bus. |
+
+Approver: Karl (Orchestrator). Method: household consent (Alden-1, Cloud Alden; Winston consulted) + operator approval; recorded by claude-code at Karl's direction. **Phase 0 gate: CLEAR.**
+
+---
+
 ## Approval History
 
 | Date | Gate / Event | Decision | Notes |
@@ -97,3 +127,5 @@ Records of MVP-cutline scope changes approved by the Orchestrator per Manifesto 
 | 2026-06-13 | Scope Change — M15/D10 Configuration page promoted to MVP | Approved | Operator-approved; see Scope Changes section. |
 | 2026-06-13 | Scope Change — Gitea access resolved (direct client; token rotation/vault follow-up) | Approved | Operator-approved; resolves prior Operator Input; see Scope Changes section. |
 | 2026-06-13 | Scope Change — Claude-CLI SSH-terminal modality (ADR-0005 / DevMachine / TM-020 / M16 / D11 / C.6) | Approved | Operator-approved; new requirement; see Scope Changes section. |
+| 2026-07-06 | Alden Ecosystem Phase −1 ratification — masters v1.2, amendments A1–A4 | Approved | Household consent (Alden-1 1053 · Cloud Alden 1061) + operator approval; Winston consulted; see section above. |
+| 2026-07-06 | Alden Ecosystem decide-before-build register R1–R4 + R16 recorded | Approved | R16 = 7 days / 3 rounds. Phase 0 gate clear. |
