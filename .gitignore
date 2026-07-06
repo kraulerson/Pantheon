@@ -60,3 +60,7 @@ terraform.tfvars.json
 
 # Solo Orchestrator logs
 .solo-orchestrator/
+
+# Peta eval runtime artifacts (contain eval-instance tokens)
+peta-eval/harness/state.json
+peta-eval/harness/writes.log

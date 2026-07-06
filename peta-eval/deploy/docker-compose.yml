@@ -1,0 +1,47 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: peta-eval-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - '${DB_PORT}:5432'
+    volumes:
+      - peta_eval_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER} -d ${DB_NAME}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [peta-eval-net]
+  peta-core:
+    image: petaio/peta-core:latest
+    container_name: peta-eval-core
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      DATABASE_URL: ${DATABASE_URL}
+      BACKEND_PORT: ${BACKEND_PORT}
+      JWT_SECRET: ${JWT_SECRET}
+      LOG_LEVEL: ${LOG_LEVEL}
+      LOG_PRETTY: ${LOG_PRETTY}
+      LAZY_START_ENABLED: ${LAZY_START_ENABLED}
+      PETA_AUTH_AUTOSTART: ${PETA_AUTH_AUTOSTART}
+      MCP_2026_ENABLED: ${MCP_2026_ENABLED}
+      PETA_CORE_IN_DOCKER: "true"
+      SKIP_DB_CONTAINER_START: "true"
+    ports:
+      - '${BACKEND_PORT}:${BACKEND_PORT}'
+    networks: [peta-eval-net]
+volumes:
+  peta_eval_pg:
+    driver: local
+networks:
+  peta-eval-net:
+    driver: bridge
