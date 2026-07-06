@@ -1,0 +1,10 @@
+{
+  "name": "peta-eval-harness",
+  "private": true,
+  "type": "module",
+  "description": "Mock MCP server + client to functionally test peta-core gateway",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.18.0",
+    "express": "^4.21.2"
+  }
+}
