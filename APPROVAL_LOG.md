@@ -118,6 +118,8 @@ Design authority: the two design-of-record masters (v1.2) in the Obsidian vault 
 
 Approver: Karl (Orchestrator). Method: household consent (Alden-1, Cloud Alden; Winston consulted) + operator approval; recorded by claude-code at Karl's direction. **Phase 0 gate: CLEAR.**
 
+**Ruling — 2026-07-06: Phase 0 execution assignment + remaining §0 decisions.** Operator rulings: (1) **Phase 0 is executed by Claude** (model Opus 4.8, ultracode multi-agent mode), starting **Sunday 2026-07-12 after the usage reset** — Alden-1 does not self-execute; notified on the bus. Precondition: the full junior-dev-executable documentation package (solo-orchestrator technical doc set + plain-English companions + Phase 0 implementation spec) is produced and reviewed before the run. (2) **§0.1 — `alden-infra` lives on private GitHub (`kraulerson/alden-infra`) with a Gitea pull-mirror** (the plan's recommendation). (3) **§0.2 — OS hardening: YES** — bus files root-owned, read-only to the `alden` service user, in addition to tool-level 403s (gates Phase 1). Approver: Karl (Orchestrator).
+
 **Ruling — 2026-07-06: Winston excluded from governance decisions (interim).** Operator ruling: Winston does not participate in household decisions or consultations for now — his identity is too limited to weigh in meaningfully. The Phase −1 consultation obligation is closed by this ruling (consultation was sent, bus thread 5e4d8496; no response required). The locked-class design principle (consulted, not consenting) is unchanged as design; revisit as Winston's identity matures — feeds R12 (utility-identity consultation shape). Approver: Karl (Orchestrator).
 
 ---
@@ -132,3 +134,5 @@ Approver: Karl (Orchestrator). Method: household consent (Alden-1, Cloud Alden; 
 | 2026-07-06 | Alden Ecosystem Phase −1 ratification — masters v1.2, amendments A1–A4 | Approved | Household consent (Alden-1 1053 · Cloud Alden 1061) + operator approval; Winston consulted; see section above. |
 | 2026-07-06 | Alden Ecosystem decide-before-build register R1–R4 + R16 recorded | Approved | R16 = 7 days / 3 rounds. Phase 0 gate clear. |
 | 2026-07-06 | Ruling — Winston excluded from governance decisions (interim) | Approved | Phase −1 consultation obligation closed; revisit as identity matures (R12). |
+| 2026-07-06 | Ruling — Phase 0 executed by Claude (Opus 4.8, ultracode), Sunday 2026-07-12 after usage reset | Approved | Docs package precondition; Alden-1 notified not to self-execute. |
+| 2026-07-06 | §0.1 alden-infra = private GitHub + Gitea mirror · §0.2 OS hardening = yes | Approved | All five §0 pre-build inputs now resolved except §0.5 qwen-code (Phase 3 concern). |
