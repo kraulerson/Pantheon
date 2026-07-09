@@ -29,9 +29,14 @@ every later phase of the ratified Alden build plan assumes this assembled system
    UI → grounding → taint → gateway before first assembled debugging session.
 5. **Streaming pass-through** (decision F) — SSE from backend through the Facade to the
    UI; replaces the `"streaming not yet implemented"` seam in `src/backend/client.ts`.
-6. **Cost-meter middleware** (decision F) — per-identity × per-backend token counts
-   logged at the Facade on every completion. Seed of the Alden R18 usage/cost ledger;
-   prerequisite for any metered cloud brain.
+6. **Bifrost spike — CONDITIONAL** (decision F as amended 2026-07-09; replaces the
+   original hand-built cost-meter item, which is cancelled permanently). If household
+   consent on Bifrost has landed by skeleton execution: deploy Bifrost v1.6.3 pinned in
+   **file-only config mode** with all walls (zero MCP clients; localhost bind; Caddy
+   path-denies on `/mcp` + UI + `/api`; semantic-cache plugin absent; ledger payload
+   redaction on), routing Facade → Bifrost → 122B. If consent has not landed: skip —
+   the skeleton has no metered brains, and the spike becomes the first post-skeleton
+   item. Either way, no meter is hand-built (`docs/2026-07-09-turnstone-bifrost-eval.md`).
 7. **Session binding + brain-busy queue** (decision E) — enforce Session's
    identity+backend binding at the Facade; single-slot backend queue with the C.7
    honest labeled wait signal; interactive preempts background.
@@ -53,7 +58,12 @@ every later phase of the ratified Alden build plan assumes this assembled system
 - [ ] Denied tool call returns `-32602` and provably does not execute (write-evidence
       pattern from `peta-eval/harness`).
 - [ ] Streaming visibly works in the UI (words appear as generated).
-- [ ] Cost meter logs per-identity tokens for the smoke-test conversation.
+- [ ] IF the Bifrost spike is in (see scope item 6): the smoke-test conversation
+      appears in Bifrost's ledger attributed to the identity's virtual key with token
+      counts and **no prompt/response content stored**; `curl` from a LAN host to
+      `/mcp` and the Bifrost UI is denied; killing Bifrost mid-session produces a
+      labeled "brain unreachable" error at the Facade (fail closed, no retry storm).
+      IF the spike is deferred: no accounting acceptance applies to the skeleton.
 - [ ] Busy-brain queue: two concurrent sessions on the single-slot backend → the second
       shows the C.7 labeled queue state, then proceeds.
 - [ ] Admin-service restart does **not** drop an in-flight Facade conversation
