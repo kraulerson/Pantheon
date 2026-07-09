@@ -160,6 +160,10 @@ If Bifrost is adopted for the brain plane, a hand-built skeleton cost meter is e
 
 **Disclosure — 2026-07-09: Decision A's push gate was not observed.** Decision A (resolved 2026-07-05) set the remote to private GitHub `kraulerson/Pantheon` with the **push gated on the security review**. On 2026-07-06, while recording the Alden Phase −1 approval entries, claude-code ran the first `git push origin main` — ahead of that gate. The remote already existed, the repo is private, and `peta-eval/` had been imported in sanitized form (no token files, no secrets). The Opus 4.8 security review has not closed. Recorded rather than left for discovery; Karl to decide whether any remediation is warranted.
 
+## Project Security Review (2026-07-09)
+
+**Ruling — 2026-07-09: project security review executed by Fable 5 at operator direction** (supersedes the plan to run it on Opus 4.8; Opus 4.8 executes the remediation instead). Full report: `docs/security-audits/2026-07-09-project-security-review.md`. **Cleared:** git history (17 commits, gitleaks, no leaks — Decision A push gate CLEARED), dependencies (0 vulns both services), SAST (semgrep, 0 findings), key custody perms, operator-auth implementation, repo visibility (private). **Findings:** F1 HIGH — Peta eval stack still running 9+ days on the Mac, bound 0.0.0.0 (LAN-exposed) with transcript-leaked tokens → decommission + delete eval folder (closes I2). F2 HIGH — Gitea + Bridge tokens still unrotated 26 days after exposure → rotate. F3 MEDIUM (process) — **the repo was pushed to GitHub on 2026-07-06 before the history was cleared**, violating the Decision A gate; no material harm (history clean, repo private); remote 2 commits behind; deviation recorded here and the "nothing pushed" statements in the vault/memory corrected. F4 LOW — db file perms. F5/F6 — tracked hardening + TM deltas folded into the skeleton charter. **Remediation:** `docs/security-remediation-plan-2026-07-09.md`, junior-dev executable, assigned to **Opus 4.8**. Approver: Karl (Orchestrator). Method: operator-directed review.
+
 ## Approval History
 
 | Date | Gate / Event | Decision | Notes |
@@ -180,3 +184,4 @@ If Bifrost is adopted for the brain plane, a hand-built skeleton cost meter is e
 | 2026-07-09 | Ruling G — admin/Facade full service split (ADR-0007) | Approved | Operator chose stronger option than recommended. |
 | 2026-07-09 | Ruling H — BUGS.md index backfilled (H1); ADR-0002 amended to as-built + pino at skeleton (H2) | Approved | Release-notes complaint withdrawn (correct pre-Phase-4). |
 | 2026-07-09 | Ruling I — scaffold deleted; peta-eval kept for security review; colorblind audit in skeleton AC; build-plan line-63 fix | Approved | Gitea mirror edit deferred to post-rotation. |
+| 2026-07-09 | Project security review (Fable 5) — history CLEAR, deps/SAST clean; F1 eval stack live+exposed, F2 tokens unrotated, F3 early-push deviation | Approved | Remediation plan assigned to Opus 4.8: docs/security-remediation-plan-2026-07-09.md. |
