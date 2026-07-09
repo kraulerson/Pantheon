@@ -124,6 +124,26 @@ Approver: Karl (Orchestrator). Method: household consent (Alden-1, Cloud Alden; 
 
 ---
 
+## Pantheon Harness — Review Decision Session (2026-07-09)
+
+Working through the open decisions in the vault doc `Future State/Pantheon Harness — Review & Decision Points (2026-07-05)`. Decision A (repo remote: private GitHub `kraulerson/Pantheon` + Gitea mirror; push gated on the security review) was resolved 2026-07-05.
+
+**Ruling — 2026-07-09: Decision B — LibreChat resolved via deploy-and-verify spike.** Operator ruling: the UI-plane fork (landscape re-validation §R1) is resolved by a time-boxed 1–2 day spike, executed as part of the walking-skeleton assembly: deploy LibreChat on the target VM, point it at the control-plane custom endpoint, and verify empirically whether the trust-labeled inspector (Investigation A's flagged risk) can render inside LibreChat. If yes → LibreChat is confirmed per ADR-0001. If no → invoke Investigation A's documented fallback (separate control-plane inspector view) and amend ADR-0001 accordingly. No pre-emptive UI replacement (Open WebUI etc.) is evaluated unless the spike fails on operational weight. Approver: Karl (Orchestrator). Method: structured decision session, recommended option accepted.
+
+**Ruling — 2026-07-09: Decision C — feature freeze until the walking skeleton runs end-to-end.** Operator ruling: no new `feat:` work until the assembled system (VM + hardened Peta + control plane with the pre-processor mounted + LibreChat spike + one identity/one brain/one conversation/one gated write) passes the acceptance checklist. Charter and checklist: `docs/walking-skeleton-milestone.md`. Runs in parallel with (and independent of) the Alden-ecosystem Phase 0 execution scheduled 2026-07-12. Approver: Karl (Orchestrator). Method: recommended option accepted.
+
+**Ruling — 2026-07-09: Decision D — git (`alden-infra`) is master for identity/brain/grant data; registry rows become a one-way projection.** Configuration page becomes view + propose-a-change for that data class (proposals land as `alden-infra` commits); DevMachine/ServiceEndpoint plumbing stays SQLite-native. Design lands before Alden build-plan Phase 3. Recorded as **ADR-0006**; Bible §5 DM-4. Approver: Karl (Orchestrator). Method: recommended option accepted.
+
+**Ruling — 2026-07-09: Decision E — session binding enforced at the Facade; busy brain = honest labeled queue.** The existing Session entity's immutable identity+backend binding is enforced at runtime by the Facade with bindings persisted in SQLite (restart-safe); no mid-session identity/brain swap. Single-slot backends queue with a labeled position signal (new UI spec **C.7**, colorblind-safe), interactive preempts background, and the New Session popup (C.1) shows per-backend availability in text. Approver: Karl (Orchestrator). Method: recommended option accepted.
+
+**Ruling — 2026-07-09: Decision F — plumbing timing.** Streaming pass-through and the per-identity cost meter (seed of Alden R18 ledger; prerequisite for any metered cloud brain) are built INTO the walking skeleton; the machine-auth (service-principal) path for the Autonomy Driver is DESIGNED at skeleton time (`docs/machine-auth-design.md`) and BUILT at Alden build-plan Phase 3. Approver: Karl (Orchestrator). Method: recommended option accepted.
+
+**Ruling — 2026-07-09: Decision G — admin surface and Facade split into two services now.** Two services from one codebase, separate ports and auth domains, from the skeleton onward; an admin-surface failure must not interrupt conversations. **Operator chose the full split over the reviewer's recommended structured-monolith option**, prioritizing the ratified control-plane ≠ data-plane separation. Recorded as **ADR-0007** (amends ADR-0001/0002 deployment shape); Bible §11 topology updated. Approver: Karl (Orchestrator). Method: structured decision session, stronger option chosen.
+
+**Ruling — 2026-07-09: Decision H — records made honest.** (H1) `BUGS.md` is the canonical bug index; the seven Session-1 findings backfilled as rows linking to `tests/uat/sessions/2026-06-14-session-1/TRIAGE.md`; every future sweep adds one row per finding. (H2) ADR-0002's pinned-dependency table amended to the as-built list (helmet/cors/typebox/zod not adopted — hand-written guards + Caddy headers); **pino stays committed** and lands at skeleton wiring (Bible §8 status note). Note: the review's release-notes complaint was withdrawn — an empty RELEASE_NOTES.md is correct before Phase 4. Approver: Karl (Orchestrator). Method: recommended options accepted (both sub-decisions).
+
+**Ruling — 2026-07-09: Decision I — housekeeping.** (I1) `.alden-harness-discarded/` deleted (superseded scaffold, marked deletable since 2026-06-13). (I2) the original `peta-eval/` folder outside the repo is retained as evidence until the Opus 4.8 security review closes, then deleted. (I3) the colorblind-safe audit is part of the skeleton acceptance checklist, not deferred to Phase 3. (I4) Build Plan v1.2 line-63 wording corrected to "Phase 1 (bus isolation)" per recorded R1 — editorial only, version unchanged; the Gitea ratification mirror needs the same one-line edit once the Gitea token is rotated (deferred, noted in the doc's changelog). Approver: Karl (Orchestrator). Method: recommended options accepted (all four sub-decisions).
+
 ## Approval History
 
 | Date | Gate / Event | Decision | Notes |
@@ -136,3 +156,11 @@ Approver: Karl (Orchestrator). Method: household consent (Alden-1, Cloud Alden; 
 | 2026-07-06 | Ruling — Winston excluded from governance decisions (interim) | Approved | Phase −1 consultation obligation closed; revisit as identity matures (R12). |
 | 2026-07-06 | Ruling — Phase 0 executed by Claude (Opus 4.8, ultracode), Sunday 2026-07-12 after usage reset | Approved | Docs package precondition; Alden-1 notified not to self-execute. |
 | 2026-07-06 | §0.1 alden-infra = private GitHub + Gitea mirror · §0.2 OS hardening = yes | Approved | All five §0 pre-build inputs now resolved except §0.5 qwen-code (Phase 3 concern). |
+| 2026-07-09 | Ruling B — LibreChat deploy-and-verify spike (resolves re-validation R1) | Approved | Spike inside the walking skeleton; fallback pre-authorized. |
+| 2026-07-09 | Ruling C — feature freeze until walking skeleton passes | Approved | Charter: docs/walking-skeleton-milestone.md. |
+| 2026-07-09 | Ruling D — registry is a projection of alden-infra (ADR-0006) | Approved | Git master, one-way sync; design before Alden Phase 3. |
+| 2026-07-09 | Ruling E — Facade session binding + C.7 busy-queue signal | Approved | Bible §5 DM-4, §9 C.1/C.7. |
+| 2026-07-09 | Ruling F — streaming + cost meter in skeleton; machine auth designed now, built Phase 3 | Approved | Cost meter = R18 seed. |
+| 2026-07-09 | Ruling G — admin/Facade full service split (ADR-0007) | Approved | Operator chose stronger option than recommended. |
+| 2026-07-09 | Ruling H — BUGS.md index backfilled (H1); ADR-0002 amended to as-built + pino at skeleton (H2) | Approved | Release-notes complaint withdrawn (correct pre-Phase-4). |
+| 2026-07-09 | Ruling I — scaffold deleted; peta-eval kept for security review; colorblind audit in skeleton AC; build-plan line-63 fix | Approved | Gitea mirror edit deferred to post-rotation. |
