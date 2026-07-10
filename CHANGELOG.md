@@ -97,7 +97,20 @@ for handoff clarity. Categories are ordered by impact severity.
   both fixed by the tabbed shell.
 ### Removed
 ### Infrastructure
+- `prototypes/cli-channel-loop/` — NON-SHIPPING proof-of-concept spike (recorded Ruling C
+  freeze exception, 2026-07-09) of the Claude Code channels auto-relay loop: echo channel
+  (stdio e2e-tested protocol proof), Alden-bridge wake channel (notification-not-body trust
+  rule, sender gating, non-destructive mailbox polling), and the loop-detector stub
+  (llm-mini progress judge + absolute backstops, pause-don't-kill). 21 tests green; deps
+  pinned; 0 audit findings. Not part of the harness build — promotion requires its own ADR.
 ### Documentation
+- `docs/2026-07-09-deployment-topology-container-tmux.md` — deployment topology design:
+  harness as one web-reachable Compose appliance (enclosure VM-vs-LXC surfaced as OPEN
+  decision D-ENC, recommendation A/VM), dev CLI sessions persisted in tmux on dev machines,
+  channel MCP server dials out from the dev box, provisioning + custody flags for the
+  Opus 4.8 lane.
+- APPROVAL_LOG.md — recorded the Ruling C freeze exception authorizing the spike + the
+  topology design doc (verbal 2026-07-09, recorded retroactively per handoff).
 - Added `docs/security-audits/devmachine-registry-security-audit.md` and
   `docs/security-audits/devmachine-ssh-connection-security-audit.md` (Phase 2.4 findings; the latter
   covers the TM-020 SEV-1 SSH custody/RCE surface).
