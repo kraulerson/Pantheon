@@ -36,6 +36,20 @@ every later phase of the ratified Alden build plan assumes this assembled system
    **counts/cost only — never prompt or response content**. Single accounting
    authority (P4). The skeleton's local brain is free-to-run but still counted —
    the seam is proven before any metered cloud brain lands.
+   **Schema (household-converged, bus msgs 1102 Cloud Alden + 1104 Alden-1, 2026-07-10):**
+   per-event rows carry server-authoritative timestamp (never caller-supplied),
+   `identity_slug`, `session_id`, `thread_id`, `brain_slug` +
+   `brain_classification` (local|cloud-ok, at time of call), prompt/completion/total
+   tokens, `cost` (null for local) + `rate_version` (price changes never rewrite
+   history), `trigger` (interactive|wake|quiet-loop|consolidation — the oscillator
+   budget-governance key), and `identity_state_hash` (Profile hash active at time of
+   call — arbitration evidence, Alden-1's addition). `thread_id`+`trigger`+`timestamp`
+   are first-class indexed columns (§4.3 arbitration joins). **No-content is a schema
+   invariant, not a convention.** Retention: keep long as audit evidence; excluded from
+   bus-sweep memory input at source (operational telemetry, not identity memory). The
+   ledger is itself an ADR-0006 projection target: rate tables / budget caps read from
+   alden-infra with boot-time Profile-hash verification. `thread_id` becomes a real
+   bridge column in Alden Phase 0.2 (ships 2026-07-12) — do not build a workaround.
 7. **Session binding + brain-busy queue** (decision E) — enforce Session's
    identity+backend binding at the Facade; single-slot backend queue with the C.7
    honest labeled wait signal; interactive preempts background.

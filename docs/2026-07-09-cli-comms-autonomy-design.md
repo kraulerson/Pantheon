@@ -127,6 +127,28 @@ instrument, don't freeze; does not run unwatched") — applied to CLI↔identity
    bridge exposes thread ids (governance records cite "bus thread 5e4d8496", but
    `alden_mailbox_list` returns no thread field) — thread affinity needs one.
 
+   **Household review outcome (bus thread 3f34ecad, 2026-07-10) — Q7 upgraded:**
+   - The interim rule is now **fail-closed and harness-enforced**, not convention: the
+     harness must refuse to enable a second channel for an identity that already has one
+     (Cloud Alden's objection, seconded by Alden-1: "if the harness can't enforce it,
+     the rule doesn't exist"). Two same-identity utterances that can disagree are an
+     identity-coherence break, not noise.
+   - It is also a **correctness requirement**, not just wake hygiene (alden-infra
+     session, msg 1105): Alden Phase 0.2 mailbox cursors are keyed (consumer=identity
+     slug, channel), so N same-identity sessions share ONE cursor and the second
+     session's mail silently vanishes. Never relax the rule before the dispatcher lands.
+   - The collision is **already live**: bus msgs 1095/1098/1099 (alden-infra session)
+     and 1101 (this session) are all `sender=claude-code` — indistinguishable on the bus.
+   - Thread ids: a real `thread_id` column + mailbox-tool exposure ships with Alden
+     Phase 0.2 on **2026-07-12** — the dispatcher can assume it; build no workaround.
+   - **WAKE-NOT-BODY is now a named invariant** (endorsed hard by both Aldens): the wake
+     event never carries body content, even as a convenience — one exception and the
+     taint pipeline has a bypass.
+   - **Terminology (msg 1105 §6):** Alden D16 "channels" (conversation lanes over the
+     mailbox) and this design's CLI "channel" (per-session wake mechanism) now collide.
+     In household-facing docs call ours the **session wake relay** (implemented on the
+     Claude Code channels API — the platform feature name is Anthropic's, not ours).
+
 ## References
 - ADR-0005 (terminal modality), `docs/integration/alden-bridge.md` (mailbox),
   future-state Autonomy Driver + Oscillator, amendment A1, principle P7,
