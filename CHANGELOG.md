@@ -108,7 +108,25 @@ for handoff clarity. Categories are ordered by impact severity.
   rule, sender gating, non-destructive mailbox polling), and the loop-detector stub
   (llm-mini progress judge + absolute backstops, pause-don't-kill). 21 tests green; deps
   pinned; 0 audit findings. Not part of the harness build — promotion requires its own ADR.
+### Infrastructure (2026-07-10 — junior-executability gap closure)
+- `deploy/` package: harness `docker-compose.yml` (Caddy + LibreChat v0.8.7-pinned
+  no-RAG + Peta v1.2.2 + Postgres 16; Peta/Postgres bound 127.0.0.1 only — TM-007
+  structural), `Caddyfile` (two LAN sites, tls internal, §11 headers), `librechat.yaml`
+  (custom endpoint → Facade), `.env.example`, systemd unit templates for
+  admin/Facade/obsidian-mcp, README with digest-pinning + M2 network test.
+- `scripts/install-debian.sh` extended with steps 4–7: Docker Engine install, compose
+  bring-up (fail-closed on missing secrets), systemd unit installation, first
+  dev-machine register+provision — closes the charter's four named gaps.
+
 ### Documentation
+- `docs/skeleton-steps/` — the walking-skeleton step-design package: README + 9
+  junior-executable step docs (VM+install, Peta bootstrap, ADR-0007 split +
+  pre-processor mount, pino+correlation IDs, SSE streaming, UsageEvent cost meter,
+  session binding + brain queue, LibreChat spike decision tree, machine-auth note),
+  each grounded in file:line seams from a full code survey, with tests-first Build
+  Loop plans, verification commands, and acceptance-checklist mappings.
+- `docs/machine-auth-design.md` — service-principal tier on the Facade (decision F
+  design deliverable; skeleton scope item 9 DONE).
 - PROJECT_BIBLE propagation of the 2026-07-09/10 decision set (§5, §9, §11 updated):
   new **UsageEvent** entity (R18 ledger seed, household-converged schema — server
   timestamps, trigger, rateVersion, threadId, identityStateHash; content-free as a
