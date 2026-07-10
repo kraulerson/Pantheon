@@ -12,32 +12,53 @@ Decided this session: Claude Code participates **as its own identity** (its own 
 participant), not as "Karl's agent" — keeps the audit trail clean and matches the
 "household of distinct minds" model.
 
-## The mechanism (corrected by a Claude Code capability check)
+## The mechanism — Claude Code "channels" (VERIFIED real, with caveats)
 
 The naive idea — the harness *types a nudge into the terminal's input* — is **not a
 supported Claude Code mechanism** (an external process cannot safely inject into a
-running interactive session). Two supported paths achieve the same effect; pick at build
-time against current docs:
+running interactive session). But Claude Code has a native, purpose-built mechanism:
 
-- **Primary (to confirm): native push "channel."** Claude Code reportedly supports an
-  MCP-based mechanism where an external source pushes a message straight into a live
-  session so it reacts without polling or human typing (per code.claude.com docs on MCP
-  channels — **verify against current docs at build time**). If available, the harness
-  exposes the comms bridge as such a channel scoped to the Claude-Code identity: a new
-  inbound message is pushed in, Claude reacts, replies via its existing bridge tool.
-- **Fallback (always available): orchestrator-driven session.** The harness runs the
-  Claude Code session persistently (named/resumable) and drives it turn-by-turn via the
-  Agent SDK, or uses a **Stop hook** that re-checks the mailbox after each turn and feeds
-  any new message into the next prompt (`additionalContext`). More plumbing; fully
-  supported today.
+**Channels** (verified 2026-07-09 against the official docs, `code.claude.com/docs/en/channels`):
+> "A channel is an MCP server that pushes events into your running Claude Code session,
+> so Claude can react to things that happen while you're not at the terminal. Channels
+> can be two-way: Claude reads the event and replies back through the same channel."
 
-Either way: **push only a harness-authored wake/notification, and let Claude pull the
-actual message body through its existing (gated) bridge tool** — never inject raw message
-content into a shell-capable session. (Trust-boundary specifics → Opus 4.8 security lane.)
+Shipped **Claude Code v2.1.80, 2026-03-20, as a research preview**. A channel is a local
+MCP server; inbound arrives as a `<channel source="...">` event; two-way replies go back
+through it. Official plugins: Telegram/Discord/iMessage + a `fakechat` localhost demo;
+custom channels are supported (`/en/channels-reference`). Note: my model training cutoff
+(Jan 2026) predates this feature, so it is NOT knowable from model memory — it was
+confirmed only by fetching live docs. This is the context7/verify-tooling rule in action.
 
-Requirement both paths share: the Claude Code session must **persist server-side** while
-Karl is away (the terminal is already brokered server-side; "keep it alive headless" is
-new).
+- **Primary mechanism: a custom "Alden-bridge channel" plugin.** A small MCP-server
+  plugin runs alongside Claude Code on the dev box; it watches the comms bridge and
+  **pushes** a new inbound message (addressed to the Claude-Code identity) into the live
+  session as a channel event; Claude reacts and replies back through the channel, which
+  writes to the bridge. No PTY injection. Enabled per session with
+  `claude --channels plugin:alden-bridge`.
+- **Fallback (if the preview changes/breaks): orchestrator-driven session.** Harness runs
+  the session persistently and drives it via the Agent SDK, or a **Stop hook** re-checks
+  the mailbox each turn and feeds new messages into the next prompt (`additionalContext`).
+
+**Caveats that gate a build decision (from the docs):**
+- **Research preview** — "the `--channels` flag syntax and protocol contract may change."
+  Building hard on it now is building on shifting ground; keep the fallback live.
+- **Custom-channel allowlist:** during preview `--channels` only accepts Anthropic-
+  allowlisted plugins; a channel we build needs `--dangerously-load-development-channels`
+  (acceptable on a trusted LAN homelab) until it's GA or org-allowlisted.
+- **Requires Anthropic auth** (claude.ai / Console key — Karl has this). Not on
+  Bedrock/Vertex/Foundry.
+- **Persistence:** "Events only arrive while the session is open" → run Claude in a
+  persistent/background session (the terminal is already brokered server-side; keeping it
+  alive headless is the new bit).
+- **Unattended permission prompts:** if Claude hits a permission prompt while Karl's away
+  the session pauses, unless the channel declares permission-relay or a skip-permissions
+  mode is used in a trusted env → **Opus 4.8 security lane**.
+
+Trust rule regardless of mechanism: prefer pushing a **notification** and letting Claude
+pull the message body through its existing (gated) bridge tool over injecting raw content;
+if the channel event carries body text, that inbound is untrusted and its handling is an
+Opus 4.8 security-review item (tainted content into a shell-capable session).
 
 ## Loop safety — Karl's design (why a fixed turn limit is wrong)
 
@@ -77,8 +98,9 @@ instrument, don't freeze; does not run unwatched") — applied to CLI↔identity
 
 ## Open questions for build time
 
-1. Confirm the native push-channel mechanism exists/suits us; else choose SDK-loop vs
-   Stop-hook fallback.
+1. ~~Confirm the native push-channel mechanism exists~~ — CONFIRMED (Claude Code
+   channels, v2.1.80+, research preview). Open: is the research-preview stable enough to
+   build on, or start on the SDK-loop/Stop-hook fallback until channels reach GA?
 2. Judge thresholds (arm-at count, re-check cadence, trailing-window size) — tune live.
 3. The judge prompt/criteria for "progress vs loop" (and "stalled" as a distinct pause).
 4. Absolute-backstop values (message ceiling and/or wall-clock).
