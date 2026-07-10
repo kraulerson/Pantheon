@@ -21,6 +21,7 @@
 | 5 | SEV-3 | Fixed | devmachine-ssh-connection | Key custody `resolvePrivateKey` followed symlinks with a stat→read TOCTOU window; now `O_NOFOLLOW` + `fstat` on the same fd | Session 1 | Fix Now | 8caed24 | Session 1 |
 | 6 | SEV-3 | Fixed | devmachine-ssh-connection | `storeKeyPair` umask window / loose dir mode; now `fchmod 0600` before writing bytes + key dir `0700` | Session 1 | Fix Now | 8caed24 | Session 1 |
 | 7 | SEV-4 | Fixed | config-page | HTML forms posted urlencoded with no body parser registered (pre-existing, repo-wide); `@fastify/formbody` registered with the #9 auth work | Session 1 | Defer | bd5cb10 | — |
+| 8 | SEV-3 | Open | control-plane (dev deps) | `vitest 3.2.4` pinned in `services/control-plane` matches GHSA-5xrq-8626-4rwp (critical-rated: file read/exec, but only when the Vitest **UI server** runs — we never run `--ui`, so dev-only exposure); bump to `vitest@3.2.7` with the Opus 4.8 remediation pass (the freeze exempts dependency security patches per CHANGELOG Security category). Found 2026-07-09 while pinning the channel spike (spike already pins 3.2.7) | ad hoc (2026-07-09) | Defer | — | — |
 
 <!--
   Severity: SEV-1, SEV-2, SEV-3, SEV-4 (see PROJECT_BIBLE.md Bug Severity Classification)
