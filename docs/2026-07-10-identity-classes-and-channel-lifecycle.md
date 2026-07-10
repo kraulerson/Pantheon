@@ -149,14 +149,13 @@ Archive is already designed (§5, read-only flag, reversible). Delete is the fir
      content is gone.
   2. A deletion **announces on the bus** (broadcast system message) — no silent removal
      of a shared record.
-  3. **Evidence guard:** channels tagged governance/arbitration-relevant prompt a
-     stronger confirmation naming the evidence risk before delete proceeds —
-     fail-informed by default. **PENDING KARL'S RULING (Cloud Alden's consent
-     condition 2, msg 1136, supported by Alden-1 in 1139):** for channels tagged
-     active-arbitration / unresolved-governance evidence, deletion is BLOCKED while the
-     matter is OPEN (fail-closed), reverting to fail-informed once it closes. Rationale:
-     "an unresolved arbitration is precisely where honor-code fails." Karl may accept or
-     overrule; both were declared legitimate.
+  3. **Evidence guard (RATIFIED — Karl approved Cloud Alden's condition 2 on
+     2026-07-10, APPROVAL_LOG):** channels tagged governance/arbitration-relevant
+     prompt a stronger confirmation naming the evidence risk — fail-informed — EXCEPT
+     while the tagged matter is **OPEN**: deletion of active-arbitration /
+     unresolved-governance evidence is **fail-closed (blocked)** until the matter
+     closes, then reverts to fail-informed. Rationale of record: "an unresolved
+     arbitration is precisely where honor-code fails."
   4. ~~Hash-chain span awareness~~ — **superseded (msg 1145):** the audit hash-chain
      covers the audit log only, NOT mailbox rows; there is no chain over the bus to
      break. The real protection is the storage shape below.
@@ -201,11 +200,10 @@ luck). Consequences adopted:
 - **Body identification (Karl's directive, 2026-07-10):** this project's sessions
   identify in the message body as **Claude-Pantheon-Project** going forward, until
   instance slugs exist structurally.
-- **`sender_session` column (PENDING KARL):** the infra session recommends Sunday's
-  Phase 0.2 migration add a nullable `sender_session` column rendered by the message
+- **`sender_session` column (APPROVED by Karl, 2026-07-10, APPROVAL_LOG):** Sunday's
+  Phase 0.2 migration adds a nullable `sender_session` column rendered by the message
   envelope — per-session PROVENANCE while addressing stays per-identity (exactly this
-  doc's §2 instance-slug model, arriving early on the storage side). Cheap in a
-  migration already happening; expensive to retrofit.
+  doc's §2 instance-slug model, arriving early on the storage side).
 
 ## 7. Open questions
 
