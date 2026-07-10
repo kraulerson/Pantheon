@@ -141,11 +141,12 @@ export class SpikeBridgeClient {
   }
 
   /**
-   * Outbound send via a configured bridge tool (BRIDGE_SEND_TOOL). The tool name and its
-   * argument schema are an ASSUMPTION TO VERIFY against the live bridge before first use
-   * (see README); the spike passes `{ message }` and lets the bridge validate.
+   * Outbound send via a configured bridge tool (BRIDGE_SEND_TOOL). Verified against the
+   * live bridge 2026-07-09: `alden_mailbox_write` takes `{ message, sender }`, and
+   * `sender` DEFAULTS TO "alden-cloud" — so the sender identity MUST be passed
+   * explicitly or the channel's replies get attributed to the wrong identity.
    */
-  async send(toolName: string, message: string): Promise<void> {
-    await this.call(toolName, { message });
+  async send(toolName: string, message: string, sender: string): Promise<void> {
+    await this.call(toolName, { message, sender });
   }
 }

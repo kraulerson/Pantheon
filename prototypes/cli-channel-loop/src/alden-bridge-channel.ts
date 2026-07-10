@@ -118,7 +118,7 @@ if (twoWay) {
       return { content: [{ type: "text" as const, text: "bridge not configured; reply not sent" }], isError: true };
     }
     const { text } = req.params.arguments as { text: string };
-    await bridge.send(SEND_TOOL, text);
+    await bridge.send(SEND_TOOL, text, IDENTITY);
     // outbound counts toward the loop budget too — a runaway is a two-sided loop
     const result = await detector.record({ direction: "outbound", sender: IDENTITY, text, atMs: Date.now() });
     if (result.pausedNow) await notifyPause();

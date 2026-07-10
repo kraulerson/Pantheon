@@ -96,9 +96,11 @@ Then: `claude --dangerously-load-development-channels server:alden-bridge`.
 
 ## Assumptions to verify before a live bridge run
 
-1. **`BRIDGE_SEND_TOOL` name + argument schema** — the in-repo bridge doc only records the
-   read tools; the spike sends `{ message }` to whatever tool is configured. Verify against
-   the live bridge (or leave unset for wake-only).
+1. ~~`BRIDGE_SEND_TOOL` name + argument schema~~ — **VERIFIED against the live bridge
+   2026-07-09**: the tool is `alden_mailbox_write` with `{ message, sender }`. Caution:
+   `sender` defaults to `"alden-cloud"` bridge-side, so the channel always passes
+   `CLAUDE_IDENTITY` explicitly (misattribution otherwise). Set
+   `BRIDGE_SEND_TOOL=alden_mailbox_write`.
 2. The bus is a **shared broadcast** — the `recipient` field is convention, not routing.
    Filtering on it is a courtesy filter, not isolation.
 3. Multi-party thread keying for the detector is an open design question (design note §5);
