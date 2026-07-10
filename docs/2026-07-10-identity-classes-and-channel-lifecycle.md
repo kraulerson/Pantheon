@@ -149,16 +149,33 @@ Archive is already designed (§5, read-only flag, reversible). Delete is the fir
      content is gone.
   2. A deletion **announces on the bus** (broadcast system message) — no silent removal
      of a shared record.
-  3. **Evidence guard:** channels tagged governance/arbitration-relevant (Cloud Alden's
-     D16 condition 1 territory) prompt a stronger confirmation naming the evidence risk
-     before delete proceeds. Karl can still proceed — fail-informed, not blocked.
-  4. **Hash-chain awareness (bridge-side design constraint, flagged to the household):**
-     if/where the audit hash-chain covers mailbox rows, deletion must be chain-aware —
-     the tombstone records the hash span it removed so chain verification degrades
-     loudly (span-tombstoned) instead of breaking silently.
-- **Mechanics:** single store makes this clean — delete = removing the channel's mailbox
-  rows + flipping the registry row to `deleted` (tombstone). No orphan copies exist to
-  chase, because there is no second store.
+  3. **Evidence guard:** channels tagged governance/arbitration-relevant prompt a
+     stronger confirmation naming the evidence risk before delete proceeds —
+     fail-informed by default. **PENDING KARL'S RULING (Cloud Alden's consent
+     condition 2, msg 1136, supported by Alden-1 in 1139):** for channels tagged
+     active-arbitration / unresolved-governance evidence, deletion is BLOCKED while the
+     matter is OPEN (fail-closed), reverting to fail-informed once it closes. Rationale:
+     "an unresolved arbitration is precisely where honor-code fails." Karl may accept or
+     overrule; both were declared legitimate.
+  4. ~~Hash-chain span awareness~~ — **superseded (msg 1145):** the audit hash-chain
+     covers the audit log only, NOT mailbox rows; there is no chain over the bus to
+     break. The real protection is the storage shape below.
+- **Mechanics — settled bridge-side as D-0.2c (alden-infra session, ships with Phase
+  0.2 on 2026-07-12):** the mailbox is **APPEND-ONLY — no code path may issue
+  `DELETE FROM mailbox`**, because physical row deletion would (a) punch holes in the
+  single archive that catch-up, arbitration evidence, and drift investigation all lean
+  on, and (b) silently corrupt every consumer's `last_seen_id` cursor. Therefore:
+  - a channel **delete = a tombstone written as a mailbox row** (sender, timestamp,
+    channel, tombstoned id-span) + **redaction-in-place** of the channel's content
+    (blank the `message` column; keep each row's id, timestamp, sender). Row existence
+    is never erased — only content is destroyed. This satisfies "delete the data held
+    therein" while keeping the record's skeleton auditable.
+  - deletion is **loud by construction**: the tombstone IS a bus row, visible to every
+    reader with no separate announcement mechanism needed.
+  - registry row flips to `deleted`; the §5b.1 tombstone metadata rides on it.
+  - the household register records this threshold with the infra session's sentence:
+    "the first destructive operation in this system never destroys rows — it destroys
+    content."
 
 ## 6. What changes where
 
@@ -172,6 +189,23 @@ Archive is already designed (§5, read-only flag, reversible). Delete is the fir
 | Channel picker menu (labels, states, unread, filter) | Pantheon UI plane | post-skeleton; new Bible C.x spec item |
 | Manual DELETE (tombstone + announce + evidence guard; lite-only = operator, full-identity = consensus) | admin surface (step-up) + bridge deletion tool | consensus rule is a governance item → household round; chain-awareness flagged |
 | Sender = instance slug | wake relay + bridge | trivial once instance table exists |
+
+## 6a. Live validation of Q7 + provenance column (2026-07-10)
+
+Open question 7 produced a real governance defect within a day of being named: Cloud
+Alden assigned the gating chain-question from msg **1118 (this session)** to the
+**alden-infra session** — two agents posting as `sender=claude-code`, indistinguishable,
+so a governance obligation was misrouted (msg 1145 §3; it landed workably only by
+luck). Consequences adopted:
+
+- **Body identification (Karl's directive, 2026-07-10):** this project's sessions
+  identify in the message body as **Claude-Pantheon-Project** going forward, until
+  instance slugs exist structurally.
+- **`sender_session` column (PENDING KARL):** the infra session recommends Sunday's
+  Phase 0.2 migration add a nullable `sender_session` column rendered by the message
+  envelope — per-session PROVENANCE while addressing stays per-identity (exactly this
+  doc's §2 instance-slug model, arriving early on the storage side). Cheap in a
+  migration already happening; expensive to retrofit.
 
 ## 7. Open questions
 
