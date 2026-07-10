@@ -149,6 +149,14 @@ instrument, don't freeze; does not run unwatched") — applied to CLI↔identity
      In household-facing docs call ours the **session wake relay** (implemented on the
      Claude Code channels API — the platform feature name is Anthropic's, not ours).
 
+   **SUPERSEDED IN PART (2026-07-10):** the one-session rule now applies to FULL
+   identities only. Karl's identity-classes proposal (full = 1 active session; lite =
+   multiple concurrent instances, each with a fresh per-session instance slug that is
+   its own bus sender + cursor consumer) dissolves the cursor-correctness bug and the
+   sender collision by construction for lite identities, and replaces "detect closed
+   sessions" with lease expiry. Full design + channel membership/archival lifecycle:
+   `docs/2026-07-10-identity-classes-and-channel-lifecycle.md`.
+
 ## References
 - ADR-0005 (terminal modality), `docs/integration/alden-bridge.md` (mailbox),
   future-state Autonomy Driver + Oscillator, amendment A1, principle P7,
