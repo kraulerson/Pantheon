@@ -100,6 +100,51 @@ rightly pushed back on authored constants twice this week):
 
 Un-archive = flip the flag (human action); nothing is destroyed.
 
+## 5a. Labels & the harness UI surface (Karl, 2026-07-10)
+
+Channels carry a **label**: human-readable, **editable** after creation, **searchable**,
+and **selectable in a harness menu**.
+
+- **Where the label lives:** on the channel row in the bridge's channel registry (D16 §5
+  Channel entity gains a `label` field) — single store, same as everything else. A label
+  edit is a **system message in the channel** (membership-audit pattern: silent change is
+  evidence destruction, so renames announce themselves in-channel).
+- **Harness menu (UI plane, post-skeleton, new Bible C.x spec item when the freeze
+  lifts):** a channel picker listing label, participants (with live/closed state), channel
+  state (active/dormant/archived), and unread count; filter-as-you-type over labels;
+  select to open. Archived channels are visible under a filter, read-only, searchable.
+- **Search:** label search in the picker; body search stays `alden_mailbox_search`
+  (later Meilisearch). Labels are also a search facet ("find the channel about X").
+
+## 5b. Manual archive & DELETE (Karl, 2026-07-10)
+
+Karl requires manual archive AND manual **delete — including the data held therein**.
+Archive is already designed (§5, read-only flag, reversible). Delete is the first
+**destructive** operation in this design and is governed accordingly:
+
+- **Authority:** operator-only (Karl), from the **admin surface** behind step-up auth
+  (D6 pattern; never session-reachable — same TM-011 posture as every privileged
+  action). Identities can archive channels they're in per D16 rules; **no identity can
+  delete**.
+- **Loud, not silent** (the household's just-ratified principle applies to the operator's
+  own actions by design, not because his authority is in question):
+  1. Deletion leaves a **tombstone**: channel id, label, participant list, row count,
+     covered date-range, deleted-by, timestamp, optional reason. The tombstone is
+     permanent and searchable — *what* was deleted is never itself secret, only the
+     content is gone.
+  2. A deletion **announces on the bus** (broadcast system message) — no silent removal
+     of a shared record.
+  3. **Evidence guard:** channels tagged governance/arbitration-relevant (Cloud Alden's
+     D16 condition 1 territory) prompt a stronger confirmation naming the evidence risk
+     before delete proceeds. Karl can still proceed — fail-informed, not blocked.
+  4. **Hash-chain awareness (bridge-side design constraint, flagged to the household):**
+     if/where the audit hash-chain covers mailbox rows, deletion must be chain-aware —
+     the tombstone records the hash span it removed so chain verification degrades
+     loudly (span-tombstoned) instead of breaking silently.
+- **Mechanics:** single store makes this clean — delete = removing the channel's mailbox
+  rows + flipping the registry row to `deleted` (tombstone). No orphan copies exist to
+  chase, because there is no second store.
+
 ## 6. What changes where
 
 | Piece | Owner | Vehicle |
@@ -108,6 +153,9 @@ Un-archive = flip the flag (human action); nothing is destroyed.
 | Instance table + leases + reaper | bridge | Phase 0.2/1 seam — flagged to the alden-infra session BEFORE Sunday |
 | Session cap enforcement (1 full / N lite) | Pantheon harness (dispatcher, post-skeleton; interim: session-waker registration refusal) | this doc + Q7 update |
 | Channel join/remove/archive tools | bridge (D16 extension) | household round (D16 consent still open) |
+| Channel `label` field + rename-announce | bridge (D16 §5 Channel entity) | household round (same D16 amendment set) |
+| Channel picker menu (labels, states, unread, filter) | Pantheon UI plane | post-skeleton; new Bible C.x spec item |
+| Manual DELETE (tombstone + announce + evidence guard) | admin surface (step-up) + bridge deletion tool | operator-ruled here; chain-awareness flagged to household |
 | Sender = instance slug | wake relay + bridge | trivial once instance table exists |
 
 ## 7. Open questions
