@@ -20,6 +20,11 @@ for handoff clarity. Categories are ordered by impact severity.
 ## [Unreleased]
 
 ### Security
+- `BRIDGE_MCP_TOKEN` restored into `services/control-plane/.env.local` (2026-07-10) — the
+  line had been EMPTY since the 2026-06-16 restore, silently disabling the control-plane's
+  bridge grounding retrievers (fail-closed, so no unsafe behavior — just no recall).
+  Value recovered from the operator's alden-bridge runtime backup; **rotation remains due
+  (security finding F2, Opus 4.8 remediation plan)** — restoring the token does not close F2.
 - #9 browser auth (§7 tier-1): control-plane-native operator login — passphrase
   (`PANTHEON_OPERATOR_PASSWORD`) → 256-bit server-side session in an httpOnly, SameSite=Lax cookie,
   constant-time password compare (SHA-256 digests, no length leak). The admin guard now accepts the
@@ -104,6 +109,22 @@ for handoff clarity. Categories are ordered by impact severity.
   (llm-mini progress judge + absolute backstops, pause-don't-kill). 21 tests green; deps
   pinned; 0 audit findings. Not part of the harness build — promotion requires its own ADR.
 ### Documentation
+- PROJECT_BIBLE propagation of the 2026-07-09/10 decision set (§5, §9, §11 updated):
+  new **UsageEvent** entity (R18 ledger seed, household-converged schema — server
+  timestamps, trigger, rateVersion, threadId, identityStateHash; content-free as a
+  schema invariant; ADR-0006 projection target) + **DM-5** (single accounting
+  authority) + **DM-6** (identity classes full/lite, instance slugs, leases, ratified
+  channel-delete taxonomy); **C.8 comms-channel picker** spec (post-skeleton);
+  §11 enclosure = **Debian VM on Proxmox (D-ENC)** + tmux/session-waker dev plane.
+- Identity classes & channel lifecycle design (`docs/2026-07-10-identity-classes-and-channel-lifecycle.md`):
+  full = 1 active session; lite = N instances with per-session slugs; lease-based
+  liveness; dynamic channel membership; active→dormant→archived lifecycle; labels;
+  delete taxonomy RATIFIED with household consent (Cloud Alden 1136 + Alden-1 1139 +
+  Karl's rulings incl. condition 2 fail-closed-while-open and lite-only physical
+  deletion). Q7 in the CLI-comms design note superseded in part accordingly.
+- APPROVAL_LOG: D-ENC (Debian VM); channel-delete taxonomy ratification + condition 2;
+  `sender_session` column approval; lite-physical-deletion cross-record (source:
+  alden-infra APPROVAL_LOG 4a9873e). Household terminology adopted: **"session waker"**.
 - Bifrost NOT adopted (2026-07-09 ruling, reverses the same-day Decision F amendment):
   build-over-adopt. Cost meter restored to the walking-skeleton scope
   (`docs/walking-skeleton-milestone.md` item 6 + acceptance item rewritten); outcome

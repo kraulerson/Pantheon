@@ -390,7 +390,7 @@ PostgreSQL 15+ (Prisma) is consumed transitively as **Peta's** datastore. The co
 ---
 
 ## 5. Data Model
-<!-- Last Updated: 2026-06-13 -->
+<!-- Last Updated: 2026-07-10 -->
 
 ### Principles (binding on every entity)
 1. **Custody invariant (highest priority — #14b, D8).** Raw HMAC signing keys and raw Peta tokens live **only in gateway custody** (Peta encrypted vault). They MUST NEVER be stored, mirrored, or referenced-by-value in the control-plane DB, session memory, transcripts, prompts, model inputs, audit entries, UI, or error output. The control-plane stores only an **opaque handle** (a custody reference; never the secret).
@@ -429,6 +429,8 @@ Notation: `PK` primary key, `FK` foreign key, `[imm]` immutable after create, `[
 
 **DevMachine** — a dev box reachable as a Claude-CLI SSH-terminal target (ADR-0005), CRUD-managed via the Configuration page (C.5, M15/D10): `id` PK [imm]; `logicalName` [imm] (stable handle that identities bind against — the IP may change but this does not); `host`/`ip` (editable); `port` (default `22`); `user`; `sshKeyHandle` [custody-ref] (**opaque vault reference — NEVER the raw private key**, Principle 1/#14b); `enabled`; `createdAt`, `updatedAt`. A `kind: claude_cli` Identity references a DevMachine **by `logicalName`**, so changing a machine's IP never breaks the immutable identity↔backend binding (#14a, Principle 4). Edits are validated + fail-closed and applied only from the privileged admin surface (D6), never from a session (TM-011). *(Additive config entity, separate from the 8 core orchestration entities; carries no recalled content and no `trusted` provenance column. SSH key custody + remote-command surface = TM-020.)*
 
+**UsageEvent** — the R18 usage/cost ledger seed, hand-built at the Facade (decision F restored 2026-07-09 after Bifrost non-adoption; household-converged schema 2026-07-10, bus msgs 1102/1104; walking-skeleton scope item 6): `id` PK [imm]; `at` (**server-authoritative** — never caller-supplied); `identitySlug` (the identity **class**, so per-identity cost aggregates stay meaningful); `sessionId`; `threadId`; `brainSlug`; `brainClassification` (`local | cloud_ok` — recorded **at time of call**, the audit key for metered-brain questions, R14); `promptTokens`; `completionTokens`; `totalTokens`; `cost` (nullable — null for local brains); `rateVersion` (a later price change never rewrites history); `trigger` (`interactive | wake | quiet_loop | consolidation` — distinguishes operator-talk from unattended spend; the oscillator budget-governance key); `identityStateHash` (the Profile hash active at time of call — which version of the identity made the spend, §4.3 arbitration evidence). **Append-only. `threadId`+`trigger`+`at` are first-class indexed columns (arbitration joins). NEVER stores prompt or response content — a schema invariant, not a convention.** Retention: kept long as audit evidence; excluded at source from bus-sweep memory input (operational telemetry, not identity memory). The ledger is itself an **ADR-0006 projection target**: rate tables / budget caps are read from `alden-infra` and boot-verified against the Profile hash. Single accounting authority (P4 — no second ledger may ever exist; Bifrost NOT adopted, APPROVAL_LOG 2026-07-09). *(Additive telemetry entity, separate from the 8 core orchestration entities; carries no recalled content.)*
+
 **AuditEntry** — append-only security-relevant log (D8): `id` PK [imm]; `at`; `correlationId` (ties UI ↔ control-plane ↔ gateway); `actor` (operator/device or `gateway`); `action` (`auth | session_create | binding_reject | tool_call | authz_deny | approval_decision | sign | provisioning_step | server_registration`); `subjectRef`; `outcome` (`allow | deny | pending | error`); `redactedDetail` (**redacted/by-reference only; NO raw keys/tokens/recalled-PII cleartext**, D8). Append-only; never mutated or deleted.
 
 > **Peta user record** is counted as the 8th entity: the gateway-side projection of Identity, a distinct durable record in a distinct store holding the raw (encrypted) token + key material the control-plane must never hold.
@@ -456,7 +458,9 @@ ToolClassification (server,tool) → governs which calls are writes/gated
 - **DM-1:** `argsDigest` (durable audit) + `argsPreviewRef` (short-TTL store) split — D4 demands gate display while D8 forbids persisting secret-bearing args in cleartext.
 - **DM-2:** Peta user counted as an 8th entity to keep the custody boundary auditable, not implicit.
 - **DM-3:** `taintFlag` is monotonic per session — implements D5 (sticky taint) directly in the schema; a clean context = a new Session row.
-- **DM-4 (ADR-0006, 2026-07-09):** identity/brain/tool-grant rows in the control-plane DB are a **read-only projection of `alden-infra` (git)** — sync is one-way git→SQLite; the admin surface proposes changes as git commits, never writes these rows directly. DevMachine and ServiceEndpoint are harness plumbing, exempt (page-editable as specified in C.5). Session-binding enforcement (identity+backend fixed at creation, no mid-session swap) is the Facade's runtime duty per the existing Session entity — plus a **brain-availability queue**: the bound backend admits one interactive conversation at a time where the hardware demands it (single-slot 122B), waiters get an honest labeled position (C.7), and interactive traffic preempts background/autonomy traffic.
+- **DM-4 (ADR-0006, 2026-07-09):** identity/brain/tool-grant rows in the control-plane DB are a **read-only projection of `alden-infra` (git)** — sync is one-way git→SQLite; the admin surface proposes changes as git commits, never writes these rows directly. DevMachine and ServiceEndpoint are harness plumbing, exempt (page-editable as specified in C.5). Session-binding enforcement (identity+backend fixed at creation, no mid-session swap) is the Facade's runtime duty per the existing Session entity — plus a **brain-availability queue**: the bound backend admits one interactive conversation at a time where the hardware demands it (single-slot 122B), waiters get an honest labeled position (C.7), and interactive traffic preempts background/autonomy traffic. **Strengthening (Alden-1, 2026-07-09, adopted for ALL projection targets):** every projection target verifies its config against the `alden-infra` Profile hash at boot and refuses to start on mismatch.
+- **DM-5 (decision F restored + household schema, 2026-07-09/10):** usage/cost accounting is a **single in-house authority** (UsageEvent, above); no second ledger may exist (P4). `trigger`, `rateVersion`, `threadId`, and `identityStateHash` are load-bearing for Alden R18/R14 and §4.3 arbitration; content-free is a schema invariant.
+- **DM-6 (identity classes + channel lifecycle, ratified 2026-07-10 — design of record `docs/2026-07-10-identity-classes-and-channel-lifecycle.md`):** identities carry a class — **full** (one voice, exactly 1 active session, fail-closed at registration) or **lite** (N concurrent instances, each minting a per-session **instance slug** = bus sender + wake address + cursor consumer). Instance liveness = **leases** (register/heartbeat/reap — closure is inevitable, never requested); instances are runtime state on the bridge, never rows in the git-mastered registry (ADR-0006 preserved). Channel deletion taxonomy ratified with household consent: lite-only channels = operator-unilateral (full physical deletion); full-identity channels = unanimous participant consensus + operator, redaction-in-place (rows never erased); deletion **fail-closed while a tagged governance matter is open**; tombstones + bus announcement always.
 
 ---
 
@@ -510,7 +514,7 @@ ToolClassification (server,tool) → governs which calls are writes/gated
 ---
 
 ## 9. UI Component Specifications
-<!-- Last Updated: 2026-06-13 -->
+<!-- Last Updated: 2026-07-10 -->
 
 **Cross-cutting acceptance criteria on EVERY component (hard, non-negotiable):**
 - **CB — Colorblind-safe (CC1, hard AC):** every signal/state/control distinguished by **shape, position, text label, or icon — never color alone.** A color-only cue is a SEV-2 defect.
@@ -533,6 +537,13 @@ When a message arrives for a backend already serving another conversation (singl
 - **Loading:** the queued state itself: "Brain busy — position N", live-updating; distinguishable from model "thinking" (which shows "Replying…") so a wait is never mistaken for a crash or a slow reply.
 - **Error:** queue/backend failure ⇒ "Backend <Y> unreachable — message not sent" (FS: the message is not silently dropped and not silently retried forever; the operator is told in text).
 - **Success:** the turn starts: state flips to "Replying…" and the response streams in.
+
+### C.8 Comms-channel picker (ratified design 2026-07-10; BUILT POST-SKELETON per Ruling C)
+A harness menu over the household comms channels (D16 lanes). Each row shows **label, participants (with live/closed state), channel state (`active | dormant | archived`), unread count — all in text** (CB/TL). Filter-as-you-type over labels; archived channels appear under a labeled filter, read-only and searchable. Labels are **editable**; a rename posts a system message in the channel (silent change is evidence destruction). Actions: open; archive (per D16 rules); **delete per the ratified 2026-07-10 taxonomy** — lite-only channels operator-unilateral from the admin surface behind D6 step-up (full physical deletion); full-identity channels only via recorded unanimous consensus (redaction-in-place, rows never erased); deletion **fail-closed while a tagged governance matter is open**; tombstone + bus announcement always. Design of record: `docs/2026-07-10-identity-classes-and-channel-lifecycle.md`.
+- **Empty:** "No channels" + labeled creation affordance per D16.
+- **Loading:** "Loading channels…" (text).
+- **Error:** "Channel registry unreachable — channel actions disabled" (FS: no actions against stale state).
+- **Success:** list renders; selecting opens the channel with label + state in text.
 
 ### C.2 Grounding Inspector — assembled prompt (#13)
 Renders the fully-assembled grounded prompt before/after send. **`trusted:false` content distinguished by LABEL + ICON + POSITION/SECTION — never color** (e.g. untrusted blocks under a labeled header "UNTRUSTED — recalled (Qdrant)" with a distinct shape/icon; trusted typed input in its own labeled position). Each grounding source has an individual toggle (shape/label control).
@@ -599,10 +610,17 @@ A **persistent xterm.js SSH-terminal tab** to a selected DevMachine, opened from
 ---
 
 ## 11. Build & Distribution Strategy
-<!-- Last Updated: 2026-06-13 -->
+<!-- Last Updated: 2026-07-10 -->
 
 (D9 — homelab, 1 user, single environment. No app-store/registry distribution; this is an internally-hosted service, not a shipped artifact.)
 
+- **Enclosure (D-ENC ruling, 2026-07-09):** the entire Compose stack runs inside a
+  **Debian VM on Proxmox** — hardware-virt boundary around the host that custodies
+  dev-machine SSH keys (TM-020); LXC considered and rejected (tradeoff record:
+  `docs/2026-07-09-deployment-topology-container-tmux.md` §2). The fresh-install script
+  targets a fresh Debian VM. Dev CLI sessions persist in **tmux on dev machines**, with
+  the **session waker** (per-session channel process) dialing out to the comms bridge —
+  post-skeleton capability, same doc §3–§5.
 - **Topology:** Docker Compose on the LAN. Services: LibreChat (+ its Mongo/Meilisearch), control-plane **as two services from one codebase (ADR-0007, 2026-07-09): the admin service (Configuration/approvals/terminal — operator auth) and the Facade (chat pipeline — session + machine auth)**, Peta-core (+ Postgres), the Obsidian/filesystem MCP server. All on a LAN/Tailscale-only network.
 - **Reverse proxy:** **Caddy** in front of LibreChat and the control-plane admin/inspector views (TLS on the LAN; security headers per the web platform module — HSTS, `X-Frame-Options`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, strict CORS, `HttpOnly`/`Secure`/`SameSite` cookies). Caddy also carries the explicit deny rule on the `GET_OWNER`/`GET_USERS` action paths (TM-007).
 - **Network:** **Tailscale** for off-LAN operator access. **No public ingress, no Cloudflare Tunnel, no anonymous `/mcp/public`** (Will-Not-Have; ADR-0003). Reachability is a verified config + network test (M2): public reachability is a defect, not a recoverable state.
