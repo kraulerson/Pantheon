@@ -108,7 +108,68 @@ if confirm "Step 3: create key-custody dir ($KEY_DIR, 0700) and data dir ($DATA_
   c_ok "Custody dir: $KEY_DIR (0700).  Data dir: $DATA_DIR."
 fi
 
-# --- 4. next steps ---------------------------------------------------------
+# --- 4. Docker Engine + Compose (for the third-party stack) -----------------
+# Caddy, LibreChat (+Mongo/Meilisearch) and Peta (+Postgres) run under Docker Compose
+# (deploy/docker-compose.yml). Our own services stay native (systemd) — deploy/README.md.
+if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+  c_ok "Docker Engine + compose plugin already present ($(docker --version))."
+elif confirm "Step 4: install Docker Engine + compose plugin (official Docker apt repo)?"; then
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+  chmod a+r /etc/apt/keyrings/docker.asc
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+    > /etc/apt/sources.list.d/docker.list
+  apt-get update
+  apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+  usermod -aG docker "$SERVICE_USER" 2>/dev/null || true
+  c_ok "Docker installed. ($SERVICE_USER added to the docker group — re-login to use it without sudo.)"
+fi
+
+# --- 5. third-party stack: Caddy + LibreChat + Peta (compose) ----------------
+DEPLOY_DIR="$REPO_ROOT/deploy"
+if confirm "Step 5: bring up the third-party stack (deploy/docker-compose.yml)?"; then
+  if [ ! -f "$DEPLOY_DIR/.env" ]; then
+    c_warn "$DEPLOY_DIR/.env missing. Copy .env.example to .env and fill every secret"
+    c_warn "(openssl rand -hex 32), then re-run this step. NOT starting with empty secrets."
+  else
+    ( cd "$DEPLOY_DIR" && docker compose up -d )
+    c_ok "Stack up. Verify: docker compose -f $DEPLOY_DIR/docker-compose.yml ps"
+    c_info "Peta + Postgres are bound to 127.0.0.1 ONLY (TM-007). Run the M2 network"
+    c_info "test from ANOTHER machine before trusting this host — deploy/README.md."
+  fi
+fi
+
+# --- 6. systemd units for the native services --------------------------------
+if confirm "Step 6: install systemd units (pantheon-admin@, pantheon-facade@, obsidian-mcp@)?"; then
+  for unit in pantheon-admin pantheon-facade obsidian-mcp; do
+    sed "s|/opt/pantheon/pantheon-harness|$REPO_ROOT|g" \
+      "$DEPLOY_DIR/systemd/${unit}.service" > "/etc/systemd/system/${unit}@.service"
+  done
+  systemctl daemon-reload
+  c_ok "Units installed (repo path: $REPO_ROOT)."
+  c_info "Enable now or later:  systemctl enable --now pantheon-admin@${SERVICE_USER}"
+  c_info "pantheon-facade@ requires the ADR-0007 split (skeleton step 3): until dist/server-admin.js"
+  c_info "exists, edit the admin unit's ExecStart to dist/server.js (single-service mode)."
+  c_info "All units read $CONTROL_PLANE/.env.local — create it from .env.local.example first."
+fi
+
+# --- 7. first dev machine (SSH keypair + ssh-copy-id) ------------------------
+# The harness keypair is generated ON FIRST PROVISION by provision-devmachine (custody
+# dir from step 3; private key never leaves this host — TM-020/#14b).
+if confirm "Step 7: register + provision your first Claude-CLI dev machine now (interactive)?"; then
+  read -r -p "  logicalName (e.g. karls-mac): " DM_NAME
+  read -r -p "  host/IP: " DM_HOST
+  read -r -p "  ssh user on that machine: " DM_USER
+  ( cd "$CONTROL_PLANE" \
+    && sudo -u "$SERVICE_USER" env PANTHEON_DB="$DATA_DIR/control-plane.db" PANTHEON_KEY_DIR="$KEY_DIR" \
+         node dist/cli/register-devmachine.js --name "$DM_NAME" --host "$DM_HOST" --user "$DM_USER" \
+    && sudo -u "$SERVICE_USER" env PANTHEON_DB="$DATA_DIR/control-plane.db" PANTHEON_KEY_DIR="$KEY_DIR" \
+         node dist/cli/provision-devmachine.js "$DM_NAME" )
+  c_ok "Dev machine '$DM_NAME' registered + provisioned (key-only from now on)."
+fi
+
+# --- 8. next steps ---------------------------------------------------------
 cat <<EOF
 
 $(c_ok "Base install complete.")
@@ -136,7 +197,9 @@ Secrets (gitignored .env.local in $CONTROL_PLANE), set before live runs:
      ADMIN_API_TOKEN, GITEA_BASE_URL, GITEA_TOKEN, BRIDGE_MCP_URL, BRIDGE_MCP_TOKEN,
      and PETA_URL + PETA_ADMIN_TOKEN for MCP-server registration.
 
-Not handled here (separate components — see docs/SESSION-HANDOFF): deploying LibreChat and Peta,
-and wiring LibreChat's custom endpoint to the control-plane. Consider a systemd unit running
-\`npm start\` to bring the control-plane up on boot, behind your reverse proxy + TLS (wss://).
+Peta bootstrap (owner + per-identity users) is NOT scripted here — follow
+docs/skeleton-steps/step-02-peta-hardened-deploy.md (uses peta-eval/harness/peta.mjs).
+LibreChat endpoint wiring + identity header = the decision-B spike:
+docs/skeleton-steps/step-08-librechat-spike.md.
+Full deploy map: deploy/README.md.  Step-by-step: docs/skeleton-steps/README.md.
 EOF

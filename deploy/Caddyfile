@@ -1,0 +1,36 @@
+# Pantheon Harness — Caddy reverse proxy (Bible §11; LAN/Tailscale only, NO public ingress)
+#
+# Two named sites on the LAN. `tls internal` mints a local CA cert — on first browser
+# visit, trust Caddy's root CA (deploy/README.md §TLS) so HTTPS is green on the LAN.
+# Peta is deliberately NOT proxied here (bound to 127.0.0.1 in compose — TM-007).
+# The Facade's /v1/chat/completions is NOT proxied either: only LibreChat (in-network)
+# and same-host services call it. Nothing here is reachable from the public internet
+# (pfSense/no port-forward + Tailscale is the outer wall; verify with the M2 test).
+
+# ---- shared security-header snippet (Bible §11 header list) -------------------------
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+}
+
+# ---- LibreChat (chat UI) -------------------------------------------------------------
+# Adjust the hostname to your LAN DNS (pfSense host override or /etc/hosts entries).
+pantheon.lan {
+	tls internal
+	import security_headers
+	header X-Frame-Options "SAMEORIGIN"
+	reverse_proxy librechat:3080
+}
+
+# ---- Control-plane admin service (config page, approvals, harness frame, terminals) --
+admin.pantheon.lan {
+	tls internal
+	import security_headers
+	header X-Frame-Options "DENY"
+	# WebSocket upgrade for /terminal/* works through reverse_proxy automatically.
+	reverse_proxy host.docker.internal:8088
+}

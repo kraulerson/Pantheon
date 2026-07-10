@@ -1,0 +1,137 @@
+# Pantheon Harness — third-party stack (walking-skeleton deploy, D-ENC: Debian VM on Proxmox)
+#
+# WHAT RUNS WHERE (deliberate split — see deploy/README.md):
+#   - THIS compose file: third-party services only — Caddy, LibreChat (+Mongo/Meilisearch),
+#     Peta-core (+Postgres).
+#   - systemd units (deploy/systemd/): our own natively-built services — control-plane
+#     admin + Facade (ADR-0007) and obsidian-mcp. No Dockerfiles exist for them and the
+#     install script already builds them natively; ADR-0007 explicitly allows
+#     "systemd units or compose".
+#
+# HARDENING BAKED IN (Bible §11 / "ADR-0003" checklist / TM-007):
+#   - Peta + Postgres publish to 127.0.0.1 ONLY: reachable by host services (Facade/admin),
+#     structurally unreachable from LAN/Tailscale. Peta is NOT proxied by Caddy at all —
+#     its /admin surface (GET_OWNER action 1016 etc.) cannot be path-filtered reliably
+#     (single POST /admin, action in body), so it is simply never exposed. The M2 network
+#     test (tailnet host → GET_OWNER blocked) passes by construction.
+#   - peta-core runs non-root (image default USER nodejs), NO /var/run/docker.sock mount,
+#     remote/HTTP downstreams only (never CustomStdio).
+#   - LibreChat's RAG API is deliberately ABSENT (unpatched CVE-2026-4276 — landscape
+#     re-validation pin: "no RAG API").
+#   - Images pinned by tag; after first pull, tighten to digest pins (see deploy/README.md).
+#     Tags marked VERIFY below must be confirmed against upstream at deploy time.
+#
+# Usage:  cd deploy && cp .env.example .env  (fill values)  && docker compose up -d
+
+name: pantheon
+
+services:
+  caddy:
+    image: caddy:2-alpine # VERIFY current 2.x tag at deploy; then digest-pin
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # reach the host-side systemd services
+    networks: [pantheon-net]
+
+  # ---------------- LibreChat (UI plane, ADR-0001; >=0.8.6 REQUIRED, no RAG API) -------
+  librechat:
+    image: ghcr.io/danny-avila/librechat:v0.8.7 # VERIFY exact tag exists; >=0.8.6 is the hard floor
+    restart: unless-stopped
+    depends_on: [mongodb, meilisearch]
+    env_file: [.env]
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3080
+      MONGO_URI: mongodb://mongodb:27017/LibreChat
+      SEARCH: "true"
+      MEILI_HOST: http://meilisearch:7700
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY}
+      CONFIG_PATH: /app/librechat.yaml
+    volumes:
+      - ./librechat.yaml:/app/librechat.yaml:ro
+      - librechat_images:/app/client/public/images
+      - librechat_logs:/app/api/logs
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # reach the Facade (:8089) on the host
+    # no LAN port: published only through Caddy
+    networks: [pantheon-net]
+
+  mongodb:
+    image: mongo:7 # VERIFY LibreChat v0.8.x's supported Mongo major at deploy
+    restart: unless-stopped
+    command: mongod --noauth --bind_ip_all # internal network only, no host port
+    volumes:
+      - mongo_data:/data/db
+    networks: [pantheon-net]
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.12 # VERIFY the version LibreChat v0.8.x pairs with
+    restart: unless-stopped
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY}
+      MEILI_NO_ANALYTICS: "true"
+    volumes:
+      - meili_data:/meili_data
+    networks: [pantheon-net]
+
+  # ---------------- Peta (tool gateway; hardened per Bible §11 / ADR-0003) -------------
+  peta-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - peta_pg:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${DB_PORT}:5432" # localhost only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [pantheon-net]
+
+  peta-core:
+    image: petaio/peta-core:v1.2.2 # VERIFY tag naming upstream (docs pin Peta v1.2.2); NEVER :latest; digest-pin after pull
+    restart: unless-stopped
+    depends_on:
+      peta-postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@peta-postgres:5432/${DB_NAME}
+      BACKEND_PORT: ${BACKEND_PORT}
+      JWT_SECRET: ${JWT_SECRET}
+      LOG_LEVEL: ${LOG_LEVEL}
+      LOG_PRETTY: ${LOG_PRETTY}
+      LAZY_START_ENABLED: ${LAZY_START_ENABLED}
+      PETA_AUTH_AUTOSTART: ${PETA_AUTH_AUTOSTART}
+      MCP_2026_ENABLED: ${MCP_2026_ENABLED}
+      PETA_CORE_IN_DOCKER: "true"
+      SKIP_DB_CONTAINER_START: "true"
+    ports:
+      - "127.0.0.1:${BACKEND_PORT}:${BACKEND_PORT}" # localhost only — /admin never reachable from LAN (TM-007)
+    # HARDENING: no docker.sock mount (never add one); image runs USER nodejs (verify: docker inspect)
+    networks: [pantheon-net]
+
+volumes:
+  caddy_data:
+  caddy_config:
+  librechat_images:
+  librechat_logs:
+  mongo_data:
+  meili_data:
+  peta_pg:
+
+networks:
+  pantheon-net:
+    driver: bridge

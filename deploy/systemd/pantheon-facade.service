@@ -1,0 +1,20 @@
+# Pantheon control-plane — FACADE (chat pipeline; ADR-0007). Exists after skeleton step 3.
+[Unit]
+Description=Pantheon control-plane Facade (chat pre-processor pipeline)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/opt/pantheon/pantheon-harness/services/control-plane
+EnvironmentFile=/opt/pantheon/pantheon-harness/services/control-plane/.env.local
+ExecStart=/usr/bin/node dist/server-facade.js
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

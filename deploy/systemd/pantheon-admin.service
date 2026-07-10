@@ -1,0 +1,23 @@
+# Pantheon control-plane — ADMIN service (ADR-0007). Install: deploy/README.md §systemd.
+# NOTE: before step 3 of the skeleton (two-service split) exists, point ExecStart at
+# dist/server.js; after step 3, at dist/server-admin.js.
+[Unit]
+Description=Pantheon control-plane admin service (config, approvals, terminals)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/opt/pantheon/pantheon-harness/services/control-plane
+EnvironmentFile=/opt/pantheon/pantheon-harness/services/control-plane/.env.local
+ExecStart=/usr/bin/node dist/server-admin.js
+Restart=on-failure
+RestartSec=3
+# hardening
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

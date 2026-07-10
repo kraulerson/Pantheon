@@ -1,0 +1,28 @@
+# LibreChat custom-endpoint config — points LibreChat at the Pantheon Facade
+# (docs/phase-1/architecture.md:220-224: OpenAI-compatible pre-processor/proxy,
+#  custom endpoint via baseURL — NOT a fork, NOT an in-process hook).
+#
+# VERIFY at deploy (Investigation A / decision B spike): the exact header-interpolation
+# and per-conversation identity wiring is the load-bearing uncertainty the LibreChat
+# spike exists to resolve. This file is the starting configuration for that spike.
+
+version: 1.2.1 # VERIFY: librechat.yaml schema version for the pinned LibreChat build
+
+endpoints:
+  custom:
+    - name: "Pantheon"
+      # The Facade runs on the VM host (systemd), not in compose:
+      baseURL: "http://host.docker.internal:8089/v1"
+      apiKey: "pantheon-not-used" # Facade auth is the identity header + network position, not this key
+      models:
+        default: ["alden-1"] # display name; the Facade resolves identity -> bound backend
+        fetch: false
+      titleConvo: true
+      titleModel: "alden-1"
+      directEndpoint: true
+      headers:
+        # Identity/session wiring — THE SPIKE QUESTION (step-08): which LibreChat
+        # placeholder reliably identifies the conversation. Candidates per
+        # architecture.md:223 and landscape:81:
+        x-pantheon-identity: "alden-1" # static single-identity for the skeleton smoke test
+        # x-pantheon-session: "{{LIBRECHAT_USER_ID}}" # VERIFY available placeholders in the spike

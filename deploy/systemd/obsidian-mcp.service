@@ -1,0 +1,21 @@
+# Obsidian vault MCP server (#8) — HTTP/streamable transport (never stdio; Bible §11).
+[Unit]
+Description=Pantheon obsidian-mcp (vault-confined MCP server)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/opt/pantheon/pantheon-harness/services/obsidian-mcp
+# obsidian-mcp takes config via environment (no .env.local loader) — set vars here or
+# via a drop-in: systemctl edit obsidian-mcp@<user>
+ExecStart=/usr/bin/node dist/server.js
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
