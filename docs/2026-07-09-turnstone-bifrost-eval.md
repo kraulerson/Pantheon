@@ -1,5 +1,15 @@
 # Turnstone + Bifrost — Adoption Evaluation & Harness Build-Out Plan (2026-07-09)
 
+> **OUTCOME (2026-07-09, APPROVAL_LOG ruling):** Karl declined Bifrost adoption,
+> closing the household's open decision (bus 1087) — build-over-adopt: running a large
+> multi-provider platform to use a small sliver of it fails the audit-economics test,
+> and the wall count needed to make it doctrine-safe was itself the signal. R18 is
+> hand-built (original Decision F restored; the meter returns to the walking-skeleton
+> scope). Wall 4 dissolves; Wall 2's boot-hash mechanism survives under ADR-0006; the
+> non-promotion rule stays on file as a guard. The Turnstone half of this eval
+> (rejection + T1–T6 borrows) is unaffected. The eval below stands as the decision
+> record; its adopt-with-walls recommendation was considered and not taken.
+
 **Purpose:** Karl asked for one more system to be evaluated before final decisions:
 Turnstone (`turnstonelabs/turnstone`), plus a code-level look at Bifrost
 (`maximhq/bifrost`) — which the household is actively deciding for the brain plane (bus

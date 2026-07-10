@@ -104,6 +104,11 @@ for handoff clarity. Categories are ordered by impact severity.
   (llm-mini progress judge + absolute backstops, pause-don't-kill). 21 tests green; deps
   pinned; 0 audit findings. Not part of the harness build — promotion requires its own ADR.
 ### Documentation
+- Bifrost NOT adopted (2026-07-09 ruling, reverses the same-day Decision F amendment):
+  build-over-adopt. Cost meter restored to the walking-skeleton scope
+  (`docs/walking-skeleton-milestone.md` item 6 + acceptance item rewritten); outcome
+  note added at the head of `docs/2026-07-09-turnstone-bifrost-eval.md`; Wall 4
+  custody question withdrawn; ADR-0008 will not be drafted.
 - `docs/2026-07-09-deployment-topology-container-tmux.md` — deployment topology design:
   harness as one web-reachable Compose appliance (enclosure VM-vs-LXC surfaced as OPEN
   decision D-ENC, recommendation A/VM), dev CLI sessions persisted in tmux on dev machines,
