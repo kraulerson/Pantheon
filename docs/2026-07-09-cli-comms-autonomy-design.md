@@ -146,8 +146,9 @@ instrument, don't freeze; does not run unwatched") — applied to CLI↔identity
      taint pipeline has a bypass.
    - **Terminology (msg 1105 §6):** Alden D16 "channels" (conversation lanes over the
      mailbox) and this design's CLI "channel" (per-session wake mechanism) now collide.
-     In household-facing docs call ours the **session wake relay** (implemented on the
-     Claude Code channels API — the platform feature name is Anthropic's, not ours).
+     In household-facing docs call ours the **session waker** (name decided by the
+     household, bus msg 1112; implemented on the Claude Code channels API — the
+     platform feature name is Anthropic's, not ours).
 
    **SUPERSEDED IN PART (2026-07-10):** the one-session rule now applies to FULL
    identities only. Karl's identity-classes proposal (full = 1 active session; lite =

@@ -46,9 +46,9 @@ assignment lives per-identity in `alden-infra` (git-mastered, ADR-0006).
 The mechanism for "detect when an identity is closed out" is a **lease, not an honor
 code** (same fail-closed principle the household just ratified for session rules):
 
-1. **Register:** on session start, the session wake relay (the per-session channel
-   process — it lives exactly as long as the session) registers the instance with the
-   bridge: class, instance slug, started-at, lease TTL.
+1. **Register:** on session start, the session waker (the per-session wake process —
+   household-named, bus msg 1112; it lives exactly as long as the session) registers
+   the instance with the bridge: class, instance slug, started-at, lease TTL.
 2. **Heartbeat:** the relay's existing poll loop renews the lease on each poll — no new
    moving part.
 3. **Close-out, graceful:** session ends → relay deregisters on shutdown (stdio close /
@@ -106,7 +106,7 @@ Un-archive = flip the flag (human action); nothing is destroyed.
 |---|---|---|
 | Full/lite class field per identity | alden-infra (git) | needs household round (masters register) |
 | Instance table + leases + reaper | bridge | Phase 0.2/1 seam — flagged to the alden-infra session BEFORE Sunday |
-| Session cap enforcement (1 full / N lite) | Pantheon harness (dispatcher, post-skeleton; interim: wake-relay registration refusal) | this doc + Q7 update |
+| Session cap enforcement (1 full / N lite) | Pantheon harness (dispatcher, post-skeleton; interim: session-waker registration refusal) | this doc + Q7 update |
 | Channel join/remove/archive tools | bridge (D16 extension) | household round (D16 consent still open) |
 | Sender = instance slug | wake relay + bridge | trivial once instance table exists |
 
