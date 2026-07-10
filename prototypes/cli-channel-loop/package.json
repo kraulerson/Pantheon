@@ -1,0 +1,25 @@
+{
+  "name": "@pantheon-harness/cli-channel-loop-spike",
+  "version": "0.0.1",
+  "private": true,
+  "description": "PROOF-OF-CONCEPT spike: Claude Code channels auto-relay loop (echo channel + Alden-bridge channel + loop-detector stub). Not part of the harness build.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start:echo": "node dist/echo-channel.js",
+    "start:bridge": "node --env-file-if-exists=.env.local dist/alden-bridge-channel.js",
+    "pretest": "npm run build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.6",
+    "typescript": "5.7.2",
+    "vitest": "3.2.7"
+  }
+}

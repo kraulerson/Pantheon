@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "echo-channel": {
+      "command": "node",
+      "args": ["prototypes/cli-channel-loop/dist/echo-channel.js"]
+    },
+    "alden-bridge": {
+      "command": "node",
+      "args": [
+        "--env-file-if-exists=prototypes/cli-channel-loop/.env.local",
+        "prototypes/cli-channel-loop/dist/alden-bridge-channel.js"
+      ]
+    }
+  }
+}
