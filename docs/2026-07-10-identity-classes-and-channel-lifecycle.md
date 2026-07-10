@@ -159,22 +159,24 @@ Archive is already designed (§5, read-only flag, reversible). Delete is the fir
   4. ~~Hash-chain span awareness~~ — **superseded (msg 1145):** the audit hash-chain
      covers the audit log only, NOT mailbox rows; there is no chain over the bus to
      break. The real protection is the storage shape below.
-- **Mechanics — settled bridge-side as D-0.2c (alden-infra session, ships with Phase
-  0.2 on 2026-07-12):** the mailbox is **APPEND-ONLY — no code path may issue
-  `DELETE FROM mailbox`**, because physical row deletion would (a) punch holes in the
-  single archive that catch-up, arbitration evidence, and drift investigation all lean
-  on, and (b) silently corrupt every consumer's `last_seen_id` cursor. Therefore:
-  - a channel **delete = a tombstone written as a mailbox row** (sender, timestamp,
-    channel, tombstoned id-span) + **redaction-in-place** of the channel's content
-    (blank the `message` column; keep each row's id, timestamp, sender). Row existence
-    is never erased — only content is destroyed. This satisfies "delete the data held
-    therein" while keeping the record's skeleton auditable.
-  - deletion is **loud by construction**: the tombstone IS a bus row, visible to every
-    reader with no separate announcement mechanism needed.
+- **Mechanics — REFINED BY KARL'S RULING (2026-07-10, recorded in the alden-infra
+  APPROVAL_LOG, commit 4a9873e there; relayed on bus msg 1154), amending D-0.2c's
+  blanket append-only rule by deletion class:**
+  - **Full-identity channels:** the row stays; a deletion message replaces it; the
+    entire body is blanked when deletion is decided — **tombstone-as-row +
+    redaction-in-place**, exactly D-0.2c's shape. Row existence is never erased for any
+    channel a full identity ever spoke in; only content is destroyed. Rationale
+    unchanged: these rows are arbitration evidence and drift-investigation record.
+  - **Lite-only channels: FULL PHYSICAL DELETION — Karl's call, non-negotiable**
+    (verbatim: "As that does not impact Full identities, I am making the call on how
+    that is handled"). No household consent required — no full identity's record is
+    touched. Handling the cursor-integrity consequence of physical row removal (1145
+    §2's concern) is a bridge-side implementation matter for the deletion tool.
+  - deletion of either class is **loud**: the tombstone / deletion notice is a bus row,
+    visible to every reader with no separate announcement mechanism needed.
   - registry row flips to `deleted`; the §5b.1 tombstone metadata rides on it.
-  - the household register records this threshold with the infra session's sentence:
-    "the first destructive operation in this system never destroys rows — it destroys
-    content."
+  - the household register records the threshold (Cloud Alden's flag): the system's
+    first destructive operation, with row destruction confined to lite-only channels.
 
 ## 6. What changes where
 
