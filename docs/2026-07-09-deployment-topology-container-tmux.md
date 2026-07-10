@@ -13,8 +13,9 @@ Three planes, one direction of trust:
 ```
                          LAN / Tailscale only
 ┌──────────────┐  https   ┌──────────────────────────────────────────────┐
-│ Karl's       │─────────▶│ PANTHEON HOST — enclosure = OPEN DECISION §2 │
-│ browser      │          │  Docker Compose (Bible §11, unchanged):      │
+│ Karl's       │─────────▶│ PANTHEON HOST                                │
+│ browser      │          │  Docker Compose (Bible §11, unchanged) in a  │
+│              │          │  Debian VM (D-ENC resolved → A, §2):         │
 │  · chat tab  │          │   Caddy ─▶ LibreChat (+Mongo/Meilisearch)    │
 │  · terminal  │          │           admin service │ Facade (ADR-0007)  │
 │    tab       │          │           Peta-core (+Postgres) · obsidian-  │
@@ -49,9 +50,12 @@ Three planes, one direction of trust:
   HTTP(S) connection from the dev machine to the bridge MCP endpoint. No inbound port on
   the dev machine, no listener exposed beyond `127.0.0.1` control/inject ports.
 
-## 2. OPEN DECISION — the harness enclosure (VM vs LXC)
+## 2. Enclosure decision (D-ENC) — RESOLVED 2026-07-09: A, Debian VM
 
-The record and the spoken instruction diverge, so this is surfaced, not silently picked:
+**Ruling (Karl, 2026-07-09, recorded in APPROVAL_LOG):** option A — Debian VM on Proxmox
+running Docker Compose. The analysis below is retained as the decision record.
+
+The record and the spoken instruction diverged, so this was surfaced, not silently picked:
 
 - **Design of record:** Bible §11 ("Docker Compose on the LAN host") + the deploy-target
   memory: a **Debian VM on Proxmox** running Docker Compose (not built yet; needs a
@@ -156,8 +160,8 @@ note §6).
 
 ## 7. Open decisions & next steps
 
-1. **D-ENC (blocking for skeleton deploy): enclosure A (VM, recommended) vs B (LXC)** —
-   Karl ruling via pending-approval; then write the fresh-install script for the winner.
+1. ~~D-ENC: enclosure A (VM) vs B (LXC)~~ — **RESOLVED 2026-07-09: A (Debian VM)**;
+   next step: write the fresh-install script against a fresh Debian VM.
 2. Auto-respawn at dev-host boot — Opus 4.8 lane.
 3. Bridge-token custody on dev machines — Opus 4.8 lane / household Wall-4 thread (§5).
 4. Verify `BRIDGE_SEND_TOOL` name/schema against the live bridge before any two-way run

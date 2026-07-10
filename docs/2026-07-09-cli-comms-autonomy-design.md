@@ -108,6 +108,24 @@ instrument, don't freeze; does not run unwatched") — applied to CLI↔identity
 6. Security: pushing a wake into a shell-capable session, and tainted inbound content →
    Opus 4.8 security review owns the rules; this note only fixes the "wake-word not
    body" foundation.
+7. **Multi-session, same-identity dispatch (Karl, 2026-07-09).** Several live CLI
+   sessions can share one identity (multiple Alden sessions, multiple claude-code
+   sessions, …). Channels are **per-session processes** — every session spawns its own
+   stdio channel instance — but the mailbox is **per-identity**, so N sessions configured
+   as the same identity would ALL wake on the same message and could ALL reply
+   (duplicate/competing answers). The spike does not solve this; nothing in the bus
+   differentiates sessions. Interim rule until the dispatcher exists: **at most ONE
+   channel-enabled session per identity at a time** (extra sessions of that identity run
+   channel-off or wake-only); the tmux attach-or-create convention makes this structural
+   per dev machine, and provisioning must enforce it across machines (only one DevMachine
+   carries a given identity's channel config). Product answer: the **Autonomy Driver as
+   the single dispatcher** — it alone watches the queue, keeps a registry of live
+   sessions per identity, and assigns each message/thread to exactly one session
+   (claim/lease + thread affinity). That also fixes a loop-detector blind spot: with two
+   same-identity sessions, per-process detectors each see only half of a two-session
+   ping-pong; a single dispatcher sees the whole thread. Verify at build time whether the
+   bridge exposes thread ids (governance records cite "bus thread 5e4d8496", but
+   `alden_mailbox_list` returns no thread field) — thread affinity needs one.
 
 ## References
 - ADR-0005 (terminal modality), `docs/integration/alden-bridge.md` (mailbox),
