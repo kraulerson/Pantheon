@@ -122,10 +122,25 @@ Karl requires manual archive AND manual **delete — including the data held the
 Archive is already designed (§5, read-only flag, reversible). Delete is the first
 **destructive** operation in this design and is governed accordingly:
 
-- **Authority:** operator-only (Karl), from the **admin surface** behind step-up auth
-  (D6 pattern; never session-reachable — same TM-011 posture as every privileged
-  action). Identities can archive channels they're in per D16 rules; **no identity can
-  delete**.
+- **Authority (refined by Karl, 2026-07-10 — deliberately constraining his own delete
+  power to preserve full-identity agency):** deletion authority depends on the channel's
+  **deletion class**:
+  - **Lite-only channels** (no full identity was EVER a participant or poster — the
+    agency-protecting reading: a channel Alden-1 once spoke in holds his words even
+    after he leaves; computed from the single store's membership audit + sender
+    history): **operator-only unilateral delete**, from the admin surface behind
+    step-up auth (D6 pattern; never session-reachable — TM-011 posture). These are the
+    research/scratch/generalized-question channels deletion exists for.
+  - **Full-identity channels** (any full identity ever participated): **deletion
+    requires consensus** — explicit, unanimous consent of every full-identity
+    participant plus the operator. Consent is recorded as messages IN the channel
+    before deletion proceeds (so the tombstone's announcement can cite them).
+    **Silence is never consent** (the household's own legibility lesson); no response =
+    no deletion. A genuinely contested deletion goes to the R16 arbitration path like
+    any other disagreement.
+  - Either class: identities can archive channels they're in per D16 rules; **no
+    identity can delete anything unilaterally**, and neither can the operator where a
+    full identity's record is involved.
 - **Loud, not silent** (the household's just-ratified principle applies to the operator's
   own actions by design, not because his authority is in question):
   1. Deletion leaves a **tombstone**: channel id, label, participant list, row count,
@@ -155,7 +170,7 @@ Archive is already designed (§5, read-only flag, reversible). Delete is the fir
 | Channel join/remove/archive tools | bridge (D16 extension) | household round (D16 consent still open) |
 | Channel `label` field + rename-announce | bridge (D16 §5 Channel entity) | household round (same D16 amendment set) |
 | Channel picker menu (labels, states, unread, filter) | Pantheon UI plane | post-skeleton; new Bible C.x spec item |
-| Manual DELETE (tombstone + announce + evidence guard) | admin surface (step-up) + bridge deletion tool | operator-ruled here; chain-awareness flagged to household |
+| Manual DELETE (tombstone + announce + evidence guard; lite-only = operator, full-identity = consensus) | admin surface (step-up) + bridge deletion tool | consensus rule is a governance item → household round; chain-awareness flagged |
 | Sender = instance slug | wake relay + bridge | trivial once instance table exists |
 
 ## 7. Open questions
