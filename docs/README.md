@@ -32,6 +32,7 @@ status banner or lives in `archive/`.** Updated 2026-07-10.
 | `2026-07-10-identity-classes-and-channel-lifecycle.md` | Full/lite identities, leases, channel lifecycle + delete taxonomy (RATIFIED) | Active |
 | `machine-auth-design.md` | Service-principal tier (built Alden Phase 3) | Active design |
 | `2026-07-10-postmortem-design-sprint.md` | Post-mortem of 2026-06-13 → 07-10 | Retrospective |
+| `2026-07-10-agent-legibility-remediation-plan.md` | Fix+guard+upstream for the 7 agent-cognition hazards | **OPEN — not yet executed** |
 
 ## Reference & phase artifacts
 
