@@ -1,3 +1,5 @@
+> **ARCHIVED 2026-07-10.** Historical record — the session state described here is long superseded (see docs/README.md for the living documentation map).
+
 # Pantheon Harness — Session Handoff (2026-06-13)
 
 > **UPDATE 2026-06-14 (session 2): Task #16 build COMPLETE (a–e).** DevMachine registry, SSH backend

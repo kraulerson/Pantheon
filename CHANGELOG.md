@@ -119,6 +119,13 @@ for handoff clarity. Categories are ordered by impact severity.
   dev-machine register+provision — closes the charter's four named gaps.
 
 ### Documentation
+- Documentation consolidation (2026-07-10): `docs/README.md` documentation map (canon /
+  execution path / dated decision records / reference / archive, with conventions);
+  `docs/archive/` created — executed session handoffs moved there with status banners
+  (2026-06-13 session handoff; 2026-07-09 CLI-channel handoff, fully executed);
+  `docs/2026-07-10-postmortem-design-sprint.md` — full-project post-mortem (timeline,
+  what went well, honest failure ledger incl. F3/token-custody/decision-whiplash,
+  metrics, lessons, complete open-items list).
 - `docs/skeleton-steps/` — the walking-skeleton step-design package: README + 9
   junior-executable step docs (VM+install, Peta bootstrap, ADR-0007 split +
   pre-processor mount, pino+correlation IDs, SSE streaming, UsageEvent cost meter,

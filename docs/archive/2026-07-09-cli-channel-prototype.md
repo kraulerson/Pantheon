@@ -1,3 +1,5 @@
+> **ARCHIVED 2026-07-10 — FULLY EXECUTED.** Every item in this handoff was completed 2026-07-09/10: freeze exception recorded, channel spike built (prototypes/cli-channel-loop, 21 tests green), deployment topology designed (D-ENC resolved: Debian VM). Kept as the record of how the work was scoped.
+
 # Session Handoff — 2026-07-09 — CLI↔Harness channel prototype
 
 ## Where we are
