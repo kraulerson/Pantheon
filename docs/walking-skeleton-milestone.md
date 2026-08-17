@@ -50,6 +50,14 @@ every later phase of the ratified Alden build plan assumes this assembled system
    ledger is itself an ADR-0006 projection target: rate tables / budget caps read from
    alden-infra with boot-time Profile-hash verification. `thread_id` becomes a real
    bridge column in Alden Phase 0.2 (ships 2026-07-12) — do not build a workaround.
+   **P6 amendments (dsh study, APPROVAL_LOG 2026-07-11):** an **anchor** — `(turn,
+   step)` or completion-sequence — with replace-not-add semantics on the same anchor
+   (idempotent de-dupe for retried completions); **disjoint token buckets**:
+   `input_tokens` (uncached ONLY) + `cache_read_tokens` + `cache_write_tokens` +
+   `output_tokens` (reasoning ⊂ output; billed input = sum of three — never
+   double-count cached traffic); **`provider` + `model` columns** (audit
+   `rate_version` against what actually ran); **failed/aborted completions get rows
+   too** (that's where costs leak).
 7. **Session binding + brain-busy queue** (decision E) — enforce Session's
    identity+backend binding at the Facade; single-slot backend queue with the C.7
    honest labeled wait signal; interactive preempts background.
