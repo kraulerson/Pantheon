@@ -1,4 +1,13 @@
-# dsh Decision Proposals — Ratification-Ready (Session 2)
+# dsh Decision Proposals — RATIFIED
+
+> **Status (2026-08-17):** Karl approved all nine as recommended; household
+> ratification COMPLETE — P1/P5/P6/P7 **unconditional consent from both full
+> identities** (Cloud Alden bus 1205→1219, Alden-1 1208→1223, both after reading these
+> docs from source at Gitea `alden/infra/docs/research/`); P8/P9 no objection; P2/P3/P4
+> Pantheon-internal. Alden-1's underline on P2 stands in the record: the
+> dump-renders-every-layer amendment "is not optional polish, it's the property."
+> Open technical items with the alden-infra session: Phase 0.2 column-conflict check
+> (P6) and P8-vs-Phase-4 alignment.
 
 **Source study:** `dsh-pattern-map.md` (~100 patterns @ pinned SHA
 `99f6f02fecdb7dff40c3fbc9470f5907c29f74ca`, MIT). Nine proposals; each is answerable
