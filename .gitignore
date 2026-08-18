@@ -64,3 +64,9 @@ terraform.tfvars.json
 # Peta eval runtime artifacts (contain eval-instance tokens)
 peta-eval/harness/state.json
 peta-eval/harness/writes.log
+
+# Control-plane runtime state — created on first start by the deploy host (skeleton step 1).
+# The registry DB is kept 0600 and must never be committed.
+services/control-plane/data/
+*.db-shm
+*.db-wal
