@@ -296,11 +296,11 @@ Known gaps accepted: Frontend/UI, Database, Accessibility, and Performance are *
 - **Control-plane "glue" — BUILD.** The novel parts nobody ships: identity-creation/provisioning orchestrator (#5), the inspectable grounding pipeline + `trusted:false` taint-by-presence engine (#13/#14c — must live here because Peta's `dangerLevel` is static per-tool), the prompt-master isolated rewriter on Alden-1 (#12, v1.1), the Obsidian/filesystem MCP server (#8), and per-session-identity wiring (LibreChat → control-plane → Peta) plus the backend-binding registry (#14a).
 
 ### ADR-0002 — Control-plane stack: Node 20 LTS + TypeScript 5 + Fastify 5
-**Status:** Accepted · 2026-06-13. Build the control-plane as a Fastify 5 / Node 20 LTS / TypeScript 5 service. Fastify chosen for **first-class JSON-schema validation/serialization** (fail-closed input validation by construction — priority-1 fit) over Express 5 (no built-in schema validation → more hand-written guards → more places to fail open) and NestJS (over-engineered ceremony for a single-operator service). One language across UI/gateway/glue/SDK maximizes shared types and operator validation (Competency Matrix: Backend strong). Pinned versions (lockfile committed; current as of 2026-06-13 — re-verify and pin patched latest at scaffold time):
+**Status:** Accepted · 2026-06-13; **amended 2026-08-18 (runtime floor Node 20 → Node 24 LTS — ruling, APPROVAL_LOG).** Build the control-plane as a Fastify 5 / Node 20 LTS / TypeScript 5 service. Fastify chosen for **first-class JSON-schema validation/serialization** (fail-closed input validation by construction — priority-1 fit) over Express 5 (no built-in schema validation → more hand-written guards → more places to fail open) and NestJS (over-engineered ceremony for a single-operator service). One language across UI/gateway/glue/SDK maximizes shared types and operator validation (Competency Matrix: Backend strong). Pinned versions (lockfile committed; current as of 2026-06-13 — re-verify and pin patched latest at scaffold time):
 
 | Dependency | Pinned version | Rationale |
 |---|---|---|
-| Node.js | `20.x` (Active LTS) | Peta ≥18, Fastify 5 ≥20 → 20 LTS common floor. Pin via `.nvmrc` + `engines`. |
+| Node.js | `24.x` (Active LTS) — *amended 2026-08-18, was `20.x`* | Peta ≥18, Fastify 5 ≥20. Floor raised to 24: Node 20 left security support 2026-04-30, and the committed lockfile validates only under npm ≥ 11 (BUGS #9), which Node 20 does not ship. Pin via `.nvmrc` + `engines`. |
 | TypeScript | `5.7.x` | `strict: true`, current stable. |
 | fastify | `5.8.5` | Latest stable Fastify 5 line, Node ≥20. |
 | @fastify/type-provider-typebox | `5.x` | Compile-time + runtime schema typing; one source of truth for request/response validation. |
@@ -310,6 +310,16 @@ Known gaps accepted: Frontend/UI, Database, Accessibility, and Performance are *
 | @modelcontextprotocol/sdk | `1.29.0` | Same SDK version validated in the Peta eval; for hosting the Obsidian MCP server and MCP client calls. |
 | pino | `9.x` | Fastify's native structured logger. |
 | zod *(optional, domain layer)* | `3.x` | Internal domain invariants where TypeBox is awkward; not the HTTP-edge validator. |
+
+**Amendment · 2026-08-18 — runtime floor Node 20 → Node 24 LTS (deploy host).** Raised during
+walking-skeleton step 1, on two grounds: (a) Node 20 left security support 2026-04-30 — pinning it
+would have stood the harness up on an unpatched runtime; (b) the committed
+`services/control-plane/package-lock.json` validates only under **npm ≥ 11** — npm 10 (what Node 20
+ships) re-resolves the `@types/node: *` edges pulled in by `@types/better-sqlite3`/`@types/ws` to the
+current latest and then rejects the lockfile for missing those entries (BUGS #9, reproduced both
+ways on VM 1093). `scripts/install-debian.sh` now installs NodeSource `setup_24.x` and enforces
+`NODE_MIN=24`. Fastify 5 / TypeScript 5 / all dependency pins are unchanged; nothing in the
+control-plane source changes.
 
 PostgreSQL 15+ (Prisma) is consumed transitively as **Peta's** datastore. The control-plane's own persistent state (binding registry, identity→Peta-user map, taint flags, assembled-prompt TTL cache) uses a small local store sized for one operator; SQLite-vs-Postgres is a Phase-2 scaffold decision, not load-bearing. *(Resolved at scaffold time: SQLite via `better-sqlite3`.)*
 
