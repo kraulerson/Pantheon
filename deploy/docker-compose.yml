@@ -101,7 +101,7 @@ services:
     networks: [pantheon-net]
 
   peta-core:
-    image: petaio/peta-core:v1.2.2 # VERIFY tag naming upstream (docs pin Peta v1.2.2); NEVER :latest; digest-pin after pull
+    image: petaio/peta-core:1.2.2 # tag VERIFIED 2026-08-18: upstream publishes BARE `1.2.2` (no leading `v`); NEVER :latest; digest-pin in step 2
     restart: unless-stopped
     depends_on:
       peta-postgres:

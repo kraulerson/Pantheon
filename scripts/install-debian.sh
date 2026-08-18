@@ -70,26 +70,39 @@ if confirm "Step 1: apt-get install prerequisites (curl, git, build-essential, p
   c_ok "Prerequisites installed."
 fi
 
-# Node 20 LTS via NodeSource (only if a suitable node is absent).
+# Node 24 LTS via NodeSource (only if a suitable node is absent).
+# 24, not 20: the committed package-lock.json only validates under npm >= 11 — npm 10 re-resolves
+# the `@types/node: *` edges (@types/better-sqlite3, @types/ws) to the current latest and demands
+# lock entries this file does not carry (BUGS #9). Node 20 also left security support 2026-04-30.
+# Node 24 ships npm 11 and is supported into 2028.
+NODE_MIN=24
 NODE_OK=0
 if command -v node >/dev/null 2>&1; then
   NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
-  [ "$NODE_MAJOR" -ge 20 ] && NODE_OK=1
+  [ "$NODE_MAJOR" -ge "$NODE_MIN" ] && NODE_OK=1
 fi
 if [ "$NODE_OK" -eq 1 ]; then
-  c_ok "Node $(node -v) already present (>= 20)."
-elif confirm "Step 1b: install Node.js 20 LTS via NodeSource?"; then
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+  c_ok "Node $(node -v) already present (>= $NODE_MIN)."
+elif confirm "Step 1b: install Node.js ${NODE_MIN} LTS via NodeSource?"; then
+  curl -fsSL "https://deb.nodesource.com/setup_${NODE_MIN}.x" | bash -
   apt-get install -y nodejs
-  c_ok "Installed Node $(node -v)."
+  c_ok "Installed Node $(node -v) (npm $(npm -v))."
 else
-  c_warn "Node 20+ is required to build and run the control-plane."
+  c_warn "Node ${NODE_MIN}+ is required: the lockfile needs npm >= 11 (BUGS #9)."
 fi
 
 # --- 2. build the control-plane -------------------------------------------
 if confirm "Step 2: install npm deps and build the control-plane (npm ci && npm run build)?"; then
-  ( cd "$CONTROL_PLANE" && npm ci && npm run build )
-  c_ok "Control-plane built ($CONTROL_PLANE/dist)."
+  # npm runs as the SERVICE USER, never root: a root-run `npm ci` leaves ~/.npm root-owned and
+  # every later npm call by the service user dies EACCES (BUGS #10). Repair a host already in
+  # that state first, then build unprivileged.
+  NPM_HOME="$(getent passwd "$SERVICE_USER" | cut -d: -f6 || echo "/home/$SERVICE_USER")"
+  NPM_HOME="${NPM_HOME:-/home/$SERVICE_USER}"
+  if [ -d "$NPM_HOME/.npm" ]; then chown -R "$SERVICE_USER":"$SERVICE_USER" "$NPM_HOME/.npm" || true; fi
+  ( cd "$CONTROL_PLANE" \
+    && sudo -u "$SERVICE_USER" env HOME="$NPM_HOME" npm ci \
+    && sudo -u "$SERVICE_USER" env HOME="$NPM_HOME" npm run build )
+  c_ok "Control-plane built ($CONTROL_PLANE/dist), owned by $SERVICE_USER."
 fi
 
 # --- 3. custody + data directories ----------------------------------------
@@ -104,7 +117,10 @@ if confirm "Step 3: create key-custody dir ($KEY_DIR, 0700) and data dir ($DATA_
   install -d -m 700 -o "$SERVICE_USER" -g "$SERVICE_USER" "$KEY_DIR" 2>/dev/null \
     || { mkdir -p "$KEY_DIR"; chmod 700 "$KEY_DIR"; }
   mkdir -p "$DATA_DIR"
+  # Both dirs must be OWNED by the service user: the units run as $SERVICE_USER and the
+  # control-plane creates/writes its SQLite registry inside $DATA_DIR (BUGS #11).
   chown -R "$SERVICE_USER":"$SERVICE_USER" "$SERVICE_HOME/.pantheon" 2>/dev/null || true
+  chown -R "$SERVICE_USER":"$SERVICE_USER" "$DATA_DIR" 2>/dev/null || true
   c_ok "Custody dir: $KEY_DIR (0700).  Data dir: $DATA_DIR."
 fi
 
