@@ -6,6 +6,17 @@
 > both sides updated, bridge restarted, Alden-1 smoke-replied, old token verified dead
 > (401), leaked backup tarball trashed, Gitea mirror stood up in the same pass.
 > Kept for the record and for the NEXT rotation (make it routine, not a 60-day debt).
+>
+> **⚠️ LESSON LEARNED THE HARD WAY (BUG-010, alden-infra log, 2026-08-18):** the
+> 08-17 bridge rotation updated the bridge + the control-plane and NONE of the
+> bridge's four OTHER consumers (orchestrator, alden-control, comms hub — Karl's own
+> chat UI — and Winston on the Pi). 325 silent auth failures in 30 minutes; every
+> healthcheck stayed green because the BRIDGE was healthy — it was refusing everyone.
+> **Standing rule: rotating a shared credential is a FAN-OUT to every holder plus
+> per-holder verification, never an edit to the authority.** Enumerate holders FIRST
+> (and beware non-uniform key names: the Pi uses `BRIDGE_TOKEN`, the containers
+> `BRIDGE_AUTH_TOKEN`). The infra session fixed all four, added an authenticated
+> consumer-side healthcheck (alarms in ≤5 min), and drilled it end to end.
 
 **Written 2026-08-17** after the non-credential remediation steps executed. These are
 the ONLY two remaining items from `security-remediation-plan-2026-07-09.md` (Steps 2,
