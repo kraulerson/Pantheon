@@ -71,6 +71,18 @@ every later phase of the ratified Alden build plan assumes this assembled system
    the Facade for the future Autonomy Driver. Written as `docs/machine-auth-design.md`;
    built at Alden build-plan Phase 3.
 
+### Security hardening pulled in by the 2026-07-09 review (F5/F6)
+10. **CSP tightening** — move the harness frame's inline bootstrap to a served file or
+    nonce'd script; verify no `unsafe-inline` needed once a real browser is in play.
+11. **CSRF token** — per-request token on state-changing admin routes (defense-in-depth
+    beyond SameSite=Lax).
+12. **Machine-auth TM rows (design-time, with item 9)** — the Facade service principal
+    is a distinct credential domain from operator cookie/bearer; add TM entries for the
+    admin↔Facade boundary and the ADR-0006 propose-a-change commit authorship (only
+    Karl can author/merge alden-infra changes).
+13. **C.7 queue depth bound** — reject beyond a fixed queue length (flooding cannot grow
+    memory); cost-meter ledger rows carry counts only, never prompt content.
+
 ## Acceptance checklist (all must pass)
 
 - [ ] Appendix-A-style smoke test: **one identity, one brain, one conversation, one
@@ -92,6 +104,8 @@ every later phase of the ratified Alden build plan assumes this assembled system
       by shape/label/icon, never color alone (CB/TL). A color-only cue is SEV-2.
 - [ ] Inspector verdict recorded (inside LibreChat OR fallback + ADR-0001 amendment).
 - [ ] `install-debian.sh` re-run on the VM is idempotent (safe to run twice).
+- [ ] CSP passes without `unsafe-inline`; CSRF token present on admin mutations.
+- [ ] Queue depth is bounded (test: N+1th concurrent request rejected with a labeled error).
 
 ## Explicitly NOT in the skeleton
 
@@ -101,6 +115,9 @@ every later phase of the ratified Alden build plan assumes this assembled system
 - Anything on the security review's queue (token rotation, git-history audit, push to
   GitHub) — Opus 4.8 owns those; the skeleton must not wait on them except where
   credentials are literally required to deploy.
+- Deferred-with-owner (F5/F6 backlog, not skeleton): SSH host-key pinning before any
+  non-LAN terminal use; terminal WS input-flood rate limiting; D6 passkey step-up
+  (unchanged, post-skeleton).
 
 ## Exit
 

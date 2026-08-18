@@ -20,6 +20,17 @@ for handoff clarity. Categories are ordered by impact severity.
 ## [Unreleased]
 
 ### Security
+- 2026-08-17 remediation pass (non-credential steps; Karl-directed): Peta eval stack
+  decommissioned — containers/volumes/image deleted, folder to Trash (F1 CLOSED; it had
+  been found running again); `~/.pantheon/control-plane.db*` tightened to 0600 (F4
+  CLOSED); F5/F6 hardening folded into the skeleton charter (items 10–13 + 2 acceptance
+  boxes); BUGS #8 FIXED — vitest 3.2.7 exact-pinned in control-plane AND obsidian-mcp
+  (GHSA-5xrq-8626-4rwp) + 5 weeks of transitive advisories cleared via `npm audit fix`
+  (@hono/node-server, body-parser, brace-expansion, esbuild) — both services 0
+  vulnerabilities, 295+24 tests green; ratification-mirror v1.3 wording fixed in
+  alden/workspace (deferred I4 item). REMAINING: Gitea + Bridge token rotations (F2) —
+  Karl-facing runbook at `docs/token-rotation-runbook.md`, incl. the NEW sub-step to
+  purge the alden-bridge backup tarball holding the old token.
 - `BRIDGE_MCP_TOKEN` restored into `services/control-plane/.env.local` (2026-07-10) — the
   line had been EMPTY since the 2026-06-16 restore, silently disabling the control-plane's
   bridge grounding retrievers (fail-closed, so no unsafe behavior — just no recall).
