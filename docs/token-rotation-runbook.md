@@ -1,5 +1,12 @@
 # Token Rotation Runbook — the two passwords (Karl-facing)
 
+> **✅ EXECUTED 2026-08-17/18 — both rotations complete.** Password 1: Karl rotated in
+> the Gitea UI (new minimal-scope token verified, old deleted). Password 2: rotated in
+> a maintenance window — post-restructure config located at `/etc/alden/bridge.env`,
+> both sides updated, bridge restarted, Alden-1 smoke-replied, old token verified dead
+> (401), leaked backup tarball trashed, Gitea mirror stood up in the same pass.
+> Kept for the record and for the NEXT rotation (make it routine, not a 60-day debt).
+
 **Written 2026-08-17** after the non-credential remediation steps executed. These are
 the ONLY two remaining items from `security-remediation-plan-2026-07-09.md` (Steps 2,
 3, plus Step 6 which unlocks after Step 2). Both tokens leaked into chat transcripts in
