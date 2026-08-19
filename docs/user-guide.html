@@ -80,6 +80,12 @@ published to the internet, and an outside computer asking for these names gets n
   </tr>
 </table>
 
+<div class="todo"><strong>Two addresses is temporary.</strong> The design (ADR-0005) has ONE entry
+point — the harness — hosting both chat tabs and terminal tabs. Until skeleton step 8 merges them,
+the working surface answers on the <code>pantheon-admin</code> name, which reads backwards: your
+development sessions are not an admin function. Ruled 2026-08-19; tracked as a charter acceptance
+box.</div>
+
 <p>Both are also reachable as <code>pantheon.lan</code> and <code>admin.pantheon.lan</code> if you
 have those names set up locally. Everything runs on one virtual machine — VM 1093
 (<code>192.168.1.93</code>) on the Proxmox server.</p>
@@ -379,6 +385,12 @@ restart the piece it belongs to.</p>
   <tr><th>Missing</th><th>What that means for you</th><th>Delivered by</th></tr>
   <tr><td>An AI model connected to the chat page</td>
       <td>Messages in the chat page get no reply.</td><td>Step 8</td></tr>
+  <tr><td>One front door</td>
+      <td>Work happens on <code>pantheon-admin.ferrumcorde.com</code> while chat lives on
+          <code>pantheon.ferrumcorde.com</code>, so you bounce between two addresses. Ruled
+          temporary on 2026-08-19: the harness becomes the single entry point, with chat
+          sessions and terminal sessions both started there.</td>
+      <td>Step 8</td></tr>
   <tr><td>Peta set up with an owner and identities</td>
       <td>Tool permissions and the MCP Servers section do nothing yet.</td><td>Step 2</td></tr>
   <tr><td>Working Edit / Remove buttons</td>

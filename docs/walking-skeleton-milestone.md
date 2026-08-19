@@ -103,6 +103,12 @@ every later phase of the ratified Alden build plan assumes this assembled system
       page, harness frame tabs, C.7 busy signal, inspector — every state distinguishable
       by shape/label/icon, never color alone (CB/TL). A color-only cue is SEV-2.
 - [ ] Inspector verdict recorded (inside LibreChat OR fallback + ADR-0001 amendment).
+- [ ] **One front door (operator ruling 2026-08-19).** The harness frame is the single entry
+      point an operator uses for work: chat and terminal sessions are both started from it, and
+      the operator is never asked to visit a second address to begin working. Today the working
+      surface answers on a hostname labelled `pantheon-admin`, with chat on a separate address —
+      accepted as temporary, NOT as the shape we ship. ADR-0005 already specifies the frame as
+      "a single entry point that presents both modalities"; this box makes it checkable.
 - [ ] `install-debian.sh` re-run on the VM is idempotent (safe to run twice).
 - [ ] CSP passes without `unsafe-inline`; CSRF token present on admin mutations.
 - [ ] Queue depth is bounded (test: N+1th concurrent request rejected with a labeled error).

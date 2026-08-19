@@ -41,7 +41,21 @@ step wires it to the Facade and runs the decision tree.
 5. **Auth check (#9):** LibreChat login gates the UI on `pantheon.lan`; logged-out =
    login only, no metadata leak (Bible §7 tier 1).
 
+5. **Collapse the two front doors (operator ruling 2026-08-19 — "everything should be under
+   the harness").** Once chat reaches the Facade, the harness frame must become the single place
+   work starts: chat sessions open as tabs in the frame alongside terminal tabs (ADR-0005's
+   "single entry point ... presents both modalities"), and the operator does not visit a second
+   address to begin. Decide and record HOW: LibreChat embedded in the frame, the frame linking
+   into it as a tab, or the frame replacing it as the landing page — the spike's rendering
+   findings (item 4) determine which is feasible. **Naming falls out of this:** the working
+   surface stops being addressed as `pantheon-admin`; setup/Configuration may keep an admin name.
+   Until this lands, the operator works behind a door labelled "admin", which is a labelling
+   accident from the 2026-08-19 intake run, not a design decision.
+
 ## Verify (this step IS the verification)
+
+- **Single front door:** starting BOTH a chat session and a terminal session is possible from
+  the harness frame alone, without visiting a second address. This is a charter acceptance box.
 
 - The full acceptance smoke test now runs end-to-end: **one identity, one brain, one
   conversation, one `dangerLevel:2` write held for approval and executed on approve —
