@@ -13,6 +13,7 @@ status banner or lives in `archive/`.** Updated 2026-07-10.
 | `../APPROVAL_LOG.md` | Every ruling, gate, scope change, and consent — the governance ledger. |
 | `../CHANGELOG.md` / `../FEATURES.md` / `../BUGS.md` | What changed / what's built / the bug index (H1). |
 | `../CLAUDE.md` | Working agreement for AI sessions (Solo Orchestrator framework). |
+| `user-guide.html` | **The operator user guide** — every page and field, dev-machine setup, settings reference, and an explicit "not built yet" list. Served live at `/help` (no login required). |
 
 ## Build the system (execution order)
 

@@ -24,6 +24,7 @@ import { registerApprovalsRoutes, type ApprovalsBackend } from "./routes/approva
 import { registerHarnessRoutes, HARNESS_ASSET_PATHS } from "./routes/harness.js";
 import { SessionStore } from "./auth/session.js";
 import { operatorGuard, registerAuthRoutes, AUTH_PUBLIC_PATHS } from "./auth/operator-auth.js";
+import { USER_GUIDE_HTML, USER_GUIDE_PATH } from "./user-guide.js";
 
 /** Result of an admin-tier check. `ok:false` carries the HTTP status to fail closed with. */
 export type GuardResult = { ok: true } | { ok: false; status: 401 | 403; reason: string };
@@ -69,7 +70,10 @@ export interface AppOptions {
 const PUBLIC_PATHS: ReadonlySet<string> = new Set([
   "/v1/chat/completions",
   ...HARNESS_ASSET_PATHS,
-  ...AUTH_PUBLIC_PATHS
+  ...AUTH_PUBLIC_PATHS,
+  // The user guide is deliberately readable without signing in (ruling 2026-08-19), so the chat
+  // page's Help link always opens it. It carries no credentials or key material.
+  USER_GUIDE_PATH
 ]);
 
 function constantTimeEquals(a: string, b: string): boolean {
@@ -276,6 +280,10 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   // happens. Not in PUBLIC_PATHS: logged-out callers keep getting /login (browser) or 401 (API).
   app.get("/", async (_req, reply) => {
     reply.redirect("/harness");
+  });
+
+  app.get(USER_GUIDE_PATH, async (_req, reply) => {
+    reply.type("text/html; charset=utf-8").send(USER_GUIDE_HTML);
   });
 
   // ---- Harness UI (frame + xterm.js terminal tabs + public xterm assets) — ADR-0005 §9 C.1/C.6 ----

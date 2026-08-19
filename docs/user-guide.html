@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pantheon Harness — User Guide</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.55; max-width: 52rem;
+         margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
+  h1 { margin-bottom: .25rem; }
+  h2 { margin-top: 2.5rem; border-bottom: 1px solid #8886; padding-bottom: .25rem; }
+  h3 { margin-top: 1.75rem; }
+  code, kbd { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .92em;
+              background: #8881; padding: .1rem .3rem; border-radius: 3px; }
+  pre { background: #8881; padding: .75rem; border-radius: 5px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: .75rem 0; display: block; overflow-x: auto; }
+  th, td { border: 1px solid #8886; padding: .4rem .55rem; text-align: left; vertical-align: top; }
+  th { background: #8881; }
+  .note, .warn, .todo { border-left: 4px solid #8888; padding: .6rem .8rem; margin: 1rem 0;
+                        background: #8881; border-radius: 0 4px 4px 0; }
+  .warn { border-left-color: #b45; }
+  .todo { border-left-color: #86a; }
+  .note strong, .warn strong, .todo strong { display: block; margin-bottom: .25rem; }
+  nav.toc ol { margin: .25rem 0; }
+  .subtitle { color: #7a7a7a; margin-top: 0; }
+  footer { margin-top: 3rem; border-top: 1px solid #8886; padding-top: .75rem; color: #7a7a7a; font-size: .9em; }
+</style>
+</head>
+<body>
+
+<h1>Pantheon Harness — User Guide</h1>
+<p class="subtitle">How the harness works, what every option does, and how to run it.
+Last updated 2026-08-19.</p>
+
+<div class="warn">
+  <strong>Read this first: the harness is half-built.</strong>
+  This guide describes what is <em>actually running today</em>, not what is planned. The chat page
+  works as a chat page but is <strong>not connected to any AI model yet</strong>, and several
+  Configuration buttons do nothing yet. Everything unfinished is listed in
+  <a href="#not-yet">What is not built yet</a> and marked in place, so you never go hunting for a
+  button that does not exist.
+</div>
+
+<nav class="toc">
+  <h2 style="margin-top:1.5rem">Contents</h2>
+  <ol>
+    <li><a href="#what">What the harness is, and the two addresses</a></li>
+    <li><a href="#signin">Signing in</a></li>
+    <li><a href="#chat">The chat page</a></li>
+    <li><a href="#harness">The harness page</a></li>
+    <li><a href="#config">The Configuration page — every field</a></li>
+    <li><a href="#devmachine">Setting up a dev machine, start to finish</a></li>
+    <li><a href="#operating">Operating the harness</a></li>
+    <li><a href="#settings">Settings reference (the files behind the pages)</a></li>
+    <li><a href="#not-yet">What is not built yet</a></li>
+    <li><a href="#trouble">When something goes wrong</a></li>
+  </ol>
+</nav>
+
+<h2 id="what">1. What the harness is, and the two addresses</h2>
+
+<p>The Pantheon Harness is one machine running several pieces that work together. You reach it at
+two web addresses, both of which exist <strong>only inside your home network</strong> — nothing is
+published to the internet, and an outside computer asking for these names gets no answer at all.</p>
+
+<table>
+  <tr><th>Address</th><th>What it is</th><th>Who it is for</th></tr>
+  <tr>
+    <td><code>https://pantheon.ferrumcorde.com</code></td>
+    <td>The <strong>chat page</strong> (LibreChat). Conversations, accounts, history.</td>
+    <td>Day-to-day use.</td>
+  </tr>
+  <tr>
+    <td><code>https://pantheon-admin.ferrumcorde.com</code></td>
+    <td>The <strong>admin console</strong> (the control-plane): the harness page, the Configuration
+        page, and terminals.</td>
+    <td>Setting things up and connecting to machines.</td>
+  </tr>
+</table>
+
+<p>Both are also reachable as <code>pantheon.lan</code> and <code>admin.pantheon.lan</code> if you
+have those names set up locally. Everything runs on one virtual machine — VM 1093
+(<code>192.168.1.93</code>) on the Proxmox server.</p>
+
+<h2 id="signin">2. Signing in</h2>
+
+<p>The admin console has <strong>no username</strong> — just one passphrase. Enter it at
+<code>/login</code> and you stay signed in for <strong>12 hours</strong>, after which you are asked
+again. Signing out immediately invalidates that session.</p>
+
+<p>The chat page is separate and <em>does</em> have accounts (email + password). Self-registration is
+switched <strong>off</strong>: new accounts are created only during a deliberate signup window.</p>
+
+<h3>Changing the console passphrase</h3>
+<p>Run this on the harness machine; it asks twice, shows nothing on screen, and restarts the
+service itself, so the passphrase never appears in a log or in your shell history:</p>
+<pre><code>sudo bash /opt/pantheon/pantheon-harness/scripts/set-operator-passphrase.sh</code></pre>
+
+<h2 id="chat">3. The chat page</h2>
+
+<p>Standard LibreChat. Two things here are ours:</p>
+<ul>
+  <li><strong>Switch to Admin</strong> — the link under the message box; opens the admin console.</li>
+  <li><strong>Help &amp; FAQ</strong> — in your profile menu; opens this guide.</li>
+</ul>
+
+<div class="warn">
+  <strong>The chat page cannot answer you yet.</strong>
+  No AI model is connected to it. You can sign in, look around and open the settings, but sending a
+  message will not produce a reply. Connecting a model is skeleton step 8 — see
+  <a href="#not-yet">What is not built yet</a>. The working AI route today is a
+  <strong>terminal session to a dev machine</strong>, described below.
+</div>
+
+<h2 id="harness">4. The harness page</h2>
+
+<p>Signing into the console lands you on <code>/harness</code>. Its header holds three things:</p>
+
+<table>
+  <tr><th>Control</th><th>What it does</th></tr>
+  <tr><td><strong>+ New Session</strong></td>
+      <td>Opens a popup for choosing an AI system and identity. <em>Not wired to a model yet</em>
+          — the useful path today is a terminal shortcut (below).</td></tr>
+  <tr><td><strong>Configuration</strong></td>
+      <td>Opens the Configuration page, where everything is registered and set up.</td></tr>
+  <tr><td><strong>Help</strong></td><td>Opens this guide.</td></tr>
+</table>
+
+<p>Under "Start a session" you get one entry per registered dev machine:</p>
+
+<table>
+  <tr><th>What you see</th><th>What it means</th><th>What to do</th></tr>
+  <tr><td><strong>Claude CLI &rarr; <em>name</em></strong> (a button)</td>
+      <td>The machine is set up and switched on. Clicking opens a terminal tab connected to it.</td>
+      <td>Click it.</td></tr>
+  <tr><td><em>name</em> — <strong>not provisioned</strong></td>
+      <td>The machine is registered, but the harness has not installed its key on it yet, so it
+          cannot connect.</td>
+      <td>Go to Configuration and use <strong>Provision</strong> (see
+          <a href="#devmachine">section 6</a>).</td></tr>
+  <tr><td><em>name</em> — <strong>disabled</strong></td>
+      <td>The machine is switched off in the registry on purpose.</td>
+      <td>Enable it (see the known limitation in <a href="#config">section 5</a>).</td></tr>
+</table>
+
+<p>Sessions open as tabs along the top; close one with its ✕. Each state is spelled out in words,
+never by colour alone.</p>
+
+<h2 id="config">5. The Configuration page — every field</h2>
+
+<p>Reached from <strong>Configuration</strong> in the harness header, or directly at
+<code>/admin/config</code>. It has four sections. Each has a form at the bottom for adding a new
+entry; every entry is saved immediately when you press the add button.</p>
+
+<div class="warn">
+  <strong>Two limitations that apply to this whole page.</strong>
+  <ol style="margin:.35rem 0 0">
+    <li>The <strong>Edit</strong> and <strong>Remove</strong> buttons do nothing when clicked. The
+        page ships no JavaScript yet, so every one of those buttons is inert (bug #19). To change or
+        delete an entry today, someone has to use the API directly.</li>
+    <li>The <strong>Enabled</strong> tick-box is ignored when adding an <em>AI Backend</em> or a
+        <em>Service Endpoint</em> — those two save as switched off no matter what you tick
+        (bug #18). Dev Machines are not affected; that one was fixed.</li>
+  </ol>
+</div>
+
+<h3>AI Backends</h3>
+<p>Where an AI model actually lives. Registering one here does not connect it to the chat page yet
+(that is step 8) — this is the registry the rest of the system will read.</p>
+<table>
+  <tr><th>Field</th><th>What it means</th><th>Valid values</th></tr>
+  <tr><td>Display Name</td><td>The name you will see in menus.</td><td>Any text.</td></tr>
+  <tr><td>Kind</td><td>Which sort of backend it is.</td>
+      <td><code>local_alden1</code>, <code>claude_cli</code>, <code>future_local_7900xtx</code>,
+          <code>future_cloud</code>. Cannot be changed after saving.</td></tr>
+  <tr><td>Endpoint</td><td>Where to reach it, as address and port.</td>
+      <td><code>host:port</code> — e.g. <code>192.168.1.89:8080</code>. No <code>http://</code>,
+          no trailing path. Port 1–65535.</td></tr>
+  <tr><td>Enabled</td><td>Whether it may be used.</td><td>See limitation 2 above.</td></tr>
+</table>
+
+<h3>MCP Servers</h3>
+<p>Tool servers registered with Peta, the component that decides which tools an AI may use.</p>
+<table>
+  <tr><th>Field</th><th>What it means</th><th>Valid values</th></tr>
+  <tr><td>Server ID</td><td>Short machine-readable id.</td><td>Letters, digits, dot, dash, underscore.</td></tr>
+  <tr><td>Server Name</td><td>Human-readable name.</td><td>Any text.</td></tr>
+  <tr><td>Endpoint</td><td>Where the tool server listens.</td><td><code>host:port</code>, e.g. <code>10.100.23.90:9000</code>.</td></tr>
+</table>
+<div class="todo"><strong>Not usable yet.</strong> Peta is running but has not been set up with an
+owner or identities (skeleton step 2), so registrations here have nothing to talk to.</div>
+
+<h3>Control-plane Service Endpoints</h3>
+<p>Supporting services the harness itself uses.</p>
+<table>
+  <tr><th>Field</th><th>What it means</th><th>Valid values</th></tr>
+  <tr><td>Display Name</td><td>The name shown in the list.</td><td>Any text.</td></tr>
+  <tr><td>Key</td><td>Which service this is.</td>
+      <td><code>qdrant</code> (memory), <code>gitea</code> (code), <code>bridge</code> (Alden
+          bridge), <code>obsidian</code> (notes), <code>peta</code> (tool gateway),
+          <code>other</code>.</td></tr>
+  <tr><td>Endpoint</td><td>Where it listens.</td><td><code>host:port</code>, e.g. <code>10.100.23.79:6333</code>.</td></tr>
+  <tr><td>Enabled</td><td>Whether it may be used.</td><td>See limitation 2 above.</td></tr>
+</table>
+
+<h3>Dev Machines (Claude CLI)</h3>
+<p>Computers the harness can open a terminal on — this is the part that works end to end today.</p>
+<table>
+  <tr><th>Field</th><th>What it means</th><th>Valid values</th></tr>
+  <tr><td>Logical Name</td>
+      <td>The permanent name for this machine. Everything else refers to it by this name, so it
+          keeps working if the machine's address changes.</td>
+      <td>Must start with a letter, digit or underscore, then letters, digits, dot, dash,
+          underscore. No spaces. <strong>Cannot be changed later.</strong></td></tr>
+  <tr><td>Host</td><td>Its address on your network.</td>
+      <td>A bare IP or hostname — <code>192.168.1.192</code>. No port, no <code>ssh://</code>.</td></tr>
+  <tr><td>Port</td><td>The SSH port.</td><td>1–65535. Leave at 22 unless you changed it.</td></tr>
+  <tr><td>User</td><td>The account to log in as on that machine.</td>
+      <td>Same character rules as Logical Name. On a Mac this is your short username, e.g.
+          <code>karl</code>.</td></tr>
+  <tr><td>Enabled</td><td>Whether the machine may be connected to.</td>
+      <td>Works correctly here.</td></tr>
+</table>
+
+<p>Each row shows two states, in words:</p>
+<ul>
+  <li><strong>Provisioning</strong> — whether the harness has installed its key on the machine.
+      A machine is only usable once this says provisioned.</li>
+  <li><strong>Status</strong> — whether it is enabled.</li>
+</ul>
+
+<div class="note">
+  <strong>The SSH key is never shown here, and never asked for.</strong>
+  The harness holds one private key in a locked directory on its own machine; it is never displayed,
+  never sent to your browser, and never written into a log. Only its public half is installed on
+  your machines.
+</div>
+
+<h2 id="devmachine">6. Setting up a dev machine, start to finish</h2>
+
+<p>Two steps: <strong>register</strong> it (tell the harness where it is), then
+<strong>provision</strong> it (let the harness install its key). Both happen in the browser — you do
+not need to run anything on the machine itself.</p>
+
+<h3>Before you start</h3>
+<ul>
+  <li>The machine must accept SSH connections. On macOS: <strong>System Settings → General →
+      Sharing → Remote Login</strong>, switched on.</li>
+  <li>You need the login password for that machine's user account.</li>
+</ul>
+
+<h3>Step 1 — register it</h3>
+<p>On the Configuration page, fill in the <strong>Dev Machines</strong> form (Logical Name, Host,
+Port, User) and press <strong>Add Dev Machine</strong>. It appears in the list as
+<em>not provisioned</em>.</p>
+
+<h3>Step 2 — provision it</h3>
+<p>The row now shows a <strong>Provision</strong> button with a password box. Type that machine's
+login password and press it. The harness then:</p>
+<ol>
+  <li>logs in to the machine once using that password,</li>
+  <li>adds its public key to the machine's list of authorised keys (running it twice is harmless —
+      the key is not added a second time),</li>
+  <li>disconnects, and reconnects using <strong>only the key</strong>,</li>
+  <li>marks the machine provisioned <em>only if</em> that key-only reconnection worked.</li>
+</ol>
+
+<div class="note">
+  <strong>What happens to the password.</strong>
+  It is used for that single connection and then gone: never saved, never written to any log, never
+  shown back to you, and never passed to a command on the target machine. After this, the harness
+  connects with its key and never needs the password again.
+</div>
+
+<p>If it fails, the machine deliberately stays <em>not provisioned</em> rather than being recorded as
+ready. Common causes:</p>
+<table>
+  <tr><th>Message</th><th>Usually means</th></tr>
+  <tr><td>could not authenticate … with the supplied password</td>
+      <td>Wrong password, wrong <strong>User</strong>, or that machine does not allow password
+          logins.</td></tr>
+  <tr><td>ssh connection failed</td>
+      <td>Remote Login is off, the machine is asleep or off the network, or the Host/Port is
+          wrong.</td></tr>
+  <tr><td>key-only login still failed</td>
+      <td>The key went on, but the machine refuses it — usually permissions on the target's
+          <code>.ssh</code> folder.</td></tr>
+</table>
+
+<h3>Step 3 — use it</h3>
+<p>Back on the harness page the machine appears as <strong>Claude CLI &rarr; <em>name</em></strong>.
+Click it to open a terminal tab. Closing the tab ends the session.</p>
+
+<h2 id="operating">7. Operating the harness</h2>
+
+<p>Everything runs on VM 1093 (<code>192.168.1.93</code>). Two kinds of things run there: the
+harness's own service, managed by the system; and the third-party pieces, running as containers.</p>
+
+<table>
+  <tr><th>Piece</th><th>What it is</th><th>How it runs</th></tr>
+  <tr><td>Control-plane</td><td>Admin console, harness page, terminals</td>
+      <td><code>systemctl … pantheon-admin@pantheon</code></td></tr>
+  <tr><td>LibreChat + Mongo + Meilisearch</td><td>The chat page and its storage/search</td><td>containers</td></tr>
+  <tr><td>Peta + Postgres</td><td>Tool gateway and its database</td><td>containers, reachable only from the machine itself</td></tr>
+  <tr><td>Caddy</td><td>Serves both web addresses over HTTPS</td><td>container</td></tr>
+</table>
+
+<h3>Everyday commands</h3>
+<pre><code># restart the admin console
+sudo systemctl restart pantheon-admin@pantheon
+
+# is it running?
+systemctl status pantheon-admin@pantheon
+
+# the containers
+cd /opt/pantheon/pantheon-harness/deploy
+sudo docker compose ps
+sudo docker compose restart librechat
+
+# update the harness to the latest committed code
+cd /opt/pantheon/pantheon-harness && git pull
+cd services/control-plane && npm run build
+sudo systemctl restart pantheon-admin@pantheon</code></pre>
+
+<h3>What is stored where</h3>
+<table>
+  <tr><th>What</th><th>Where</th></tr>
+  <tr><td>Registry (backends, machines, endpoints)</td>
+      <td><code>services/control-plane/data/control-plane.db</code> — owner-only</td></tr>
+  <tr><td>Harness SSH key</td><td><code>/home/pantheon/.pantheon/keys</code> — owner-only</td></tr>
+  <tr><td>Console settings and secrets</td><td><code>services/control-plane/.env.local</code> — owner-only, never committed</td></tr>
+  <tr><td>Container settings and secrets</td><td><code>deploy/.env</code> — owner-only, never committed</td></tr>
+  <tr><td>Chat history and accounts</td><td>the Mongo container's storage</td></tr>
+</table>
+
+<h2 id="settings">8. Settings reference (the files behind the pages)</h2>
+
+<p>Some settings have no page yet and are set in files on the harness machine. Change one, then
+restart the piece it belongs to.</p>
+
+<h3><code>services/control-plane/.env.local</code> — the admin console</h3>
+<table>
+  <tr><th>Setting</th><th>What it does</th></tr>
+  <tr><td><code>PANTHEON_OPERATOR_PASSWORD</code></td>
+      <td>The console passphrase. Leave it unset to switch browser login off entirely.</td></tr>
+  <tr><td><code>ADMIN_API_TOKEN</code></td><td>Token for scripts and API calls instead of the passphrase.</td></tr>
+  <tr><td><code>PANTHEON_SECURE_COOKIES</code></td><td><code>true</code> when served over HTTPS (it is).</td></tr>
+  <tr><td><code>PANTHEON_DB</code> / <code>PANTHEON_KEY_DIR</code></td><td>Where the registry and the SSH key live.</td></tr>
+  <tr><td><code>PANTHEON_KEY_HANDLE</code></td><td>Which stored key the harness uses. Default <code>harness</code>.</td></tr>
+  <tr><td><code>PORT</code> / <code>HOST</code></td><td>Where the console listens. Default 8088 on all interfaces.</td></tr>
+  <tr><td><code>PETA_URL</code> / <code>PETA_ADMIN_TOKEN</code></td><td>Peta connection — set during step 2.</td></tr>
+  <tr><td><code>GITEA_*</code>, <code>BRIDGE_MCP_*</code></td><td>Connections to Gitea and the Alden bridge.</td></tr>
+</table>
+
+<h3><code>deploy/.env</code> — the containers</h3>
+<table>
+  <tr><th>Setting</th><th>What it does</th></tr>
+  <tr><td><code>ALLOW_REGISTRATION</code></td>
+      <td>Whether anyone can create a chat account. Kept <code>false</code>; switched on briefly
+          only when an account is being created.</td></tr>
+  <tr><td><code>CUSTOM_FOOTER</code></td><td>The line under the chat box — currently the "Switch to Admin" link.</td></tr>
+  <tr><td><code>HELP_AND_FAQ_URL</code></td><td>Where the profile menu's Help &amp; FAQ goes — this guide.</td></tr>
+  <tr><td><code>DB_*</code>, <code>JWT_SECRET</code>, <code>CREDS_*</code>, <code>MEILI_MASTER_KEY</code></td>
+      <td>Passwords and keys the containers use internally. Generated at install; no reason to touch them.</td></tr>
+  <tr><td><code>BACKEND_PORT</code>, <code>DB_PORT</code></td><td>Ports used on the machine itself, not exposed to the network.</td></tr>
+</table>
+
+<p>After editing <code>deploy/.env</code>, apply it with
+<code>sudo docker compose up -d</code> in the <code>deploy</code> folder.</p>
+
+<h2 id="not-yet">9. What is not built yet</h2>
+
+<p>Honest list. Each item names the step that delivers it — the step designs live in
+<code>docs/skeleton-steps/</code>.</p>
+
+<table>
+  <tr><th>Missing</th><th>What that means for you</th><th>Delivered by</th></tr>
+  <tr><td>An AI model connected to the chat page</td>
+      <td>Messages in the chat page get no reply.</td><td>Step 8</td></tr>
+  <tr><td>Peta set up with an owner and identities</td>
+      <td>Tool permissions and the MCP Servers section do nothing yet.</td><td>Step 2</td></tr>
+  <tr><td>Working Edit / Remove buttons</td>
+      <td>Entries can be added from the page but not changed or deleted (bug #19).</td>
+      <td>Bug fix, pending</td></tr>
+  <tr><td>Enabled tick-box on Backends and Service Endpoints</td>
+      <td>Those two save as switched off regardless (bug #18).</td><td>Bug fix, pending</td></tr>
+  <tr><td>Cost tracking</td><td>No record of what a session costs.</td><td>Step 6</td></tr>
+  <tr><td>Streaming replies</td><td>Replies would arrive all at once rather than as they are written.</td><td>Step 5</td></tr>
+  <tr><td>Session binding and the busy queue</td>
+      <td>Nothing yet stops two sessions using one brain at the same time.</td><td>Step 7</td></tr>
+  <tr><td>Checking a machine is really itself</td>
+      <td>The harness does not yet verify a machine's identity before connecting (bug #17).</td>
+      <td>Bug fix, pending</td></tr>
+</table>
+
+<h2 id="trouble">10. When something goes wrong</h2>
+
+<table>
+  <tr><th>Symptom</th><th>Try this</th></tr>
+  <tr><td>A page will not load at all</td>
+      <td>Check the console is running: <code>systemctl status pantheon-admin@pantheon</code>. If
+          the chat page is the one failing, check the containers with
+          <code>sudo docker compose ps</code>.</td></tr>
+  <tr><td>You are sent to the login page repeatedly</td>
+      <td>The 12-hour session has lapsed — sign in again. If it happens immediately every time, the
+          passphrase setting may be empty.</td></tr>
+  <tr><td>A machine will not provision</td>
+      <td>See the table in <a href="#devmachine">section 6</a>.</td></tr>
+  <tr><td>A terminal will not open</td>
+      <td>The machine must be both provisioned <em>and</em> enabled. Check both words on its row.</td></tr>
+  <tr><td>A button does nothing</td>
+      <td>If it is Edit or Remove, that is bug #19 — not your fault, not yet built.</td></tr>
+</table>
+
+<p>Known problems are tracked in <code>BUGS.md</code>, decisions in <code>APPROVAL_LOG.md</code>, and
+what changed in <code>CHANGELOG.md</code>, all in the project repository.</p>
+
+<footer>
+  Pantheon Harness user guide · generated from <code>docs/user-guide.html</code> in the project
+  repository · served by the control-plane at <code>/help</code>.
+</footer>
+
+</body>
+</html>

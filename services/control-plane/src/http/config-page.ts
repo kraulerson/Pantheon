@@ -234,6 +234,7 @@ export function renderConfigPage(model: ConfigPageModel): string {
 </head>
 <body>
 <h1>Pantheon Harness — Configuration / Service Registry</h1>
+<p><a href="/harness">&larr; Harness</a> &middot; <a href="/help">Help — user guide</a></p>
 ${banner(model)}
 ${backendsSection(model.backends)}
 ${mcpSection(model.mcpServers)}

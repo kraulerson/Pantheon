@@ -98,3 +98,13 @@ describe("renderHarnessFrame — reaching Configuration (BUGS #16)", () => {
     expect(header).toContain('href="/admin/config"');
   });
 });
+
+describe("renderHarnessFrame — Help", () => {
+  it("puts a Help link in the header, in every registry state", () => {
+    for (const machines of [[], [machine({ provisioned: false })], [machine({})]]) {
+      const html = renderHarnessFrame({ devMachines: machines });
+      const header = html.slice(html.indexOf("<header>"), html.indexOf("</header>"));
+      expect(header).toContain('href="/help"');
+    }
+  });
+});

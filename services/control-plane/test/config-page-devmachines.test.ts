@@ -106,3 +106,10 @@ describe("renderConfigPage — provisioning a machine from the page (no terminal
     expect(html).toContain("not stored");
   });
 });
+
+describe("renderConfigPage — Help", () => {
+  it("links to the user guide", () => {
+    const html = renderConfigPage({ backends: [], serviceEndpoints: [], mcpServers: [], devMachines: [] } as never);
+    expect(html).toContain('href="/help"');
+  });
+});

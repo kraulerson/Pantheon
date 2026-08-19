@@ -19,6 +19,14 @@ for handoff clarity. Categories are ordered by impact severity.
 
 ## [Unreleased]
 
+### Documentation
+- 2026-08-19 **Operator user guide** (`docs/user-guide.html`), served at `/help` and linked from
+  the harness header, the Configuration page, and the chat page's Help & FAQ item. Covers both
+  addresses, sign-in, every Configuration field with its valid values, dev-machine setup end to
+  end, day-to-day operation, the settings files behind the pages, and troubleshooting. Includes an
+  explicit "what is not built yet" section — the harness is mid-skeleton and a guide that implied
+  otherwise would be fiction. Public by ruling (no login), so the chat page's Help always resolves.
+
 ### Added
 - 2026-08-19 **Dev-machine enrollment from the Configuration page** (`devmachine-ui-enrollment`):
   a machine can now be set up entirely in the harness. The page collects the target machine's

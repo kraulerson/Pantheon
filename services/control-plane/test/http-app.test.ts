@@ -429,3 +429,28 @@ describe("dev-machine form encoding (the Config page posts an HTML form, not JSO
     expect(res.statusCode).toBe(400);
   });
 });
+
+describe("user guide at /help", () => {
+  let app: FastifyInstance;
+  beforeEach(() => {
+    ({ app } = makeApp());
+  });
+
+  it("serves the guide WITHOUT login — the operator chose an open guide (ruling 2026-08-19)", async () => {
+    const res = await app.inject({ method: "GET", url: "/help", headers: { accept: "text/html" } });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toContain("text/html");
+  });
+
+  it("is the real guide, not a stub", async () => {
+    const body = (await app.inject({ method: "GET", url: "/help" })).body;
+    expect(body).toContain("Pantheon Harness — User Guide");
+    expect(body).toContain("What is not built yet"); // the honesty section must survive edits
+    expect(body).toContain("Setting up a dev machine");
+  });
+
+  it("does not open anything else up: /harness still needs auth", async () => {
+    const res = await app.inject({ method: "GET", url: "/harness" });
+    expect(res.statusCode).toBe(401);
+  });
+});
