@@ -45,7 +45,13 @@ pantheon.lan, pantheon.ferrumcorde.com, 192.168.1.93 {
 }
 
 # ---- Control-plane admin service (config page, approvals, harness frame, terminals) --
-admin.pantheon.lan {
+# `192.168.1.93:8443` is the household entrance to this console (published as
+# pantheon-admin.ferrumcorde.com by the service-intake platform). It is a separate PORT, not a
+# second hostname, on purpose: the household edge proxy rewrites Host to the backend address
+# (verified 2026-08-19 — `Host: 192.168.1.93:443`, real name only in X-Forwarded-Host), so two
+# household names cannot be told apart on one port. Port 8443 disambiguates without trusting a
+# forgeable header. Publish it in docker-compose.yml alongside 80/443.
+admin.pantheon.lan, 192.168.1.93:8443 {
 	tls internal
 	import security_headers
 	header X-Frame-Options "DENY"
