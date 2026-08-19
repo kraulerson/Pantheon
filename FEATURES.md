@@ -135,3 +135,30 @@ rejected).
 **Known Limitations:** `Secure` cookie + `wss://` require TLS (set `PANTHEON_SECURE_COOKIES=true` behind
 the reverse proxy); no login rate-limiting or CSRF token yet (SameSite=Lax is the current CSRF
 control); in-memory sessions reset on restart. The D6 privileged step-up (passkey/WebAuthn) is unbuilt.
+
+## Feature 7: Dev-Machine Enrollment from the UI (password bootstrap)
+
+**Phase Built:** 2
+**Status:** Complete
+**Summary:** Turns "register a machine" into a job that finishes where it starts. Registering only
+records where a machine is; it becomes usable when the harness public key is installed on it, and
+that step used to need `ssh-copy-id` — which prompts on a TTY, so the operator had to run a command
+on their own machine. The Configuration page now shows a Provision form for any unprovisioned
+machine: it takes the target's password, and the server opens ONE password-authenticated ssh2
+connection, appends the harness PUBLIC key to `authorized_keys` (idempotently, guarded by
+`grep -qxF`), then proves the result by reconnecting KEY-ONLY before recording `provisioned`.
+A failed enrollment leaves the row untouched rather than half-recorded.
+
+**Security posture:** the password is request-scoped — never persisted, logged, echoed into any
+response (including errors, which are rewritten rather than forwarded), or placed on a remote
+command line. The private key never leaves custody (TM-020); only the public half is installed, and
+it is validated against a strict OpenSSH grammar before being interpolated into the remote command.
+Known gap: no host-key verification on either SSH path (BUGS #17).
+
+**Interfaces:** `POST /api/dev-machines/:id/provision` (admin-guarded; form post → 303 back to
+`/admin/config`, JSON post → the updated record).
+**Code:** `src/devmachine/enrollment.ts`, `src/devmachine/enrollment-ssh.ts`,
+`src/http/routes/enrollment.ts`, `src/http/config-page.ts`.
+**Tests:** `test/devmachine-enrollment.test.ts`, `test/enrollment-route.test.ts`,
+`test/config-page-devmachines.test.ts`.
+**Audit:** `docs/security-audits/devmachine-ui-enrollment-security-audit.md`.

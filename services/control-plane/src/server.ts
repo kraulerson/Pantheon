@@ -26,6 +26,10 @@ import { RegistryService } from "./registry/service.js";
 import { McpRegistrationService, type PetaServerAdmin } from "./registry/mcp-registration.js";
 import { PetaAdminClient } from "./peta/index.js";
 import { registerTerminalRoute } from "./http/routes/terminal.js";
+import { registerEnrollmentRoute } from "./http/routes/enrollment.js";
+import { enrollMachine } from "./devmachine/enrollment.js";
+import { ssh2EnrollmentPort } from "./devmachine/enrollment-ssh.js";
+import { ChildProcessRunner, SshKeygenGenerator } from "./devmachine/index.js";
 import {
   FileKeyCustody,
   TerminalRegistry,
@@ -43,6 +47,8 @@ export interface ServerConfig {
   readonly operatorPassword?: string;
   /** Add `Secure` to the session cookie (set true behind HTTPS/your reverse proxy). */
   readonly secureCookies?: boolean;
+  /** Custody handle of the shared harness keypair (PANTHEON_KEY_HANDLE, default "harness"). */
+  readonly keyHandle: string;
   /** Injected fetch for the Peta client (tests). */
   readonly fetchFn?: typeof fetch;
 }
@@ -82,6 +88,18 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   const connect = (target: SshTarget, handle: string) => connectTerminal(target, handle, { custody });
   await registerTerminalRoute(app, { registry, terminals, connect });
 
+  // One-time enrollment from the Configuration page (ADR-0005): the operator supplies the target
+  // machine's password in the browser, the server installs the harness PUBLIC key and verifies a
+  // key-only login. Setting a machine up must not require the operator to run anything locally.
+  const keygen = new SshKeygenGenerator(new ChildProcessRunner());
+  const enrollSsh = ssh2EnrollmentPort();
+  registerEnrollmentRoute(app, {
+    registry,
+    enroll: (target, handle, password) =>
+      enrollMachine(target, handle, password, { custody, keygen, ssh: enrollSsh }),
+    keyHandle: cfg.keyHandle
+  });
+
   return app;
 }
 
@@ -95,6 +113,7 @@ export function configFromEnv(env: Record<string, string | undefined>): ServerCo
     adminToken,
     dbPath: env["PANTHEON_DB"] ?? resolve("data/control-plane.db"),
     keyDir: env["PANTHEON_KEY_DIR"] ?? defaultKeyDir(),
+    keyHandle: env["PANTHEON_KEY_HANDLE"] ?? "harness",
     ...(peta ? { peta } : {}),
     ...(env["PANTHEON_OPERATOR_PASSWORD"] ? { operatorPassword: env["PANTHEON_OPERATOR_PASSWORD"] } : {}),
     ...(env["PANTHEON_SECURE_COOKIES"] === "true" ? { secureCookies: true } : {})

@@ -161,6 +161,27 @@ function serviceEndpointsSection(endpoints: readonly ServiceEndpoint[]): string 
  * flow (sub-task b) — this page never accepts or displays the key handle or any raw key material.
  * Only the *provisioned* status is surfaced so the operator knows which machines still need it.
  */
+/**
+ * One-time enrollment form (ADR-0005, TM-020). Registering a machine only records where it is; it
+ * becomes usable once the harness PUBLIC key is installed on it, which needs one authenticated
+ * connection. Collecting that password here keeps setup inside the harness — the operator should
+ * never have to run a command on their own machine to finish a job the UI started.
+ *
+ * The field is `type="password"` + `autocomplete="off"` so it is neither displayed nor offered back
+ * by the browser later, and the server uses it for that single connection without storing or
+ * logging it (see `devmachine/enrollment.ts`). Shown only while a machine is unprovisioned.
+ */
+function provisionForm(m: DevMachine): string {
+  if (m.provisioned) return "";
+  return ` <form method="post" action="/api/dev-machines/${esc(m.id)}/provision" data-form="provision-devmachine">
+      <label>Machine password <input type="password" name="password" autocomplete="off" required
+        aria-describedby="provision-note-${esc(m.id)}"></label>
+      <button type="submit">Provision</button>
+      <span class="muted" id="provision-note-${esc(m.id)}">Used once to install the harness key on
+        ${esc(m.logicalName)}. Not stored, not logged. Every later connection is key-only.</span>
+    </form>`;
+}
+
 function devMachinesSection(machines: readonly DevMachine[]): string {
   const rows =
     machines.length === 0
@@ -176,7 +197,7 @@ function devMachinesSection(machines: readonly DevMachine[]): string {
                 m.id
               )}">Edit</button> <button type="button" data-action="remove-devmachine" data-id="${esc(
                 m.id
-              )}">Remove</button></td></tr>`
+              )}">Remove</button>${provisionForm(m)}</td></tr>`
           )
           .join("")}</tbody></table>`;
 

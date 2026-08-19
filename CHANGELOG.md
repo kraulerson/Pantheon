@@ -19,6 +19,24 @@ for handoff clarity. Categories are ordered by impact severity.
 
 ## [Unreleased]
 
+### Added
+- 2026-08-19 **Dev-machine enrollment from the Configuration page** (`devmachine-ui-enrollment`):
+  a machine can now be set up entirely in the harness. The page collects the target machine's
+  password, the control-plane installs the harness PUBLIC key over one ssh2 connection
+  (`devmachine/enrollment.ts` + `enrollment-ssh.ts`), verifies a KEY-ONLY login, and only then
+  records `provisioned` (`POST /api/dev-machines/:id/provision`). Closes the hole where finishing
+  a UI action required the operator to run `provision-devmachine` in a shell on their own machine.
+  The password is request-scoped: never persisted, logged, echoed in any response, or placed in a
+  remote command line. The existing CLI is unchanged and remains the fallback.
+
+### Security
+- 2026-08-19 Security audit for the enrollment feature:
+  `docs/security-audits/devmachine-ui-enrollment-security-audit.md` (11 concrete exploit attempts).
+  One finding, **BUGS #17**: neither SSH path verifies host keys (no `hostVerifier`, no
+  known_hosts). Pre-existing in the terminal path, but enrollment raises its impact — the first
+  connection carries the operator's machine password, so an impersonating host on the LAN could
+  harvest it. Deferred deliberately, documented inline in `enrollment-ssh.ts`.
+
 ### Security
 - 2026-08-17 remediation pass (non-credential steps; Karl-directed): Peta eval stack
   decommissioned — containers/volumes/image deleted, folder to Trash (F1 CLOSED; it had

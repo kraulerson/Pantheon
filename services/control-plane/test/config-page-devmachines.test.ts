@@ -78,3 +78,31 @@ describe("renderConfigPage — DevMachine section", () => {
     expect(html).toContain("&lt;script&gt;");
   });
 });
+
+describe("renderConfigPage — provisioning a machine from the page (no terminal required)", () => {
+  const page = (over: Partial<DevMachine> = {}) =>
+    renderConfigPage({ backends: [], serviceEndpoints: [], mcpServers: [], devMachines: [{ ...machine, ...over }] } as never);
+
+  it("offers a Provision form for an unprovisioned machine, posting to its enrollment route", () => {
+    const html = page({ provisioned: false });
+    expect(html).toContain('action="/api/dev-machines/m1/provision"');
+    expect(html).toMatch(/<form[^>]*method="post"[^>]*action="\/api\/dev-machines\/m1\/provision"/);
+  });
+
+  it("collects the machine password in a password field that browsers will not autofill or store", () => {
+    const html = page({ provisioned: false });
+    const form = html.slice(html.indexOf("/api/dev-machines/m1/provision"));
+    expect(form).toContain('type="password"');
+    expect(form).toContain('name="password"');
+    expect(form).toContain('autocomplete="off"');
+  });
+
+  it("does not offer the form for a machine that is already provisioned", () => {
+    expect(page({ provisioned: true })).not.toContain("/api/dev-machines/m1/provision");
+  });
+
+  it("says plainly what the password is used for — one-time key install, not stored", () => {
+    const html = page({ provisioned: false }).toLowerCase();
+    expect(html).toContain("not stored");
+  });
+});
