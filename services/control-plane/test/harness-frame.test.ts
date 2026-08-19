@@ -72,3 +72,29 @@ describe("renderHarnessFrame", () => {
     expect(html).toContain("&lt;script&gt;");
   });
 });
+
+describe("renderHarnessFrame — reaching Configuration (BUGS #16)", () => {
+  // The Configuration link used to live ONLY in the "no machines at all" empty state, so the
+  // first machine an operator registered made the link disappear — and with an unprovisioned
+  // machine there is no terminal to open either, leaving the page a dead end with no way back
+  // to the page that fixes it. Navigation must not be a function of registry contents.
+  it("links to Configuration when the registry is empty", () => {
+    expect(renderHarnessFrame({ devMachines: [] })).toContain('href="/admin/config"');
+  });
+
+  it("still links to Configuration once a machine exists but is not provisioned", () => {
+    const html = renderHarnessFrame({ devMachines: [machine({ provisioned: false })] });
+    expect(html).toContain('href="/admin/config"');
+  });
+
+  it("still links to Configuration when a machine is ready to use", () => {
+    const html = renderHarnessFrame({ devMachines: [machine({ provisioned: true, enabled: true })] });
+    expect(html).toContain('href="/admin/config"');
+  });
+
+  it("keeps the link in the page chrome, not only inside the empty-state message", () => {
+    const html = renderHarnessFrame({ devMachines: [machine({ provisioned: false })] });
+    const header = html.slice(html.indexOf("<header>"), html.indexOf("</header>"));
+    expect(header).toContain('href="/admin/config"');
+  });
+});

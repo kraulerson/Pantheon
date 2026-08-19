@@ -199,6 +199,10 @@ export function renderHarnessFrame(model: HarnessFrameModel): string {
 <body>
 <header><strong>Pantheon Harness</strong>
   <button type="button" data-action="new-session">+ New Session</button>
+  <!-- Configuration lives in the page chrome, NOT inside the empty-state message: it used to
+       appear only when the registry was empty, so registering the first machine removed the
+       operator's only route back to the page that provisions it (BUGS #16). -->
+  <a href="/admin/config" data-nav="config">Configuration</a>
 </header>
 
 <!-- Tab bar: terminal/chat tabs are added here at runtime -->
