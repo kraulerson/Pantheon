@@ -111,6 +111,44 @@ export function verifyStepUp(_req: FastifyRequest): GuardResult {
   return { ok: false, status: 403, reason: "step_up_not_configured" };
 }
 
+/**
+ * Translate the Config page's "Add Dev Machine" HTML form into the typed shape the registry
+ * expects. A plain HTML form has no types: every field arrives as a STRING, and an unchecked
+ * checkbox does not arrive at all. The registry's guards are strict on purpose — `assertPort`
+ * rejects the string "22" exactly as hard as the number 70000, because silent coercion deep in
+ * the domain is how bad values get laundered — so the wire encoding is translated HERE, at the
+ * only layer that knows which encoding was used, and nowhere deeper.
+ *
+ * JSON bodies pass through untouched: a JSON client sending `"port": "22"` is still rejected.
+ * A non-numeric string is passed through untouched too, so the strict guard rejects it rather
+ * than this function inventing a value.
+ *
+ * Deliberately NOT reused for PUT: in a patch body an ABSENT `enabled` means "leave it alone",
+ * while an absent form checkbox means "false" — the same wire shape with opposite meanings.
+ * There is no dev-machine edit form today; if one is added it needs its own normalizer.
+ */
+function devMachineFormBody(body: unknown, contentType: string | undefined): unknown {
+  if (typeof contentType !== "string" || !contentType.includes("application/x-www-form-urlencoded")) {
+    return body;
+  }
+  if (typeof body !== "object" || body === null) return body;
+  const src = body as Record<string, unknown>;
+  const out: Record<string, unknown> = { ...src };
+  if (typeof src.port === "string") {
+    // No trimming: " 22" is not something a number input can produce, so accepting it would be
+    // laundering hand-crafted input. Only an exactly-empty field means "unset", and only pure
+    // digits convert; everything else travels on untouched to be rejected by the strict guard.
+    const raw = src.port;
+    if (raw === "") {
+      delete out.port; // blank field → let the registry apply its documented default (22)
+    } else if (/^[0-9]+$/.test(raw)) {
+      out.port = Number(raw);
+    }
+  }
+  out.enabled = src.enabled === "on" || src.enabled === "true" || src.enabled === true;
+  return out;
+}
+
 export function buildApp(opts: AppOptions): FastifyInstance {
   const app = Fastify({ logger: false });
   const { registry, mcp } = opts;
@@ -200,7 +238,9 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.get("/api/dev-machines", async () => registry.listDevMachines());
 
   app.post("/api/dev-machines", async (req, reply) => {
-    const created = registry.createDevMachine(req.body as never);
+    const created = registry.createDevMachine(
+      devMachineFormBody(req.body, req.headers["content-type"]) as never
+    );
     reply.code(201);
     return created;
   });

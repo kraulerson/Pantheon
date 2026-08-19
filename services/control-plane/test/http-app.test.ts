@@ -375,3 +375,57 @@ describe("MCP-server registration API (via inject, stubbed Peta)", () => {
     expect(mcpClient.createServer).not.toHaveBeenCalled();
   });
 });
+
+describe("dev-machine form encoding (the Config page posts an HTML form, not JSON)", () => {
+  let app: FastifyInstance;
+  beforeEach(() => {
+    ({ app } = makeApp());
+  });
+
+  const postForm = (payload: string) =>
+    app.inject({
+      method: "POST",
+      url: "/api/dev-machines",
+      headers: { ...auth, "content-type": "application/x-www-form-urlencoded" },
+      payload
+    });
+
+  it("accepts the page's own encoding and stores typed values", async () => {
+    const res = await postForm("logicalName=mac-mini&host=192.168.1.192&port=22&user=karl&enabled=on");
+    expect(res.statusCode).toBe(201);
+    expect(res.json().port).toBe(22);
+    expect(res.json().enabled).toBe(true);
+  });
+
+  it("applies the default port when the form leaves the field blank", async () => {
+    const res = await postForm("logicalName=blank-port&host=192.168.1.192&port=&user=karl&enabled=on");
+    expect(res.statusCode).toBe(201);
+    expect(res.json().port).toBe(22);
+  });
+
+  it("treats an absent checkbox as disabled, not as an error", async () => {
+    const res = await postForm("logicalName=unchecked&host=192.168.1.192&port=22&user=karl");
+    expect(res.statusCode).toBe(201);
+    expect(res.json().enabled).toBe(false);
+  });
+
+  it("still rejects a genuinely bad port from a form (fail-closed, no write)", async () => {
+    const bad = ["0", "65536", "-1", "22.5", "abc", "%2022", "0x16"];
+    for (let i = 0; i < bad.length; i++) {
+      const res = await postForm(`logicalName=bad-${i}&host=192.168.1.192&port=${bad[i]}&user=karl&enabled=on`);
+      expect(res.statusCode, `port=${bad[i]}`).toBe(400);
+    }
+    const list = await app.inject({ method: "GET", url: "/api/dev-machines", headers: auth });
+    expect(list.json()).toHaveLength(0);
+  });
+
+  it("leaves JSON bodies strict — a string port is still rejected", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/dev-machines",
+      headers: auth,
+      payload: { logicalName: "json-string-port", host: "192.168.1.192", port: "22", user: "karl" }
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});

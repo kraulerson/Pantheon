@@ -138,7 +138,11 @@ function assertHost(value: unknown): string {
 function assertPort(value: unknown): number {
   if (value === undefined) return 22;
   if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > 65535) {
-    throw new ValidationError(`port out of range (1-65535): ${String(value)}`);
+    // Message names the TYPE as well as the range: a form-posted string "22" used to be
+    // reported as "out of range", which reads as though 22 were an illegal port number.
+    throw new ValidationError(
+      `port must be a whole number 1-65535 (got ${typeof value}: ${JSON.stringify(value)})`
+    );
   }
   return value;
 }
