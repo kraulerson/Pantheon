@@ -7,6 +7,15 @@
 # and same-host services call it. Nothing here is reachable from the public internet
 # (pfSense/no port-forward + Tailscale is the outer wall; verify with the M2 test).
 
+# ---- global options -----------------------------------------------------------------
+# default_sni: the household edge proxy (Caddy CT 1052 on 10.100.23.52) reaches this host by
+# IP, so its TLS ClientHello carries NO SNI and the handshake fails with no default set.
+# Naming the household hostname keeps that hop ENCRYPTED — the alternative was a plaintext
+# HTTP hop — and lets the service-intake platform emit its stock `https-self-signed` block.
+{
+	default_sni pantheon.ferrumcorde.com
+}
+
 # ---- shared security-header snippet (Bible §11 header list) -------------------------
 (security_headers) {
 	header {
@@ -19,7 +28,16 @@
 
 # ---- LibreChat (chat UI) -------------------------------------------------------------
 # Adjust the hostname to your LAN DNS (pfSense host override or /etc/hosts entries).
-pantheon.lan {
+# `pantheon.ferrumcorde.com` is the household name, published by the service-intake platform
+# (10.100.23.60) into the household Caddy + both Pi-holes. INTERNAL DNS ONLY — no public record,
+# no tunnel; same posture as alden.ferrumcorde.com (ruling 2026-08-18).
+# The bare VM IP is a third site address ON PURPOSE: the household edge proxy dials this host
+# as `https://192.168.1.93:443` and its request arrives with the IP as Host/:authority, which
+# matches no named site — and Caddy answers an unmatched site with an EMPTY 200 (silent, and
+# not written to this site's access log). Listing the IP routes that request to the chat UI
+# like any other. Verified 2026-08-19: without it the household route serves a zero-byte 200.
+pantheon.lan, pantheon.ferrumcorde.com, 192.168.1.93 {
+	log
 	tls internal
 	import security_headers
 	header X-Frame-Options "SAMEORIGIN"

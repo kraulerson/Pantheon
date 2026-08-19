@@ -59,3 +59,33 @@ nmap -Pn -p 3002,5433,3080,27017,7700 <vm-ip>                                   
 ```
 
 Public reachability is a defect, not a recoverable state (Bible §11).
+
+## Household hostname — `pantheon.ferrumcorde.com` (added 2026-08-19)
+
+The chat UI is published to the household under `pantheon.ferrumcorde.com` via the homelab's
+**service-intake platform** (`http://10.100.23.60:8000`, LXC 1060 on node `proxmox-2`). The
+intake ran its 12-step pipeline end-to-end: household Caddy (CT 1052, `10.100.23.52`) vhost →
+both Pi-holes (`192.168.1.41` / `.42`) → Homepage tile (`10.100.23.51`, category *Alden AI
+Stack*). **Do not hand-edit the household Caddyfile** — the intake owns it (it keeps timestamped
+backups and re-validates); use its edit mode to change the backend.
+
+Request path: browser → household Caddy `10.100.23.52:443` (public-trusted wildcard cert,
+Let's Encrypt via Cloudflare DNS-01) → `https://192.168.1.93:443` (this host's Caddy, internal
+CA, `tls_insecure_skip_verify` on the hop) → `librechat:3080`.
+
+**Exposure posture is unchanged: internal only.** The A record lives solely in the two Pi-holes;
+`dig @1.1.1.1 pantheon.ferrumcorde.com` returns nothing. DNS-01 issuance publishes no per-host
+record, and the wildcard cert already existed. Same posture as `alden.ferrumcorde.com`
+(ruling 2026-08-18) — no public DNS, no tunnel, no port-forward.
+
+Two things in `Caddyfile` exist **only** to make that hop work — do not "clean them up":
+
+1. `default_sni pantheon.ferrumcorde.com` (global) — the edge proxy dials this host by IP, so
+   its TLS ClientHello carries no SNI; with no default the handshake fails outright.
+2. `192.168.1.93` listed as a third address on the chat site — the edge proxy's request arrives
+   with the **IP as Host/`:authority`**, which matches no named site, and Caddy answers an
+   unmatched site with an empty `200` and no access-log line. That failure is silent: the
+   route "works" (HTTP 200) while serving a zero-byte body. Verified both ways on 2026-08-19.
+
+If the VM's IP ever changes, three places move together: this Caddyfile line, the intake's
+edit-mode backend, and the Homepage tile's IP label (the intake syncs the label itself).
