@@ -97,3 +97,34 @@ describe("Browser auth (#9)", () => {
     expect(after.statusCode).toBe(302); // back to /login
   });
 });
+
+describe("root path — what a bookmark or the chat UI's shortcut actually hits", () => {
+  let app: FastifyInstance;
+  beforeEach(() => {
+    app = makeApp();
+  });
+
+  // Regression for BUGS #15: `/` had no route at all. Logged OUT the gap was invisible, because
+  // the auth hook redirects to /login before routing; logged IN the request reached Fastify's
+  // 404 handler and the operator got raw JSON ("Route GET:/ not found") from a link.
+  it("sends an authenticated browser from / to the harness", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/",
+      headers: { authorization: `Bearer ${TOKEN}`, ...html }
+    });
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toBe("/harness");
+  });
+
+  it("still sends a logged-out browser from / to /login (fail-closed unchanged)", async () => {
+    const res = await app.inject({ method: "GET", url: "/", headers: html });
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toBe("/login");
+  });
+
+  it("does not hand an unauthenticated API caller a redirect", async () => {
+    const res = await app.inject({ method: "GET", url: "/" });
+    expect(res.statusCode).toBe(401);
+  });
+});

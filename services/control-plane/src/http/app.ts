@@ -269,6 +269,15 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     reply.code(204);
   });
 
+  // The bare origin is what a bookmark, or the chat UI's admin shortcut, actually requests.
+  // Without a route here an AUTHENTICATED request fell through to Fastify's 404 and the operator
+  // got raw JSON ("Route GET:/ not found") after clicking a link (BUGS #15). The gap was
+  // invisible while logged out, because the auth hook redirects to /login before routing ever
+  // happens. Not in PUBLIC_PATHS: logged-out callers keep getting /login (browser) or 401 (API).
+  app.get("/", async (_req, reply) => {
+    reply.redirect("/harness");
+  });
+
   // ---- Harness UI (frame + xterm.js terminal tabs + public xterm assets) — ADR-0005 §9 C.1/C.6 ----
   registerHarnessRoutes(app, { registry });
 
