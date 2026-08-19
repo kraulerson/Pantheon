@@ -89,3 +89,19 @@ Two things in `Caddyfile` exist **only** to make that hop work — do not "clean
 
 If the VM's IP ever changes, three places move together: this Caddyfile line, the intake's
 edit-mode backend, and the Homepage tile's IP label (the intake syncs the label itself).
+
+## Admin console entrance — `pantheon-admin.ferrumcorde.com` (added 2026-08-19)
+
+Registered through the same service-intake platform, but pointed at **port 8443**, not a second
+hostname on 443. Reason: the household edge proxy rewrites `Host` to the backend address (its
+requests arrive here as `Host: 192.168.1.93:443`, with the real name only in `X-Forwarded-Host`),
+so two household names are indistinguishable on one port. The admin site therefore listens on
+`admin.pantheon.lan` **and** `192.168.1.93:8443`, and 8443 is published in `docker-compose.yml`.
+Matching on `X-Forwarded-Host` was rejected — any LAN client could forge it.
+
+The chat UI links to it through `HELP_AND_FAQ_URL` (`.env`): LibreChat has no supported way to add
+a custom item to the profile menu, so the one configurable item ("Help & FAQ") is repointed here.
+If that menu entry ever stops working after a LibreChat upgrade, check that variable first.
+
+Console posture is unchanged: fail-closed 401 without the operator passphrase, `X-Frame-Options:
+DENY`, and no public DNS record.
