@@ -74,10 +74,19 @@ if (cmd === 'create-owner') {
   const serverId = arg(3) || 'mock';
   const launchObj = { type: 'http', url: MOCK_URL };
   if (process.env.MOCK_SECRET) launchObj.headers = { 'x-eval-secret': process.env.MOCK_SECRET };
+  // Production downstreams (the Alden Bridge, obsidian-mcp) authenticate with real headers, not the
+  // eval's mock secret. MCP_HEADERS carries them as JSON so the token never appears in argv (where
+  // it would land in the process list) — export it from a 0600 env file, never inline on a command
+  // line. Added 2026-08-19 for skeleton step 2; the eval path is unchanged when it is unset.
+  if (process.env.MCP_HEADERS) {
+    launchObj.headers = { ...(launchObj.headers || {}), ...JSON.parse(process.env.MCP_HEADERS) };
+  }
   const launch = JSON.stringify(launchObj);
   const launchConfig = JSON.stringify(await encryptData(launch, ownerTok()));
   const r = await admin(2010, {
-    serverId, serverName: 'Mock MCP', category: 2, authType: 1, allowUserInput: false,
+    // Name it after what it IS: this driver now registers production downstreams, and a real
+    // Peta instance showing "Mock MCP" is a lie the next reader has to unpick (skeleton step 2).
+    serverId, serverName: process.env.MCP_SERVER_NAME || serverId, category: 2, authType: 1, allowUserInput: false,
     enabled: true, configTemplate: JSON.stringify({ url: MOCK_URL }), launchConfig,
   }, ownerTok());
   console.log('CREATE_SERVER:', r.status, JSON.stringify(r.json));

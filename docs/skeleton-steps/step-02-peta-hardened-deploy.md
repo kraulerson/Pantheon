@@ -28,10 +28,29 @@ fresh tokens. NEVER reuse eval tokens (they are transcript-exposed — security 
    `PETA_ADMIN_TOKEN` (and set `PETA_URL=http://127.0.0.1:3002`). Never into chat,
    never into a doc, never into git.
 4. **Register downstream MCP servers** (HTTP/streamable ONLY — never `CustomStdio`,
-   Bible §11): `node peta.mjs register-server <name> <url>` for: the Alden Bridge
-   (`http://10.100.23.88:8765/mcp`) and obsidian-mcp
-   (`http://127.0.0.1:<its-port>/mcp` once its unit is enabled). Set capabilities via
-   `set-caps` as the tools require.
+   Bible §11). **Corrected 2026-08-19:** the driver does NOT take a URL argument — it reads
+   `MOCK_URL`, and auth headers come from `MCP_HEADERS` (added during step-2 execution, so a
+   token never appears in argv/the process list). The real invocation is:
+
+   ```
+   export MOCK_URL=http://10.100.23.88:8765/mcp
+   export MCP_HEADERS='{"Authorization":"Bearer <token from a 0600 env file>"}'
+   export MCP_SERVER_NAME='Alden Bridge'
+   node peta.mjs register-server alden-bridge
+   ```
+
+   Downstreams: the Alden Bridge (`http://10.100.23.88:8765/mcp`) and obsidian-mcp
+   (`http://127.0.0.1:<its-port>/mcp` once its unit is enabled — **not built yet**: the
+   service has `src/` but no `dist/`). Set capabilities via `set-caps` as the tools require.
+
+   **Credential decision this forces (open, 2026-08-19):** the bridge authenticates with a
+   token the harness VM does not have — the VM's `.env.local` was generated fresh in step 1
+   with no `BRIDGE_MCP_*` entries. Supplying it means either copying the household bridge
+   token to a second host (a deliberate credential fan-out — BUG-010's lesson is that
+   rotating it then becomes a multi-host job, and Peta stores a copy too), minting a
+   VM-specific bridge token (needs the alden-infra side), or using our own obsidian-mcp as
+   the skeleton downstream instead (no household credential, but it must be built first).
+   **Do not resolve this by quietly copying the token.**
 5. **Create one Peta user per identity:** `node peta.mjs create-user <identity> <permsJSON>`
    with per-tool grants per the ToolClassification rules (Bible §5: every send-type
    tool — `converse`, `alden_mailbox_write`, `alden_queue_message`, `alden_share_write`,
