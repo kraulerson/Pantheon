@@ -20,6 +20,16 @@ for handoff clarity. Categories are ordered by impact severity.
 ## [Unreleased]
 
 ### Documentation
+- 2026-08-20 **Capability-gap study + operator decisions + architecture restructure.**
+  Four-harness study (`docs/research/2026-08-20-harness-capability-gap-study.md`, OpenClaw/
+  Odysseus/Hermes/dsh — all REJECT-as-adoption; Hermes FROZEN closed). Karl ruled all 20
+  suggestions (`docs/research/2026-08-20-capability-decisions.md`): 19 adopt / 1 reject.
+  Architecture-conflict review (`docs/research/2026-08-20-architecture-conflict-review.md`)
+  + four A-rulings. Roadmap restructured to three milestones, terminal-plane first (A-2);
+  Ruling C freeze re-scoped to M2; TP-4 board promoted to MVP; TP-7 terminal recording as a
+  bounded D8/ADR-0005 exception (per-tab opt-in, off by default). Amended PRODUCT_MANIFESTO
+  §5, PROJECT_BIBLE (capability-gap section), walking-skeleton charter (now M2), README, and
+  APPROVAL_LOG. Opus 5 build plan: `docs/handoffs/2026-08-20-M1-build-plan.md`.
 - 2026-08-19 **Operator user guide** (`docs/user-guide.html`), served at `/help` and linked from
   the harness header, the Configuration page, and the chat page's Help & FAQ item. Covers both
   addresses, sign-in, every Configuration field with its valid values, dev-machine setup end to

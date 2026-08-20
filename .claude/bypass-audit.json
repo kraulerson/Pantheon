@@ -1,0 +1,20 @@
+[
+  {
+    "timestamp": "2026-08-20T13:53:16Z",
+    "session_id": null,
+    "type": "escalation",
+    "actor": "framework",
+    "enforcement_level_at_event": "strict",
+    "details": {
+      "question": "Test gate blocks the tmux-launcher feature: a UAT session is required (2 features since last test). Run UAT now, or record a deferral ruling?",
+      "options": [
+        "A1: Run the UAT session now — validates enrolment + the 4 bugs fixed this week + the terminal plane we just re-scoped to ship first",
+        "A2: Operator rules a deferral, recorded in APPROVAL_LOG, and the tmux launcher proceeds immediately"
+      ],
+      "recommendation": "A1",
+      "rationale": "The terminal plane just became milestone one; UAT on it is now the highest-value testing we could do, and four bug fixes plus the enrolment feature are currently unverified by anyone but me. Deferral is legitimate (the operator is the Orchestrator) but should be a recorded decision, not a silent skip."
+    },
+    "user_response": "PENDING",
+    "final_outcome": "escalated"
+  }
+]

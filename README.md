@@ -7,10 +7,19 @@ governed at a hardened gateway, every recalled word treated as untrusted, every 
 held for human approval. Private infrastructure; one human operator (Karl); LAN/
 Tailscale only, **no public ingress, ever**.
 
-**Status (2026-07-10):** Phase 2 under the walking-skeleton freeze. Design complete and
-validated — every architecture decision resolved and recorded; ~330 passing tests; a
-junior-executable build path exists. Next: the security remediation pass, then skeleton
-assembly per `docs/skeleton-steps/`.
+**Status (2026-08-20):** Phase 2, in assembly. Security remediation complete; the target
+**Debian VM is deployed** (VM 1093), the third-party stack is up, the control-plane runs
+behind Caddy over LAN-only HTTPS, and dev-machine enrolment + persistent SSH-terminal tabs
+work end-to-end (Claude Code on a Max subscription, in the browser). **377 passing tests.**
+
+The roadmap is now **three milestones, terminal-plane first** (ruling A-2, 2026-08-20):
+**M1** — the terminal plane the operator lives in (session comms/waker, a scoped
+read/propose session keycard, a cross-project task board, `pantheon doctor`); **M2** — the
+walking-skeleton chat plane (Facade → streaming → cost meter → session binding → one gated
+write; the original charter, freeze still gating its acceptance); **M3** — chat-plane
+capability items. A four-harness capability study (OpenClaw, Odysseus, Hermes,
+deepseek-harness) has been run and 19 pattern borrows adopted —
+`docs/research/2026-08-20-capability-decisions.md`.
 
 ## Architecture (as decided)
 
@@ -51,18 +60,23 @@ shape/label/icon, never color alone.
 
 ## Build-over-adopt record
 
-Evaluated and **not** adopted, with full written rationale: **Turnstone** (doctrine
-inversion; six patterns borrowed with attribution) and **Bifrost** (real capabilities,
-wrong footprint — needing four walls to make a platform safe was itself the signal).
-The fallback-gateway ladder is Peta → ToolHive → Preloop → small custom gateway.
-Details: `docs/2026-07-09-turnstone-bifrost-eval.md`.
+Evaluated and **not** adopted, with full written rationale: **Turnstone** and **Bifrost**
+(`docs/2026-07-09-turnstone-bifrost-eval.md`), and — 2026-08-20 — **OpenClaw, Odysseus
+(PewDiePie), and Hermes Agent**, all REJECT-as-adoption on the four-part test
+(`docs/research/2026-08-20-harness-capability-gap-study.md`). None replaces a component
+Pantheon builds; Pantheon stays hand-built and borrows *patterns* (19 adopted). Two findings
+worth stating: Odysseus independently converged on a server-side, model-distrusting approval
+gate — the closest external validation of this design yet; and none of the four keeps the
+operator's own Claude Code CLI + Max subscription as the primary way of working, which is the
+reason Pantheon exists. The fallback-gateway ladder is Peta → ToolHive → Preloop → small
+custom gateway.
 
 ## Repository layout
 
 | Path | Contents |
 |---|---|
 | `PROJECT_BIBLE.md` / `PRODUCT_MANIFESTO.md` / `APPROVAL_LOG.md` | The canon: architecture, requirements/cutline, governance ledger |
-| `services/control-plane/` | The TS control plane (Fastify, better-sqlite3; ~309 tests) |
+| `services/control-plane/` | The TS control plane (Fastify, better-sqlite3; 332 tests) |
 | `services/obsidian-mcp/` | Vault-confined MCP server (HTTP transport) |
 | `deploy/` | Compose + Caddyfile + systemd units + env template |
 | `docs/` | **Start at `docs/README.md`** — the documentation map |
@@ -72,12 +86,15 @@ Details: `docs/2026-07-09-turnstone-bifrost-eval.md`.
 
 ## Building it
 
-1. Read `docs/README.md`, then `docs/walking-skeleton-milestone.md` (charter +
-   acceptance checklist).
-2. Run the security remediation pass first
-   (`docs/security-remediation-plan-2026-07-09.md`).
-3. Execute `docs/skeleton-steps/` steps 1–8 in order. Step 1 provisions the VM and runs
-   `sudo bash scripts/install-debian.sh`.
+The VM is provisioned and steps 1–2 are done; assembly continues from the current build
+plan.
+
+1. Read `docs/README.md`, then `docs/walking-skeleton-milestone.md` (now M2 — charter +
+   acceptance checklist) and the current milestone/build plan under `docs/`.
+2. `docs/skeleton-steps/` holds the M2 chat-plane steps (3–8); `docs/research/` holds the
+   2026-08-20 capability decisions and the milestone restructure that define M1/M3.
+3. A fresh VM is provisioned with `sudo bash scripts/install-debian.sh` (Node 24; see the
+   step-01 execution notes).
 
 ## Governance
 

@@ -201,6 +201,34 @@ Pantheon Harness is a single, internally-hosted web harness that lets one solo s
 - ~~Gateway management GUI beyond the admin API (#11 GUI)~~ — **promoted above the line as M15 per Resolved Decision D10 (2026-06-13); no longer Post-MVP.**
 - Additional backends — 7900XTX local + cloud (#5)
 
+### Amendment — 2026-08-20: capability-gap adoptions + three-milestone restructure
+
+Binding. Full rulings: `APPROVAL_LOG.md` (2026-08-20 rows), decisions ledger
+`docs/research/2026-08-20-capability-decisions.md`, conflict review
+`docs/research/2026-08-20-architecture-conflict-review.md`, source study
+`docs/research/2026-08-20-harness-capability-gap-study.md`.
+
+- **Roadmap is now three milestones (ruling A-2), terminal plane first:**
+  **M1 = terminal plane** (session comms/waker with deterministic guardrails, scoped
+  read/propose session keycard, cross-project task board, `pantheon doctor`);
+  **M2 = walking skeleton / chat plane** (the existing charter: Facade → streaming →
+  cost meter → session binding → one gated write); **M3 = chat-plane capability items**.
+  The **Ruling C freeze is re-scoped to M2** — M1 terminal-plane work is unblocked as the
+  operator's re-prioritized primary plane (largely already built).
+- **Promoted above the cutline:** the **cross-project task board (TP-4)** — a durable
+  SQLite board on the admin surface (create/claim/complete/block, text-labeled states,
+  per-session ~30s harness-side poll that injects a turn only on a real change while idle).
+  New MVP scope by explicit Orchestrator ruling.
+- **Rejected (recorded non-goal):** TP-6 in-harness Max-quota gauge — Claude Code `/status`
+  covers it; fragile undocumented surface.
+- **19 pattern adoptions** (TP-1/2/3/5/7, CH-1/2/3/4/5, XC-1..8) are tracked at the
+  priorities in the ledger. All are hand-built borrows, not external-system adoptions
+  (four-part test PASS); no adoption creep. Notable binding shapes: TP-2 unified
+  Pending-Approvals inbox; TP-7 terminal recording as a per-tab opt-in, off-by-default
+  **D8/ADR-0005 exception** (A-1); CH-2 Qdrant-backed compaction routed through the taint
+  engine; CH-4 frontier Compare via **subscription CLIs** in bare sessions only (A-4);
+  XC-8 startup secrets from the household Vaultwarden.
+
 ### Resolved Decisions
 
 Each decision below resolves an open question or ambiguity surfaced in the Phase 0 artifacts. These are binding on Phase 1+.

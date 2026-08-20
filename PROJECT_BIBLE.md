@@ -762,3 +762,37 @@ Competency gaps (Manifesto Appendix B) and the automated tooling that compensate
 - **Load on demand:** when working a given feature, pull the relevant full sections (e.g. §4 threat rows + §5 entities + §9 component spec for the write-approval gate) rather than the whole Bible.
 - **Context Health Check (per CLAUDE.md):** every 3–4 features, summarize features built/remaining, current data model, and known issues; verify against this Bible. If the summary contradicts the Bible, start a fresh session.
 - **Threshold review:** if the project crosses ~100 files, switch to a condensed Bible Index under 5,000 tokens (large-project strategy). If it ever shrinks/consolidates below ~30 files, revert to full-Bible-per-session.
+
+---
+
+## Capability-gap study & adoptions (2026-08-20)
+
+Four harnesses were measured against Pantheon (OpenClaw, Odysseus/PewDiePie, Hermes Agent
+on LXC 1094, and the already-studied deepseek-harness). Study:
+`docs/research/2026-08-20-harness-capability-gap-study.md`.
+
+- **All four REJECT as adoption** under the four-part test. **Hermes's FROZEN status
+  (2026-07-09) is CLOSED** by this study: it fails 3 of 4 parts (~1.6M LOC; its own
+  SECURITY.md states the OS is the only real boundary and its approval gate includes an
+  auxiliary-LLM auto-approver — a CC3 inversion). Same class of rejection as Turnstone.
+- **Nothing replaces a component Pantheon is building** — Peta, the Facade, the R18 meter,
+  LibreChat, and the session waker all stand. Pantheon stays hand-built.
+- **Independent convergence noted as validation:** Odysseus reached a server-side,
+  taint-armed approval gate on its own (in-process, but genuinely model-distrusting) — the
+  closest external corroboration of Pantheon's core design to date. Three systems also
+  independently reinvented stored-plan-reuse / sealed-exact-action ≡ P4/P8/C-12.
+- **19 pattern borrows adopted, 1 rejected** — see the Manifesto §5 amendment and
+  `docs/research/2026-08-20-capability-decisions.md`. Doctrine-relevant items to honour when
+  building: XC-1 (MCP tool-schema hardening is a CC3 extension — schemas enter prompts
+  outside the grounding tagging and must be capped/stripped, fail-closed); XC-4 (tool-effect
+  taxonomy — populate R4's `tier` column now, plus a result-integrity axis; metadata only,
+  gating semantics unchanged); XC-5 (tighten-only approval invariant; gist-then-full-diff
+  never replaces the diff — D4 preserved); XC-6 (fail-closed inbound-adapter allowlist — a
+  specialization of CC2: any network-exposed adapter refuses to dispatch until an allowlist
+  is set); CH-2 (compaction summaries and Qdrant-restored context are `trusted:false` and
+  taint — no laundering path; D5 sticky-taint holds); CH-5 (memory consolidation permitted
+  ONLY as a propose-only approval queue — D2 + CC3); TP-7 (terminal recording is a bounded
+  D8/ADR-0005 exception — per-tab opt-in, off by default, redacted + encrypted at rest).
+- **Do-not-adopt (recorded):** resolving approvals from a chat reaction/emoji; model-judged
+  auto-approval; subscription-OAuth-as-API; cross-backend silent failover; ungated
+  background memory consolidation; in-process tools+policy+secrets sharing one trust domain.

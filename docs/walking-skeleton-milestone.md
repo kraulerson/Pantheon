@@ -1,7 +1,15 @@
 # Walking-Skeleton Milestone — charter
 
+> **AMENDED 2026-08-20 (ruling A-2): this is now MILESTONE 2 (M2), the chat plane.** The
+> roadmap is three milestones, terminal-plane first — M1 = terminal plane (session
+> comms/waker, scoped session keycard, task board, `pantheon doctor`); **M2 = this
+> walking-skeleton chat plane**; M3 = chat-plane capability items. **Ruling C's freeze is
+> re-scoped to M2's acceptance checklist below** — M1 terminal-plane work is unblocked as
+> the operator's re-prioritized primary plane. `pantheon doctor` is folded into M2 acceptance
+> tooling (A-3). See `PRODUCT_MANIFESTO.md` §5 amendment (2026-08-20).
+
 **Declared:** 2026-07-09 (decision C, APPROVAL_LOG ruling — operator-approved feature freeze)
-**Status:** OPEN — freeze in effect
+**Status:** OPEN — freeze in effect (re-scoped 2026-08-20 to M2/chat plane per ruling A-2)
 **Rule:** no new `feat:` work (nothing new above the MVP cutline) until the acceptance
 checklist below passes end-to-end. Skeleton tasks that touch MVP-cutline code follow the
 framework's Build Loop as usual; assembly/deployment steps are `chore:`/`build:` work.
