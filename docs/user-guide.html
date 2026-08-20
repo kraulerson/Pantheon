@@ -182,8 +182,7 @@ entry; every entry is saved immediately when you press the add button.</p>
       <td><code>local_alden1</code>, <code>claude_cli</code>, <code>future_local_7900xtx</code>,
           <code>future_cloud</code>. Cannot be changed after saving.</td></tr>
   <tr><td>Endpoint</td><td>Where to reach it, as address and port.</td>
-      <td><code>host:port</code> — e.g. <code>192.168.1.89:8080</code>. No <code>http://</code>,
-          no trailing path. Port 1–65535.</td></tr>
+      <td><code>host:port</code> — no <code>http://</code>, no trailing path. Port 1–65535.</td></tr>
   <tr><td>Enabled</td><td>Whether it may be used.</td><td>See limitation 2 above.</td></tr>
 </table>
 
@@ -193,7 +192,7 @@ entry; every entry is saved immediately when you press the add button.</p>
   <tr><th>Field</th><th>What it means</th><th>Valid values</th></tr>
   <tr><td>Server ID</td><td>Short machine-readable id.</td><td>Letters, digits, dot, dash, underscore.</td></tr>
   <tr><td>Server Name</td><td>Human-readable name.</td><td>Any text.</td></tr>
-  <tr><td>Endpoint</td><td>Where the tool server listens.</td><td><code>host:port</code>, e.g. <code>10.100.23.90:9000</code>.</td></tr>
+  <tr><td>Endpoint</td><td>Where the tool server listens.</td><td><code>host:port</code> — the address of that tool server.</td></tr>
 </table>
 <div class="todo"><strong>Not usable yet.</strong> Peta is running but has not been set up with an
 owner or identities (skeleton step 2), so registrations here have nothing to talk to.</div>
@@ -207,7 +206,7 @@ owner or identities (skeleton step 2), so registrations here have nothing to tal
       <td><code>qdrant</code> (memory), <code>gitea</code> (code), <code>bridge</code> (Alden
           bridge), <code>obsidian</code> (notes), <code>peta</code> (tool gateway),
           <code>other</code>.</td></tr>
-  <tr><td>Endpoint</td><td>Where it listens.</td><td><code>host:port</code>, e.g. <code>10.100.23.79:6333</code>.</td></tr>
+  <tr><td>Endpoint</td><td>Where it listens.</td><td><code>host:port</code> — the address of that service on your network.</td></tr>
   <tr><td>Enabled</td><td>Whether it may be used.</td><td>See limitation 2 above.</td></tr>
 </table>
 
@@ -335,7 +334,7 @@ sudo systemctl restart pantheon-admin@pantheon</code></pre>
   <tr><th>What</th><th>Where</th></tr>
   <tr><td>Registry (backends, machines, endpoints)</td>
       <td><code>services/control-plane/data/control-plane.db</code> — owner-only</td></tr>
-  <tr><td>Harness SSH key</td><td><code>/home/pantheon/.pantheon/keys</code> — owner-only</td></tr>
+  <tr><td>Harness SSH key</td><td>A locked, owner-only directory on the harness machine. The exact path is in the deploy notes in the repository, not here.</td></tr>
   <tr><td>Console settings and secrets</td><td><code>services/control-plane/.env.local</code> — owner-only, never committed</td></tr>
   <tr><td>Container settings and secrets</td><td><code>deploy/.env</code> — owner-only, never committed</td></tr>
   <tr><td>Chat history and accounts</td><td>the Mongo container's storage</td></tr>
@@ -355,7 +354,7 @@ restart the piece it belongs to.</p>
   <tr><td><code>PANTHEON_SECURE_COOKIES</code></td><td><code>true</code> when served over HTTPS (it is).</td></tr>
   <tr><td><code>PANTHEON_DB</code> / <code>PANTHEON_KEY_DIR</code></td><td>Where the registry and the SSH key live.</td></tr>
   <tr><td><code>PANTHEON_KEY_HANDLE</code></td><td>Which stored key the harness uses. Default <code>harness</code>.</td></tr>
-  <tr><td><code>PORT</code> / <code>HOST</code></td><td>Where the console listens. Default 8088 on all interfaces.</td></tr>
+  <tr><td><code>PORT</code> / <code>HOST</code></td><td>Where the console listens. It is bound to the container bridge so that <strong>only</strong> the reverse proxy can reach it — never to the whole network.</td></tr>
   <tr><td><code>PETA_URL</code> / <code>PETA_ADMIN_TOKEN</code></td><td>Peta connection — set during step 2.</td></tr>
   <tr><td><code>GITEA_*</code>, <code>BRIDGE_MCP_*</code></td><td>Connections to Gitea and the Alden bridge.</td></tr>
 </table>
@@ -428,6 +427,14 @@ restart the piece it belongs to.</p>
 
 <p>Known problems are tracked in <code>BUGS.md</code>, decisions in <code>APPROVAL_LOG.md</code>, and
 what changed in <code>CHANGELOG.md</code>, all in the project repository.</p>
+
+<div class="note">
+  <strong>Why this guide is vague about exact paths.</strong>
+  It is served without a login, so anything on the home network can read it. Operational specifics —
+  absolute paths, internal addresses, service layout — live in the project repository instead, where
+  they are useful without being an inventory for anyone who happens to be on the network. Please do
+  not paste them back in here.
+</div>
 
 <footer>
   Pantheon Harness user guide · generated from <code>docs/user-guide.html</code> in the project
