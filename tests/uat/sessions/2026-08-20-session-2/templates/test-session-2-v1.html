@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<!-- AGENT: Replace Pantheon Harness — UAT Session 2 with the session title, e.g., "UAT Session 4" -->
+
 <title>Pantheon Harness — UAT Session 2</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -62,243 +62,29 @@
 </head>
 <body>
 
-<!-- AGENT: Replace Pantheon Harness — UAT Session 2 with the session title, e.g., "UAT Session 4" -->
+
 <h1>Pantheon Harness — UAT Session 2</h1>
-<!-- AGENT: Replace 2026-08-20 with the date in YYYY-MM-DD format -->
-<!-- AGENT: Replace Auth, Configuration, Enrolment, Terminals, Docs with comma-separated feature names being tested -->
+
+
 <div class="meta">Date: 2026-08-20 | Features: Auth, Configuration, Enrolment, Terminals, Docs | Tester: <input id="tester-name" type="text" placeholder="Your name" style="background:#1e1e2e;border:1px solid #45475a;color:#cdd6f4;padding:4px 8px;border-radius:4px;font-size:0.85rem;width:140px;"></div>
 
-<!--
-  AGENT: Replace <div class="fixture-ref">
-<strong>Before you start — read this once.</strong><br><br>
-<strong>What you are testing:</strong> the Pantheon Harness running on VM 1093 (192.168.1.93). Two web addresses are involved:
-<code>https://pantheon-admin.ferrumcorde.com</code> is the harness console (sessions, terminals, Configuration) and
-<code>https://pantheon.ferrumcorde.com</code> is the chat page. Both work only inside the house.<br><br>
-<strong>You will need:</strong> the operator passphrase for the console, and your Mac mini login password is NOT needed for any scenario here.<br><br>
-<strong>Test records you will create:</strong> scenarios 5 to 11 create two throwaway entries called
-<code>uat-test-box</code> and <code>uat-backend</code>. Leave them in place when you finish — they will be cleaned up
-during triage, and Edit/Remove do not work yet anyway (that is a known defect you are asked to confirm in scenario 8).<br><br>
-<strong>Two scenarios ask you to confirm something is BROKEN</strong> (numbers 8 and 9). Mark those Pass when the
-described breakage happens, because you are verifying the defect is what we documented, not that the feature works.<br><br>
-<strong>Do not</strong> kill or rename your existing tmux sessions, and do not re-provision Mac-Mini.<br><br>
-<strong>If anything at all feels wrong</strong> — slow, confusing, ugly, surprising — write it in the notes even if the
-scenario technically passed. Free-form observations are the most valuable output of a UAT session.
-</div> with a pre-flight block describing the
-  test environment and one-time setup the tester must do before any scenario.
-  Rendered as a <div class="fixture-ref"> at the top of the page, above the
-  progress bar. Every UAT session MUST include this block — tests that don't
-  state where the tester stands cannot be reliably executed.
 
-  REQUIRED contents (fill every line — do not omit any):
-    - System under test: <environment description>. <compatibility note>.
-    - Project root / app location: <absolute path OR URL OR device identifier>
-    - Runtime / tooling: <language + version OR browser + version OR device OS>
-    - Required tools: <list in <code>>. Optional: <list with scenario refs>.
-    - One-time setup (≤3 lines): <cd / navigate / launch / flash / connect>
-    - Starting-state assumptions every scenario will restate.
-    - How to run a scenario (1–2 sentences).
-
-  Use <br> for line breaks, <code> for paths and commands, <strong> for
-  labels, <em> for optional-dependency notes. Wrap everything in a single
-  <div class="fixture-ref">.
-
-  See tests/uat/examples/pre-flight-reference.html for a platform-specific
-  worked example (populated by init.sh based on your project's platform).
-  If your project's platform is 'other', the reference file is NOT provided
-  — ask the Orchestrator the co-build questions in
-  docs/uat-authoring-guide.md § "Co-build protocol for 'other' platform"
-  before generating this block.
--->
 <div class="fixture-ref">
 <strong>Before you start — read this once.</strong><br><br>
-<strong>What you are testing:</strong> the Pantheon Harness running on VM 1093 (192.168.1.93). Two web addresses are involved:
-<code>https://pantheon-admin.ferrumcorde.com</code> is the harness console (sessions, terminals, Configuration) and
+<strong>What you are testing:</strong> the Pantheon Harness on VM 1093 (192.168.1.93).
+<code>https://pantheon-admin.ferrumcorde.com</code> is the harness console (sessions, terminals, Configuration);
 <code>https://pantheon.ferrumcorde.com</code> is the chat page. Both work only inside the house.<br><br>
-<strong>You will need:</strong> the operator passphrase for the console, and your Mac mini login password is NOT needed for any scenario here.<br><br>
-<strong>Test records you will create:</strong> scenarios 5 to 11 create two throwaway entries called
-<code>uat-test-box</code> and <code>uat-backend</code>. Leave them in place when you finish — they will be cleaned up
-during triage, and Edit/Remove do not work yet anyway (that is a known defect you are asked to confirm in scenario 8).<br><br>
-<strong>Two scenarios ask you to confirm something is BROKEN</strong> (numbers 8 and 9). Mark those Pass when the
-described breakage happens, because you are verifying the defect is what we documented, not that the feature works.<br><br>
-<strong>Do not</strong> kill or rename your existing tmux sessions, and do not re-provision Mac-Mini.<br><br>
-<strong>If anything at all feels wrong</strong> — slow, confusing, ugly, surprising — write it in the notes even if the
-scenario technically passed. Free-form observations are the most valuable output of a UAT session.
+<strong>You need:</strong> the operator passphrase for the console. Your Mac mini login password is NOT needed for any scenario here.<br><br>
+<strong>Throwaway records:</strong> scenarios 5–11 create two test entries (<code>uat-test-box</code>, <code>uat-backend</code>). Leave them; they'll be cleaned up in triage.<br><br>
+<strong>Two scenarios ask you to confirm something is BROKEN</strong> (8 and 9): mark them Pass when the described breakage happens — you're verifying a known defect, not a working feature.<br><br>
+<strong>Do not</strong> kill/rename your existing tmux sessions or re-provision Mac-Mini.<br><br>
+<strong>How to use this page:</strong> each scenario shows its Steps and Expected result right below the title. Do the steps, then click <strong>Pass</strong>, <strong>Fail</strong>, or <strong>Skip</strong>, and add a note for anything that felt wrong even if it technically passed. When done, click <strong>Copy Results to Clipboard</strong> at the bottom and paste it back.
 </div>
 
 <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
 <div class="progress-text" id="progress-text">0 / 0 completed</div>
 
-<!--
-  AGENT: Replace <h2>Feature 6: Operator Browser Auth (#9)</h2>
-<div id="feature6"></div>
 
-<h2>Feature 1: Dev Machine Registry &amp; Configuration Page</h2>
-<div id="feature1"></div>
-
-<h2>Feature 7: Dev-Machine Enrolment from the UI</h2>
-<div id="feature7"></div>
-
-<h2>Feature 4: Harness Frame + Terminal Tabs — MILESTONE ONE</h2>
-<div id="feature4"></div>
-
-<h2>Feature 8: Documentation &amp; Access Paths</h2>
-<div id="feature8"></div> with one block per feature being tested.
-  Each block must follow this exact structure:
-
-  <h2>Feature N: [Feature Name]</h2>
-  <div class="fixture-ref">
-    <strong>Test files</strong> (optional — include only if test fixtures exist):<br>
-    <code>filename.ext</code> — description of the test file<br>
-  </div>
-  <div id="featureN"></div>
-
-  RULES:
-  - The fixture-ref div is OPTIONAL. Omit it if there are no test fixture files.
-  - The div id MUST be "feature" + the feature number (e.g., id="feature7").
-  - The feature number in the div id MUST match the "feature" field in [
-  {
-    "id": 1,
-    "feature": 6,
-    "title": "Sign in with the operator passphrase",
-    "steps": "You are signed out, at a browser on the LAN.\n1. Open https://pantheon-admin.ferrumcorde.com\n2. You should be sent to the login page.\n3. Enter the operator passphrase and submit.",
-    "expected": "After submitting the correct passphrase you land on the harness page (heading 'Pantheon Harness'), with '+ New Session', 'Configuration' and 'Help' visible in the header. No error banner, and the URL ends in /harness."
-  },
-  {
-    "id": 2,
-    "feature": 6,
-    "title": "Wrong passphrase is refused without hints",
-    "steps": "You are signed out.\n1. Open https://pantheon-admin.ferrumcorde.com/login\n2. Enter a deliberately wrong passphrase and submit.\n3. Read the whole page carefully.",
-    "expected": "Sign-in is refused and you stay on the login page. The message must not say whether the passphrase was close, how long it should be, or anything about the account \u2014 a generic refusal only. No stack trace, no internal path, no token appears anywhere on the page."
-  },
-  {
-    "id": 3,
-    "feature": 6,
-    "title": "Bare address while signed in goes to the harness, not an error",
-    "steps": "You are signed IN (do scenario 1 first).\n1. Type https://pantheon-admin.ferrumcorde.com in the address bar with no path on the end.\n2. Press enter.",
-    "expected": "You land on the harness page. You must NOT see raw text such as {\"message\":\"Route GET:/ not found\"} \u2014 that was BUGS #15 and this scenario is its regression check. The page renders normally with the header controls present."
-  },
-  {
-    "id": 4,
-    "feature": 6,
-    "title": "Signing out invalidates the session",
-    "steps": "You are signed IN.\n1. Sign out using the logout control.\n2. Press the browser Back button to return to the harness page.\n3. Try reloading it.",
-    "expected": "After logging out, going back to the harness page sends you to the login screen rather than showing cached harness content. The session is dead server-side, so reloading cannot restore it without entering the passphrase again."
-  },
-  {
-    "id": 5,
-    "feature": 1,
-    "title": "Add a dev machine with the default SSH port",
-    "steps": "You are signed in, on https://pantheon-admin.ferrumcorde.com/admin/config.\n1. In the Dev Machines form enter Logical Name 'uat-test-box', Host '192.168.1.250', Port 22, User 'karl'.\n2. Leave Enabled ticked.\n3. Press Add Dev Machine.",
-    "expected": "The machine is created and appears in the Dev Machines table with port 22 and status Enabled. You must NOT see 'port out of range (1-65535): 22' \u2014 that was BUGS #12, the bug that stopped you registering the Mac mini, and this is its regression check."
-  },
-  {
-    "id": 6,
-    "feature": 1,
-    "title": "Enabled tick-box is honoured for a dev machine",
-    "steps": "You are signed in, on the Configuration page, and scenario 5 has been completed.\n1. Look at the row for 'uat-test-box'.\n2. Read the Status column.",
-    "expected": "The Status column reads Enabled in words, matching the tick-box you left ticked. If it reads Disabled, that is BUGS #13 having regressed \u2014 the checkbox posts the text 'on' and must be interpreted as true."
-  },
-  {
-    "id": 7,
-    "feature": 1,
-    "title": "A genuinely invalid port is refused with a clear reason",
-    "steps": "You are signed in, on https://pantheon-admin.ferrumcorde.com/admin/config.\n1. In the Dev Machines form enter Logical Name 'uat-bad-port', Host '192.168.1.250', Port 70000, User 'karl'.\n2. Press Add Dev Machine.",
-    "expected": "The submission is refused with a message naming the port and the allowed range 1-65535, and no row called 'uat-bad-port' is added to the table. Going back to the Configuration page confirms nothing was partially saved."
-  },
-  {
-    "id": 8,
-    "feature": 1,
-    "title": "Edit and Remove buttons are dead \u2014 confirm the known defect",
-    "steps": "You are signed in, on the Configuration page, with 'uat-test-box' listed.\n1. Click Edit on the 'uat-test-box' row. Wait three seconds.\n2. Click Remove on the same row. Wait three seconds.\n3. Reload the page.",
-    "expected": "Nothing happens on either click \u2014 no dialog, no change, no error message \u2014 and the row is still there after reloading. This is the KNOWN defect BUGS #19 (the page ships no JavaScript). Mark this scenario Pass if nothing happens as described, and Fail only if something unexpected occurs."
-  },
-  {
-    "id": 9,
-    "feature": 1,
-    "title": "Enabled tick-box is ignored for an AI Backend \u2014 confirm the known defect",
-    "steps": "You are signed in, on https://pantheon-admin.ferrumcorde.com/admin/config.\n1. In the AI Backends form enter Display Name 'uat-backend', Kind 'local_alden1', Endpoint '192.168.1.89:8080'.\n2. Leave Enabled ticked.\n3. Press the add button and read the resulting row.",
-    "expected": "The backend is created but its status reads Disabled despite the tick \u2014 this is KNOWN defect BUGS #18, the same checkbox fault that was fixed only for dev machines. Mark Pass if it saves as Disabled as described; mark Fail if it errors out or saves nothing at all."
-  },
-  {
-    "id": 10,
-    "feature": 7,
-    "title": "Provision form appears only for an unprovisioned machine",
-    "steps": "You are signed in, on the Configuration page, with both 'Mac-Mini' and 'uat-test-box' listed.\n1. Look at the Mac-Mini row and note whether a password box and Provision button are present.\n2. Look at the uat-test-box row and note the same.",
-    "expected": "Mac-Mini shows Provisioning: provisioned and has NO password box, because it is already set up. uat-test-box shows not provisioned and DOES offer a password field plus a Provision button, with a note saying the password is used once and not stored."
-  },
-  {
-    "id": 11,
-    "feature": 7,
-    "title": "Provisioning with a wrong password fails safely",
-    "steps": "You are signed in, on the Configuration page.\n1. On the 'uat-test-box' row type any nonsense password, for example 'definitely-not-real'.\n2. Press Provision and wait for the response.\n3. Return to the Configuration page and re-read the row.",
-    "expected": "Provisioning fails with a message saying it could not authenticate to that machine. The row still reads not provisioned \u2014 it must never be marked provisioned on a failure \u2014 and the password you typed does not appear anywhere on the resulting page or in the address bar."
-  },
-  {
-    "id": 12,
-    "feature": 4,
-    "title": "Open a terminal to the Mac mini from the harness page",
-    "steps": "You are signed in, on https://pantheon-admin.ferrumcorde.com/harness.\n1. Find the button labelled 'Claude CLI \u2192 Mac-Mini' under 'Start a session'.\n2. Click it once.\n3. Wait for the tab to open and type: whoami",
-    "expected": "A new tab opens containing a working terminal, and 'whoami' returns karl. The tab is labelled with the machine name, and the shell prompt shows the Mac mini's hostname \u2014 proving the harness brokered a real SSH session using the key it installed."
-  },
-  {
-    "id": 13,
-    "feature": 4,
-    "title": "Attach to an existing tmux session inside the tab",
-    "steps": "You are in an open terminal tab from scenario 12.\n1. Type: tmux ls\n2. Type: tmux attach -t pantheon\n3. Once attached, press Ctrl-B then the letter w to open the tmux window list, then press Escape.",
-    "expected": "'tmux ls' lists your real sessions (Alden, cdf, ios-app, lancache, new-solo, pantheon, solo). Attaching brings up that session's contents, and Ctrl-B w opens tmux's window chooser \u2014 proving the key combination reaches tmux rather than being swallowed by the browser."
-  },
-  {
-    "id": 14,
-    "feature": 4,
-    "title": "Run Claude Code inside the tab on the Max subscription",
-    "steps": "You are attached to a tmux session inside a harness terminal tab.\n1. Change to any project directory you normally work in.\n2. Start Claude Code by typing: claude\n3. Ask it something trivial, for example: what directory am I in?\n4. Exit Claude Code when done.",
-    "expected": "Claude Code starts and answers, authenticated by your existing Max subscription with no API key prompt and no extra billing. This is the founding purpose of the whole project \u2014 working the way you already work, through the harness rather than an SSH client."
-  },
-  {
-    "id": 15,
-    "feature": 4,
-    "title": "Three concurrent terminals stay independent",
-    "steps": "You are on https://pantheon-admin.ferrumcorde.com/harness with no terminal tabs open.\n1. Click 'Claude CLI \u2192 Mac-Mini' three times, waiting for each tab to appear.\n2. In tab one type: echo ONE\n3. In tab two type: echo TWO\n4. In tab three type: echo THREE",
-    "expected": "Three separate tabs open and each shows only its own output \u2014 ONE, TWO and THREE do not bleed into each other. Switching between tabs preserves what each was showing, so the sessions are genuinely independent rather than one shared shell."
-  },
-  {
-    "id": 16,
-    "feature": 4,
-    "title": "Closing a tab does not kill work running in tmux",
-    "steps": "You are in a harness terminal tab attached to a tmux session.\n1. Start something long-running, for example: sleep 300\n2. Close the browser tab using its X control.\n3. Open a fresh terminal from the harness page and type: tmux attach -t pantheon",
-    "expected": "Reattaching shows the sleep still running with its remaining time \u2014 closing the browser tab did not kill the work, because tmux holds the session on the Mac mini. This is why attaching to tmux is the recommended pattern rather than relying on the harness's own tabs."
-  },
-  {
-    "id": 17,
-    "feature": 4,
-    "title": "Every state is readable without relying on colour",
-    "steps": "You are signed in, on https://pantheon-admin.ferrumcorde.com/harness, and on https://pantheon-admin.ferrumcorde.com/admin/config in a second tab.\n1. Look at every status shown on both pages: machine states, tab states, provisioning states, connection states.\n2. For each one, ask whether you could tell what it means in black and white.",
-    "expected": "Every state is spelled out in words or shapes \u2014 'not provisioned', 'disabled', 'connected' and so on \u2014 with no meaning carried by colour alone. Any state you could only identify by its colour is an accessibility defect and must be recorded as a bug (CC1, severity SEV-2)."
-  },
-  {
-    "id": 18,
-    "feature": 8,
-    "title": "The user guide opens without signing in",
-    "steps": "Setup: open a private or incognito browser window so you are definitely signed out.\n1. Go to https://pantheon-admin.ferrumcorde.com/help\n2. Read the opening banner and skim the contents list.\n3. Try https://pantheon-admin.ferrumcorde.com/harness in the same window.",
-    "expected": "The guide loads fully without asking for a passphrase, and its opening banner states plainly that the harness is half-built. The harness page in the same window still demands sign-in \u2014 opening the guide must not have opened anything else up."
-  },
-  {
-    "id": 19,
-    "feature": 8,
-    "title": "Both links from the chat page reach the right places",
-    "steps": "You are signed in to the chat page at https://pantheon.ferrumcorde.com.\n1. Find the 'Switch to Admin' link under the message box and click it.\n2. Go back to the chat page.\n3. Open your profile menu and click 'Help & FAQ'.",
-    "expected": "'Switch to Admin' opens the harness console, and 'Help & FAQ' opens the Pantheon user guide rather than LibreChat's own documentation site. Both are the links configured for this deployment, and neither leads to a 404 or an unrelated page."
-  },
-  {
-    "id": 20,
-    "feature": 8,
-    "title": "The guide's description matches what you actually see",
-    "steps": "You are signed in, with https://pantheon-admin.ferrumcorde.com/help open alongside the Configuration page.\n1. Read the guide's section 5 on the Configuration page, including the two limitations it lists.\n2. Compare each claim against the real page in front of you.",
-    "expected": "Everything the guide describes matches reality, including its warnings that Edit and Remove do nothing and that the Enabled tick is ignored for backends and service endpoints. Any place where the guide describes something that does not exist, or omits something that does, is a documentation bug worth recording."
-  }
-].
-  - The renderScenarios() function routes scenarios to these divs by feature number.
--->
 <h2>Feature 6: Operator Browser Auth (#9)</h2>
 <div id="feature6"></div>
 
@@ -331,148 +117,6 @@ scenario technically passed. Free-form observations are the most valuable output
 </div>
 
 <script>
-// AGENT INSTRUCTIONS: Replace [
-  {
-    "id": 1,
-    "feature": 6,
-    "title": "Sign in with the operator passphrase",
-    "steps": "You are signed out, at a browser on the LAN.\n1. Open https://pantheon-admin.ferrumcorde.com\n2. You should be sent to the login page.\n3. Enter the operator passphrase and submit.",
-    "expected": "After submitting the correct passphrase you land on the harness page (heading 'Pantheon Harness'), with '+ New Session', 'Configuration' and 'Help' visible in the header. No error banner, and the URL ends in /harness."
-  },
-  {
-    "id": 2,
-    "feature": 6,
-    "title": "Wrong passphrase is refused without hints",
-    "steps": "You are signed out.\n1. Open https://pantheon-admin.ferrumcorde.com/login\n2. Enter a deliberately wrong passphrase and submit.\n3. Read the whole page carefully.",
-    "expected": "Sign-in is refused and you stay on the login page. The message must not say whether the passphrase was close, how long it should be, or anything about the account \u2014 a generic refusal only. No stack trace, no internal path, no token appears anywhere on the page."
-  },
-  {
-    "id": 3,
-    "feature": 6,
-    "title": "Bare address while signed in goes to the harness, not an error",
-    "steps": "You are signed IN (do scenario 1 first).\n1. Type https://pantheon-admin.ferrumcorde.com in the address bar with no path on the end.\n2. Press enter.",
-    "expected": "You land on the harness page. You must NOT see raw text such as {\"message\":\"Route GET:/ not found\"} \u2014 that was BUGS #15 and this scenario is its regression check. The page renders normally with the header controls present."
-  },
-  {
-    "id": 4,
-    "feature": 6,
-    "title": "Signing out invalidates the session",
-    "steps": "You are signed IN.\n1. Sign out using the logout control.\n2. Press the browser Back button to return to the harness page.\n3. Try reloading it.",
-    "expected": "After logging out, going back to the harness page sends you to the login screen rather than showing cached harness content. The session is dead server-side, so reloading cannot restore it without entering the passphrase again."
-  },
-  {
-    "id": 5,
-    "feature": 1,
-    "title": "Add a dev machine with the default SSH port",
-    "steps": "You are signed in, on https://pantheon-admin.ferrumcorde.com/admin/config.\n1. In the Dev Machines form enter Logical Name 'uat-test-box', Host '192.168.1.250', Port 22, User 'karl'.\n2. Leave Enabled ticked.\n3. Press Add Dev Machine.",
-    "expected": "The machine is created and appears in the Dev Machines table with port 22 and status Enabled. You must NOT see 'port out of range (1-65535): 22' \u2014 that was BUGS #12, the bug that stopped you registering the Mac mini, and this is its regression check."
-  },
-  {
-    "id": 6,
-    "feature": 1,
-    "title": "Enabled tick-box is honoured for a dev machine",
-    "steps": "You are signed in, on the Configuration page, and scenario 5 has been completed.\n1. Look at the row for 'uat-test-box'.\n2. Read the Status column.",
-    "expected": "The Status column reads Enabled in words, matching the tick-box you left ticked. If it reads Disabled, that is BUGS #13 having regressed \u2014 the checkbox posts the text 'on' and must be interpreted as true."
-  },
-  {
-    "id": 7,
-    "feature": 1,
-    "title": "A genuinely invalid port is refused with a clear reason",
-    "steps": "You are signed in, on https://pantheon-admin.ferrumcorde.com/admin/config.\n1. In the Dev Machines form enter Logical Name 'uat-bad-port', Host '192.168.1.250', Port 70000, User 'karl'.\n2. Press Add Dev Machine.",
-    "expected": "The submission is refused with a message naming the port and the allowed range 1-65535, and no row called 'uat-bad-port' is added to the table. Going back to the Configuration page confirms nothing was partially saved."
-  },
-  {
-    "id": 8,
-    "feature": 1,
-    "title": "Edit and Remove buttons are dead \u2014 confirm the known defect",
-    "steps": "You are signed in, on the Configuration page, with 'uat-test-box' listed.\n1. Click Edit on the 'uat-test-box' row. Wait three seconds.\n2. Click Remove on the same row. Wait three seconds.\n3. Reload the page.",
-    "expected": "Nothing happens on either click \u2014 no dialog, no change, no error message \u2014 and the row is still there after reloading. This is the KNOWN defect BUGS #19 (the page ships no JavaScript). Mark this scenario Pass if nothing happens as described, and Fail only if something unexpected occurs."
-  },
-  {
-    "id": 9,
-    "feature": 1,
-    "title": "Enabled tick-box is ignored for an AI Backend \u2014 confirm the known defect",
-    "steps": "You are signed in, on https://pantheon-admin.ferrumcorde.com/admin/config.\n1. In the AI Backends form enter Display Name 'uat-backend', Kind 'local_alden1', Endpoint '192.168.1.89:8080'.\n2. Leave Enabled ticked.\n3. Press the add button and read the resulting row.",
-    "expected": "The backend is created but its status reads Disabled despite the tick \u2014 this is KNOWN defect BUGS #18, the same checkbox fault that was fixed only for dev machines. Mark Pass if it saves as Disabled as described; mark Fail if it errors out or saves nothing at all."
-  },
-  {
-    "id": 10,
-    "feature": 7,
-    "title": "Provision form appears only for an unprovisioned machine",
-    "steps": "You are signed in, on the Configuration page, with both 'Mac-Mini' and 'uat-test-box' listed.\n1. Look at the Mac-Mini row and note whether a password box and Provision button are present.\n2. Look at the uat-test-box row and note the same.",
-    "expected": "Mac-Mini shows Provisioning: provisioned and has NO password box, because it is already set up. uat-test-box shows not provisioned and DOES offer a password field plus a Provision button, with a note saying the password is used once and not stored."
-  },
-  {
-    "id": 11,
-    "feature": 7,
-    "title": "Provisioning with a wrong password fails safely",
-    "steps": "You are signed in, on the Configuration page.\n1. On the 'uat-test-box' row type any nonsense password, for example 'definitely-not-real'.\n2. Press Provision and wait for the response.\n3. Return to the Configuration page and re-read the row.",
-    "expected": "Provisioning fails with a message saying it could not authenticate to that machine. The row still reads not provisioned \u2014 it must never be marked provisioned on a failure \u2014 and the password you typed does not appear anywhere on the resulting page or in the address bar."
-  },
-  {
-    "id": 12,
-    "feature": 4,
-    "title": "Open a terminal to the Mac mini from the harness page",
-    "steps": "You are signed in, on https://pantheon-admin.ferrumcorde.com/harness.\n1. Find the button labelled 'Claude CLI \u2192 Mac-Mini' under 'Start a session'.\n2. Click it once.\n3. Wait for the tab to open and type: whoami",
-    "expected": "A new tab opens containing a working terminal, and 'whoami' returns karl. The tab is labelled with the machine name, and the shell prompt shows the Mac mini's hostname \u2014 proving the harness brokered a real SSH session using the key it installed."
-  },
-  {
-    "id": 13,
-    "feature": 4,
-    "title": "Attach to an existing tmux session inside the tab",
-    "steps": "You are in an open terminal tab from scenario 12.\n1. Type: tmux ls\n2. Type: tmux attach -t pantheon\n3. Once attached, press Ctrl-B then the letter w to open the tmux window list, then press Escape.",
-    "expected": "'tmux ls' lists your real sessions (Alden, cdf, ios-app, lancache, new-solo, pantheon, solo). Attaching brings up that session's contents, and Ctrl-B w opens tmux's window chooser \u2014 proving the key combination reaches tmux rather than being swallowed by the browser."
-  },
-  {
-    "id": 14,
-    "feature": 4,
-    "title": "Run Claude Code inside the tab on the Max subscription",
-    "steps": "You are attached to a tmux session inside a harness terminal tab.\n1. Change to any project directory you normally work in.\n2. Start Claude Code by typing: claude\n3. Ask it something trivial, for example: what directory am I in?\n4. Exit Claude Code when done.",
-    "expected": "Claude Code starts and answers, authenticated by your existing Max subscription with no API key prompt and no extra billing. This is the founding purpose of the whole project \u2014 working the way you already work, through the harness rather than an SSH client."
-  },
-  {
-    "id": 15,
-    "feature": 4,
-    "title": "Three concurrent terminals stay independent",
-    "steps": "You are on https://pantheon-admin.ferrumcorde.com/harness with no terminal tabs open.\n1. Click 'Claude CLI \u2192 Mac-Mini' three times, waiting for each tab to appear.\n2. In tab one type: echo ONE\n3. In tab two type: echo TWO\n4. In tab three type: echo THREE",
-    "expected": "Three separate tabs open and each shows only its own output \u2014 ONE, TWO and THREE do not bleed into each other. Switching between tabs preserves what each was showing, so the sessions are genuinely independent rather than one shared shell."
-  },
-  {
-    "id": 16,
-    "feature": 4,
-    "title": "Closing a tab does not kill work running in tmux",
-    "steps": "You are in a harness terminal tab attached to a tmux session.\n1. Start something long-running, for example: sleep 300\n2. Close the browser tab using its X control.\n3. Open a fresh terminal from the harness page and type: tmux attach -t pantheon",
-    "expected": "Reattaching shows the sleep still running with its remaining time \u2014 closing the browser tab did not kill the work, because tmux holds the session on the Mac mini. This is why attaching to tmux is the recommended pattern rather than relying on the harness's own tabs."
-  },
-  {
-    "id": 17,
-    "feature": 4,
-    "title": "Every state is readable without relying on colour",
-    "steps": "You are signed in, on https://pantheon-admin.ferrumcorde.com/harness, and on https://pantheon-admin.ferrumcorde.com/admin/config in a second tab.\n1. Look at every status shown on both pages: machine states, tab states, provisioning states, connection states.\n2. For each one, ask whether you could tell what it means in black and white.",
-    "expected": "Every state is spelled out in words or shapes \u2014 'not provisioned', 'disabled', 'connected' and so on \u2014 with no meaning carried by colour alone. Any state you could only identify by its colour is an accessibility defect and must be recorded as a bug (CC1, severity SEV-2)."
-  },
-  {
-    "id": 18,
-    "feature": 8,
-    "title": "The user guide opens without signing in",
-    "steps": "Setup: open a private or incognito browser window so you are definitely signed out.\n1. Go to https://pantheon-admin.ferrumcorde.com/help\n2. Read the opening banner and skim the contents list.\n3. Try https://pantheon-admin.ferrumcorde.com/harness in the same window.",
-    "expected": "The guide loads fully without asking for a passphrase, and its opening banner states plainly that the harness is half-built. The harness page in the same window still demands sign-in \u2014 opening the guide must not have opened anything else up."
-  },
-  {
-    "id": 19,
-    "feature": 8,
-    "title": "Both links from the chat page reach the right places",
-    "steps": "You are signed in to the chat page at https://pantheon.ferrumcorde.com.\n1. Find the 'Switch to Admin' link under the message box and click it.\n2. Go back to the chat page.\n3. Open your profile menu and click 'Help & FAQ'.",
-    "expected": "'Switch to Admin' opens the harness console, and 'Help & FAQ' opens the Pantheon user guide rather than LibreChat's own documentation site. Both are the links configured for this deployment, and neither leads to a 404 or an unrelated page."
-  },
-  {
-    "id": 20,
-    "feature": 8,
-    "title": "The guide's description matches what you actually see",
-    "steps": "You are signed in, with https://pantheon-admin.ferrumcorde.com/help open alongside the Configuration page.\n1. Read the guide's section 5 on the Configuration page, including the two limitations it lists.\n2. Compare each claim against the real page in front of you.",
-    "expected": "Everything the guide describes matches reality, including its warnings that Edit and Remove do nothing and that the Enabled tick is ignored for backends and service endpoints. Any place where the guide describes something that does not exist, or omits something that does, is a documentation bug worth recording."
-  }
-] with a JavaScript array.
 // Each element MUST be an object with ALL of the following fields.
 // Do not omit any field. Do not add fields not listed here.
 // Do not modify any code outside the placeholder tokens (the ALL_CAPS
@@ -482,20 +126,6 @@ scenario technically passed. Free-form observations are the most valuable output
 // [
 //   {
 //     "id": number,        // Sequential integer starting at 1, unique across all features
-//     "feature": number,   // Feature number this scenario tests (must match a <h2>Feature 6: Operator Browser Auth (#9)</h2>
-<div id="feature6"></div>
-
-<h2>Feature 1: Dev Machine Registry &amp; Configuration Page</h2>
-<div id="feature1"></div>
-
-<h2>Feature 7: Dev-Machine Enrolment from the UI</h2>
-<div id="feature7"></div>
-
-<h2>Feature 4: Harness Frame + Terminal Tabs — MILESTONE ONE</h2>
-<div id="feature4"></div>
-
-<h2>Feature 8: Documentation &amp; Access Paths</h2>
-<div id="feature8"></div> div id)
 //     "title": string,     // Short imperative description, e.g., "Repair fills holes on open mesh"
 //     "steps": string,     // Numbered steps separated by \\n, e.g., "1. Open file\\n2. Click Analyze"
 //     "expected": string   // What should happen if the feature works correctly
@@ -718,7 +348,7 @@ function renderScenarios() {
           '<button class="btn skip-btn" onclick="setResult(' + s.id + ',\'skip\',this)">Skip</button>' +
         '</div>' +
       '</div>' +
-      '<div class="scenario-details" id="details-' + s.id + '">' +
+      '<div class="scenario-details open" id="details-' + s.id + '">' +
         '<div class="steps"><strong>Steps:</strong><br>' + s.steps.replace(/\n/g,'<br>') + '</div>' +
         '<div class="steps"><strong>Expected:</strong><br>' + s.expected + '</div>' +
       '</div>' +
@@ -752,169 +382,9 @@ function updateProgress() {
 }
 
 var bugCount = 0;
-// AGENT: Replace <option value="6">Feature 6: Operator Browser Auth (#9)</option>
-<option value="1">Feature 1: Dev Machine Registry &amp; Configuration Page</option>
-<option value="7">Feature 7: Dev-Machine Enrolment from the UI</option>
-<option value="4">Feature 4: Harness Frame + Terminal Tabs — MILESTONE ONE</option>
-<option value="8">Feature 8: Documentation &amp; Access Paths</option> (inside the addBug function below) with one
 // JS string fragment per feature being tested, concatenated into the select's innerHTML.
 // Example:
 //   '<option>7 - Mesh Repair</option><option>8 - Scale/Rotate/Mirror</option>'
-// The number must match the feature numbers used in [
-  {
-    "id": 1,
-    "feature": 6,
-    "title": "Sign in with the operator passphrase",
-    "steps": "You are signed out, at a browser on the LAN.\n1. Open https://pantheon-admin.ferrumcorde.com\n2. You should be sent to the login page.\n3. Enter the operator passphrase and submit.",
-    "expected": "After submitting the correct passphrase you land on the harness page (heading 'Pantheon Harness'), with '+ New Session', 'Configuration' and 'Help' visible in the header. No error banner, and the URL ends in /harness."
-  },
-  {
-    "id": 2,
-    "feature": 6,
-    "title": "Wrong passphrase is refused without hints",
-    "steps": "You are signed out.\n1. Open https://pantheon-admin.ferrumcorde.com/login\n2. Enter a deliberately wrong passphrase and submit.\n3. Read the whole page carefully.",
-    "expected": "Sign-in is refused and you stay on the login page. The message must not say whether the passphrase was close, how long it should be, or anything about the account \u2014 a generic refusal only. No stack trace, no internal path, no token appears anywhere on the page."
-  },
-  {
-    "id": 3,
-    "feature": 6,
-    "title": "Bare address while signed in goes to the harness, not an error",
-    "steps": "You are signed IN (do scenario 1 first).\n1. Type https://pantheon-admin.ferrumcorde.com in the address bar with no path on the end.\n2. Press enter.",
-    "expected": "You land on the harness page. You must NOT see raw text such as {\"message\":\"Route GET:/ not found\"} \u2014 that was BUGS #15 and this scenario is its regression check. The page renders normally with the header controls present."
-  },
-  {
-    "id": 4,
-    "feature": 6,
-    "title": "Signing out invalidates the session",
-    "steps": "You are signed IN.\n1. Sign out using the logout control.\n2. Press the browser Back button to return to the harness page.\n3. Try reloading it.",
-    "expected": "After logging out, going back to the harness page sends you to the login screen rather than showing cached harness content. The session is dead server-side, so reloading cannot restore it without entering the passphrase again."
-  },
-  {
-    "id": 5,
-    "feature": 1,
-    "title": "Add a dev machine with the default SSH port",
-    "steps": "You are signed in, on https://pantheon-admin.ferrumcorde.com/admin/config.\n1. In the Dev Machines form enter Logical Name 'uat-test-box', Host '192.168.1.250', Port 22, User 'karl'.\n2. Leave Enabled ticked.\n3. Press Add Dev Machine.",
-    "expected": "The machine is created and appears in the Dev Machines table with port 22 and status Enabled. You must NOT see 'port out of range (1-65535): 22' \u2014 that was BUGS #12, the bug that stopped you registering the Mac mini, and this is its regression check."
-  },
-  {
-    "id": 6,
-    "feature": 1,
-    "title": "Enabled tick-box is honoured for a dev machine",
-    "steps": "You are signed in, on the Configuration page, and scenario 5 has been completed.\n1. Look at the row for 'uat-test-box'.\n2. Read the Status column.",
-    "expected": "The Status column reads Enabled in words, matching the tick-box you left ticked. If it reads Disabled, that is BUGS #13 having regressed \u2014 the checkbox posts the text 'on' and must be interpreted as true."
-  },
-  {
-    "id": 7,
-    "feature": 1,
-    "title": "A genuinely invalid port is refused with a clear reason",
-    "steps": "You are signed in, on https://pantheon-admin.ferrumcorde.com/admin/config.\n1. In the Dev Machines form enter Logical Name 'uat-bad-port', Host '192.168.1.250', Port 70000, User 'karl'.\n2. Press Add Dev Machine.",
-    "expected": "The submission is refused with a message naming the port and the allowed range 1-65535, and no row called 'uat-bad-port' is added to the table. Going back to the Configuration page confirms nothing was partially saved."
-  },
-  {
-    "id": 8,
-    "feature": 1,
-    "title": "Edit and Remove buttons are dead \u2014 confirm the known defect",
-    "steps": "You are signed in, on the Configuration page, with 'uat-test-box' listed.\n1. Click Edit on the 'uat-test-box' row. Wait three seconds.\n2. Click Remove on the same row. Wait three seconds.\n3. Reload the page.",
-    "expected": "Nothing happens on either click \u2014 no dialog, no change, no error message \u2014 and the row is still there after reloading. This is the KNOWN defect BUGS #19 (the page ships no JavaScript). Mark this scenario Pass if nothing happens as described, and Fail only if something unexpected occurs."
-  },
-  {
-    "id": 9,
-    "feature": 1,
-    "title": "Enabled tick-box is ignored for an AI Backend \u2014 confirm the known defect",
-    "steps": "You are signed in, on https://pantheon-admin.ferrumcorde.com/admin/config.\n1. In the AI Backends form enter Display Name 'uat-backend', Kind 'local_alden1', Endpoint '192.168.1.89:8080'.\n2. Leave Enabled ticked.\n3. Press the add button and read the resulting row.",
-    "expected": "The backend is created but its status reads Disabled despite the tick \u2014 this is KNOWN defect BUGS #18, the same checkbox fault that was fixed only for dev machines. Mark Pass if it saves as Disabled as described; mark Fail if it errors out or saves nothing at all."
-  },
-  {
-    "id": 10,
-    "feature": 7,
-    "title": "Provision form appears only for an unprovisioned machine",
-    "steps": "You are signed in, on the Configuration page, with both 'Mac-Mini' and 'uat-test-box' listed.\n1. Look at the Mac-Mini row and note whether a password box and Provision button are present.\n2. Look at the uat-test-box row and note the same.",
-    "expected": "Mac-Mini shows Provisioning: provisioned and has NO password box, because it is already set up. uat-test-box shows not provisioned and DOES offer a password field plus a Provision button, with a note saying the password is used once and not stored."
-  },
-  {
-    "id": 11,
-    "feature": 7,
-    "title": "Provisioning with a wrong password fails safely",
-    "steps": "You are signed in, on the Configuration page.\n1. On the 'uat-test-box' row type any nonsense password, for example 'definitely-not-real'.\n2. Press Provision and wait for the response.\n3. Return to the Configuration page and re-read the row.",
-    "expected": "Provisioning fails with a message saying it could not authenticate to that machine. The row still reads not provisioned \u2014 it must never be marked provisioned on a failure \u2014 and the password you typed does not appear anywhere on the resulting page or in the address bar."
-  },
-  {
-    "id": 12,
-    "feature": 4,
-    "title": "Open a terminal to the Mac mini from the harness page",
-    "steps": "You are signed in, on https://pantheon-admin.ferrumcorde.com/harness.\n1. Find the button labelled 'Claude CLI \u2192 Mac-Mini' under 'Start a session'.\n2. Click it once.\n3. Wait for the tab to open and type: whoami",
-    "expected": "A new tab opens containing a working terminal, and 'whoami' returns karl. The tab is labelled with the machine name, and the shell prompt shows the Mac mini's hostname \u2014 proving the harness brokered a real SSH session using the key it installed."
-  },
-  {
-    "id": 13,
-    "feature": 4,
-    "title": "Attach to an existing tmux session inside the tab",
-    "steps": "You are in an open terminal tab from scenario 12.\n1. Type: tmux ls\n2. Type: tmux attach -t pantheon\n3. Once attached, press Ctrl-B then the letter w to open the tmux window list, then press Escape.",
-    "expected": "'tmux ls' lists your real sessions (Alden, cdf, ios-app, lancache, new-solo, pantheon, solo). Attaching brings up that session's contents, and Ctrl-B w opens tmux's window chooser \u2014 proving the key combination reaches tmux rather than being swallowed by the browser."
-  },
-  {
-    "id": 14,
-    "feature": 4,
-    "title": "Run Claude Code inside the tab on the Max subscription",
-    "steps": "You are attached to a tmux session inside a harness terminal tab.\n1. Change to any project directory you normally work in.\n2. Start Claude Code by typing: claude\n3. Ask it something trivial, for example: what directory am I in?\n4. Exit Claude Code when done.",
-    "expected": "Claude Code starts and answers, authenticated by your existing Max subscription with no API key prompt and no extra billing. This is the founding purpose of the whole project \u2014 working the way you already work, through the harness rather than an SSH client."
-  },
-  {
-    "id": 15,
-    "feature": 4,
-    "title": "Three concurrent terminals stay independent",
-    "steps": "You are on https://pantheon-admin.ferrumcorde.com/harness with no terminal tabs open.\n1. Click 'Claude CLI \u2192 Mac-Mini' three times, waiting for each tab to appear.\n2. In tab one type: echo ONE\n3. In tab two type: echo TWO\n4. In tab three type: echo THREE",
-    "expected": "Three separate tabs open and each shows only its own output \u2014 ONE, TWO and THREE do not bleed into each other. Switching between tabs preserves what each was showing, so the sessions are genuinely independent rather than one shared shell."
-  },
-  {
-    "id": 16,
-    "feature": 4,
-    "title": "Closing a tab does not kill work running in tmux",
-    "steps": "You are in a harness terminal tab attached to a tmux session.\n1. Start something long-running, for example: sleep 300\n2. Close the browser tab using its X control.\n3. Open a fresh terminal from the harness page and type: tmux attach -t pantheon",
-    "expected": "Reattaching shows the sleep still running with its remaining time \u2014 closing the browser tab did not kill the work, because tmux holds the session on the Mac mini. This is why attaching to tmux is the recommended pattern rather than relying on the harness's own tabs."
-  },
-  {
-    "id": 17,
-    "feature": 4,
-    "title": "Every state is readable without relying on colour",
-    "steps": "You are signed in, on https://pantheon-admin.ferrumcorde.com/harness, and on https://pantheon-admin.ferrumcorde.com/admin/config in a second tab.\n1. Look at every status shown on both pages: machine states, tab states, provisioning states, connection states.\n2. For each one, ask whether you could tell what it means in black and white.",
-    "expected": "Every state is spelled out in words or shapes \u2014 'not provisioned', 'disabled', 'connected' and so on \u2014 with no meaning carried by colour alone. Any state you could only identify by its colour is an accessibility defect and must be recorded as a bug (CC1, severity SEV-2)."
-  },
-  {
-    "id": 18,
-    "feature": 8,
-    "title": "The user guide opens without signing in",
-    "steps": "Setup: open a private or incognito browser window so you are definitely signed out.\n1. Go to https://pantheon-admin.ferrumcorde.com/help\n2. Read the opening banner and skim the contents list.\n3. Try https://pantheon-admin.ferrumcorde.com/harness in the same window.",
-    "expected": "The guide loads fully without asking for a passphrase, and its opening banner states plainly that the harness is half-built. The harness page in the same window still demands sign-in \u2014 opening the guide must not have opened anything else up."
-  },
-  {
-    "id": 19,
-    "feature": 8,
-    "title": "Both links from the chat page reach the right places",
-    "steps": "You are signed in to the chat page at https://pantheon.ferrumcorde.com.\n1. Find the 'Switch to Admin' link under the message box and click it.\n2. Go back to the chat page.\n3. Open your profile menu and click 'Help & FAQ'.",
-    "expected": "'Switch to Admin' opens the harness console, and 'Help & FAQ' opens the Pantheon user guide rather than LibreChat's own documentation site. Both are the links configured for this deployment, and neither leads to a 404 or an unrelated page."
-  },
-  {
-    "id": 20,
-    "feature": 8,
-    "title": "The guide's description matches what you actually see",
-    "steps": "You are signed in, with https://pantheon-admin.ferrumcorde.com/help open alongside the Configuration page.\n1. Read the guide's section 5 on the Configuration page, including the two limitations it lists.\n2. Compare each claim against the real page in front of you.",
-    "expected": "Everything the guide describes matches reality, including its warnings that Edit and Remove do nothing and that the Enabled tick is ignored for backends and service endpoints. Any place where the guide describes something that does not exist, or omits something that does, is a documentation bug worth recording."
-  }
-] and <h2>Feature 6: Operator Browser Auth (#9)</h2>
-<div id="feature6"></div>
-
-<h2>Feature 1: Dev Machine Registry &amp; Configuration Page</h2>
-<div id="feature1"></div>
-
-<h2>Feature 7: Dev-Machine Enrolment from the UI</h2>
-<div id="feature7"></div>
-
-<h2>Feature 4: Harness Frame + Terminal Tabs — MILESTONE ONE</h2>
-<div id="feature4"></div>
-
-<h2>Feature 8: Documentation &amp; Access Paths</h2>
-<div id="feature8"></div>.
 function addBug() {
   bugCount++;
   var n = bugCount;
@@ -927,11 +397,7 @@ function addBug() {
           '<option selected>SEV-3 (minor UX)</option><option>SEV-4 (polish/enhancement)</option>' +
         '</select></div>' +
         '<div class="bug-field"><label>Feature</label><select id="bug-feat-' + n + '">' +
-          '<option value="6">Feature 6: Operator Browser Auth (#9)</option>
-<option value="1">Feature 1: Dev Machine Registry &amp; Configuration Page</option>
-<option value="7">Feature 7: Dev-Machine Enrolment from the UI</option>
-<option value="4">Feature 4: Harness Frame + Terminal Tabs — MILESTONE ONE</option>
-<option value="8">Feature 8: Documentation &amp; Access Paths</option>' +
+          '<option value="6">Feature 6: Operator Browser Auth (#9)</option><option value="1">Feature 1: Dev Machine Registry &amp; Configuration Page</option><option value="7">Feature 7: Dev-Machine Enrolment from the UI</option><option value="4">Feature 4: Harness Frame + Terminal Tabs — MILESTONE ONE</option><option value="8">Feature 8: Documentation &amp; Access Paths</option>' +
         '</select></div>' +
       '</div>' +
       '<div class="bug-field"><label>Description</label><input id="bug-desc-' + n + '" placeholder="What went wrong?"></div>' +
