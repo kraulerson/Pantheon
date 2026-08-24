@@ -28,6 +28,8 @@ export interface HarnessRoutesDeps {
     listDevMachines(): DevMachine[];
     getDevMachineByLogicalName(logicalName: string): DevMachine | undefined;
   };
+  /** Whether operator login is enabled (controls the Log out control in the frame). */
+  readonly loginEnabled: boolean;
 }
 
 export function registerHarnessRoutes(app: FastifyInstance, deps: HarnessRoutesDeps): void {
@@ -41,7 +43,7 @@ export function registerHarnessRoutes(app: FastifyInstance, deps: HarnessRoutesD
 
   // ---- Harness frame (guarded) ----
   app.get("/harness", async (_req, reply) => {
-    reply.type("text/html").send(renderHarnessFrame({ devMachines: deps.registry.listDevMachines() }));
+    reply.type("text/html").send(renderHarnessFrame({ devMachines: deps.registry.listDevMachines(), loginEnabled: deps.loginEnabled }));
   });
 
   // ---- Terminal tab for a machine (guarded) ----

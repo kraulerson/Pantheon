@@ -17,6 +17,8 @@ export interface HarnessFrameModel {
   readonly devMachines: readonly DevMachine[];
   /** LibreChat URL for the chat modality (optional until LibreChat is deployed). */
   readonly chatUrl?: string;
+  /** When true, render the Log out control (POST /logout exists only when a passphrase is set). */
+  readonly loginEnabled?: boolean;
 }
 
 function esc(value: unknown): string {
@@ -204,7 +206,13 @@ export function renderHarnessFrame(model: HarnessFrameModel): string {
        operator's only route back to the page that provisions it (BUGS #16). -->
   <a href="/admin/config" data-nav="config">Configuration</a>
   <a href="/help" data-nav="help">Help</a>
+  ${model.loginEnabled ? `<form method="post" action="/logout" class="logout" style="display:inline;margin-left:auto"><button type="submit">Log out</button></form>` : ""}
 </header>
+
+<!-- Persistent launch bar (BUGS #22): the per-machine terminal shortcuts live HERE, in the page
+     chrome, NOT inside the welcome section — switchTo() hides the welcome section when a tab opens,
+     which used to hide the shortcuts too and blocked opening a second terminal. -->
+<nav class="launch-bar" aria-label="Open a terminal">${shortcuts(model.devMachines)}</nav>
 
 <!-- Tab bar: terminal/chat tabs are added here at runtime -->
 <nav class="tabs" data-tabbar role="tablist" aria-label="Open sessions"></nav>
@@ -212,8 +220,7 @@ export function renderHarnessFrame(model: HarnessFrameModel): string {
 <main data-panels>
   <section data-welcome>
     <h2>Start a session</h2>
-    <p>Use <strong>New Session</strong>, or a shortcut below. Sessions open as tabs above; close a tab with its ✕.</p>
-    ${shortcuts(model.devMachines)}
+    <p>Use <strong>New Session</strong>, or a shortcut in the launch bar above. Sessions open as tabs above; close a tab with its ✕.</p>
   </section>
 </main>
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { McpRegistrationService } from "../src/registry/mcp-registration.js";
-import type { PetaResponse } from "../src/peta/client.js";
+import { PetaAdminClient, type PetaResponse } from "../src/peta/client.js";
 
 /** A stubbed PetaAdminClient surface — only the methods the registration service uses. */
 function stubClient(overrides: Partial<Record<string, unknown>> = {}) {
@@ -69,24 +69,35 @@ describe("McpRegistrationService (stubbed PetaAdminClient)", () => {
   });
 });
 
-// Optional live test: only runs if Peta health is reachable, else skipped.
-const PETA_HEALTH = "http://localhost:3002/health";
-async function petaReachable(): Promise<boolean> {
+// Optional live test: a REAL register->list round-trip, but ONLY against an explicitly configured
+// TEST Peta (PETA_TEST_URL + PETA_TEST_ADMIN_TOKEN). It must never touch the production Peta — the
+// service has no remove(), so a registration cannot be cleaned up (see the /api/mcp-servers DELETE
+// no-op). When the test Peta is not configured/reachable it SKIPS honestly (ctx.skip). Previously
+// this did a bare `return` (tallied as a PASS) and asserted `expect(true).toBe(true)` — testing
+// nothing while inflating the green count (BUGS #23).
+const PETA_TEST_URL = process.env["PETA_TEST_URL"];
+const PETA_TEST_TOKEN = process.env["PETA_TEST_ADMIN_TOKEN"];
+async function testPetaReachable(): Promise<boolean> {
+  if (!PETA_TEST_URL || !PETA_TEST_TOKEN) return false;
   try {
-    const res = await fetch(PETA_HEALTH, { signal: AbortSignal.timeout(800) });
+    const res = await fetch(`${PETA_TEST_URL}/health`, { signal: AbortSignal.timeout(800) });
     return res.ok;
   } catch {
     return false;
   }
 }
 
-describe("McpRegistrationService — live register->list->remove (optional)", () => {
-  it("performs a real round-trip if Peta is up, else skips", async () => {
-    if (!(await petaReachable())) {
-      console.warn(`[skip] Peta not reachable at ${PETA_HEALTH} — skipping live MCP registration test`);
+describe("McpRegistrationService — live register->list round-trip (opt-in, test Peta only)", () => {
+  it("registers then lists a throwaway server against a configured test Peta, else skips", async (ctx) => {
+    if (!(await testPetaReachable())) {
+      ctx.skip();
       return;
     }
-    // Live path intentionally minimal; presence of ADMIN token required.
-    expect(true).toBe(true);
-  });
+    const svc = new McpRegistrationService(new PetaAdminClient(PETA_TEST_URL as string, PETA_TEST_TOKEN as string));
+    const serverId = `pantheon-test-${Math.random().toString(36).slice(2, 8)}`;
+    const res = await svc.register({ serverId, serverName: "Pantheon Test", endpoint: "127.0.0.1:9999" });
+    expect(res.success).toBe(true);
+    const list = (await svc.list()) as Array<{ serverId?: string }>;
+    expect(list.some((entry) => entry.serverId === serverId)).toBe(true);
+  }, 15_000);
 });

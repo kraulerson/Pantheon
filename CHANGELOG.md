@@ -19,6 +19,28 @@ for handoff clarity. Categories are ordered by impact severity.
 
 ## [Unreleased]
 
+### Fixed
+- 2026-08-20 **UAT session 2 remediation** (all test-first; suite 349 passed / 5 honest skips):
+  - **#21** config-page CRUD form posts now 303-redirect to `/admin/config` instead of dumping a
+    raw-JSON page (all four routes; JSON/API callers unchanged) — the `Add …` dead end.
+  - **#18** backend & service-endpoint **Enabled** checkbox is honoured (new `configFormBody`
+    coercion; only dev-machines had one).
+  - **#20** a **Log out** control now renders in the harness header (and Configuration header) when
+    operator login is enabled; wires the existing `POST /logout`.
+  - **#22** the terminal launch shortcuts moved into a persistent launch bar in the page chrome, so
+    they stay clickable while a tab is open (previously hidden with the welcome section by
+    `switchTo`) — you can open a second terminal again.
+  - **#19** the Configuration page ships client JS: **Remove** (confirm → DELETE → reload) and
+    **Edit** (inline prefilled form → PUT → reload) now work for backends, service endpoints and
+    dev machines. MCP **Remove** is deliberately disabled — its server-side delete is unwired
+    (new **#24**, deferred).
+  - **#14** the gitea-live integration test is now scope-aware (403 → `ctx.skip()`); it no longer
+    goes red on a LAN runner with the minimal-scope token, and the token is not widened.
+  - **#23** the mcp-registration "live" test no longer false-passes (`expect(true)` + bare
+    `return`); it `ctx.skip()`s honestly and does a real register→list round-trip against an
+    explicitly configured **test** Peta only (never production).
+
+
 ### Documentation
 - 2026-08-20 **Capability-gap study + operator decisions + architecture restructure.**
   Four-harness study (`docs/research/2026-08-20-harness-capability-gap-study.md`, OpenClaw/

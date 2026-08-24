@@ -14,7 +14,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { GiteaClient } from "../src/gitea/client.js";
+import { GiteaClient, GiteaError } from "../src/gitea/client.js";
 import { loadPersona } from "../src/gitea/persona.js";
 
 const ENV_PATH = resolve(dirname(fileURLToPath(import.meta.url)), "../.env.local");
@@ -63,7 +63,17 @@ describe("GiteaClient — live round-trip (guarded)", () => {
     const client = new GiteaClient({ baseUrl: BASE, token: TOKEN });
     const name = `pantheon-eval-${Math.random().toString(36).slice(2, 10)}`;
 
-    const repo = await client.createRepo({ name });
+    // The beforeAll guard only proves the token is valid and Gitea is reachable — NOT that the
+    // token carries the write scope this round-trip needs. A minimal-scope token (the deliberate
+    // F2 rotation, scope write:repository/read:user) 403s on createRepo. That is a SKIP, not a
+    // failure — never widen the token to make this pass (BUGS #14).
+    let repo;
+    try {
+      repo = await client.createRepo({ name });
+    } catch (e) {
+      if (e instanceof GiteaError && e.status === 403) { ctx.skip(); return; }
+      throw e;
+    }
     expect(repo.name).toBe(name);
     expect(repo.private).toBe(true);
     const owner = repo.owner?.login ?? repo.full_name.split("/")[0]!;

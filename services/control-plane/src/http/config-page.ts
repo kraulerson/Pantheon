@@ -71,7 +71,7 @@ function backendsSection(backends: readonly Backend[]): string {
             (b) =>
               `<tr><td>${esc(b.displayName)}</td><td>${esc(b.kind)}</td><td>${esc(b.endpoint)}</td><td>${statusPill(
                 b.enabled
-              )}</td><td><button type="button" data-action="edit-backend" data-id="${esc(
+              )}</td><td><button type="button" data-action="edit-backend" data-display="${esc(b.displayName)}" data-endpoint="${esc(b.endpoint)}" data-enabled="${b.enabled}" data-id="${esc(
                 b.id
               )}">Edit</button> <button type="button" data-action="remove-backend" data-id="${esc(
                 b.id
@@ -104,7 +104,7 @@ function mcpSection(servers: readonly unknown[]): string {
           .map((s) => {
             const id = (s as { serverId?: unknown }).serverId;
             const name = (s as { serverName?: unknown }).serverName ?? id;
-            return `<li>${esc(name)} <button type="button" data-action="remove-mcp" data-id="${esc(
+            return `<li>${esc(name)} <button type="button" data-action="remove-mcp" disabled title="Removal not yet wired (Peta delete pending)" data-id="${esc(
               String(id)
             )}">Remove</button></li>`;
           })
@@ -128,7 +128,7 @@ function serviceEndpointsSection(endpoints: readonly ServiceEndpoint[]): string 
             (e) =>
               `<tr><td>${esc(e.displayName)}</td><td>${esc(e.key)}</td><td>${esc(e.endpoint)}</td><td>${statusPill(
                 e.enabled
-              )}</td><td><button type="button" data-action="edit-endpoint" data-id="${esc(
+              )}</td><td><button type="button" data-action="edit-endpoint" data-display="${esc(e.displayName)}" data-endpoint="${esc(e.endpoint)}" data-enabled="${e.enabled}" data-id="${esc(
                 e.id
               )}">Edit</button> <button type="button" data-action="remove-endpoint" data-id="${esc(
                 e.id
@@ -193,7 +193,7 @@ function devMachinesSection(machines: readonly DevMachine[]): string {
                 m.user
               )}</td><td>${provisionPill(m.provisioned)}</td><td>${statusPill(
                 m.enabled
-              )}</td><td><button type="button" data-action="edit-devmachine" data-id="${esc(
+              )}</td><td><button type="button" data-action="edit-devmachine" data-host="${esc(m.host)}" data-port="${m.port}" data-user="${esc(m.user)}" data-enabled="${m.enabled}" data-id="${esc(
                 m.id
               )}">Edit</button> <button type="button" data-action="remove-devmachine" data-id="${esc(
                 m.id
@@ -213,6 +213,69 @@ function devMachinesSection(machines: readonly DevMachine[]): string {
   <p class="empty-state">SSH key is installed by the provisioning step and held in vault custody — never entered or shown here.</p></section>`;
 }
 
+export const CONFIG_CLIENT_JS = `
+(function () {
+  var doc = document;
+  var ROUTES = { backend: '/api/backends', endpoint: '/api/service-endpoints', devmachine: '/api/dev-machines', mcp: '/api/mcp-servers' };
+  function esc(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+  function fieldsFor(kind, b) {
+    if (kind === 'devmachine') return [
+      { n: 'host', label: 'Host', v: b.getAttribute('data-host') },
+      { n: 'port', label: 'Port', v: b.getAttribute('data-port') },
+      { n: 'user', label: 'User', v: b.getAttribute('data-user') },
+      { n: 'enabled', label: 'Enabled', cb: b.getAttribute('data-enabled') === 'true' }
+    ];
+    return [
+      { n: 'displayName', label: 'Name', v: b.getAttribute('data-display') },
+      { n: 'endpoint', label: 'Endpoint', v: b.getAttribute('data-endpoint') },
+      { n: 'enabled', label: 'Enabled', cb: b.getAttribute('data-enabled') === 'true' }
+    ];
+  }
+  function onEdit(btn, kind) {
+    var tr = btn.closest('tr'); if (!tr) return;
+    var id = btn.getAttribute('data-id');
+    var html = fieldsFor(kind, btn).map(function (f) {
+      if ('cb' in f) return '<label>' + f.label + ' <input type="checkbox" data-edit="' + f.n + '"' + (f.cb ? ' checked' : '') + '></label>';
+      return '<label>' + f.label + ' <input data-edit="' + f.n + '" value="' + esc(f.v) + '"></label>';
+    }).join(' ');
+    tr.innerHTML = '<td colspan="5"><div class="edit-form">' + html +
+      ' <button type="button" data-action="save-edit" data-kind="' + esc(kind) + '" data-id="' + esc(id) + '">Save</button>' +
+      ' <button type="button" data-action="cancel-edit">Cancel</button></div></td>';
+  }
+  function onSave(btn) {
+    var kind = btn.getAttribute('data-kind'), id = btn.getAttribute('data-id'), tr = btn.closest('tr'), patch = {};
+    Array.prototype.forEach.call(tr.querySelectorAll('[data-edit]'), function (el) {
+      var n = el.getAttribute('data-edit');
+      if (el.type === 'checkbox') patch[n] = el.checked;
+      else if (n === 'port') patch[n] = Number(el.value);
+      else patch[n] = el.value;
+    });
+    fetch(ROUTES[kind] + '/' + encodeURIComponent(id), {
+      method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch)
+    }).then(function (r) {
+      if (r.ok) { location.reload(); return; }
+      r.json().then(function (j) { window.alert('Save failed: ' + ((j && j.detail) || r.status)); }, function () { window.alert('Save failed (' + r.status + ').'); });
+    }).catch(function () { window.alert('Save failed (network).'); });
+  }
+  function onRemove(btn, kind) {
+    var id = btn.getAttribute('data-id');
+    if (!window.confirm('Remove this ' + kind + '? This cannot be undone.')) return;
+    fetch(ROUTES[kind] + '/' + encodeURIComponent(id), { method: 'DELETE', credentials: 'same-origin' })
+      .then(function (r) { if (r.ok) location.reload(); else window.alert('Remove failed (' + r.status + ').'); })
+      .catch(function () { window.alert('Remove failed (network).'); });
+  }
+  doc.addEventListener('click', function (ev) {
+    var t = ev.target, btn = t && t.closest ? t.closest('[data-action]') : null;
+    if (!btn || btn.disabled) return;
+    var a = btn.getAttribute('data-action');
+    if (a.indexOf('remove-') === 0) onRemove(btn, a.slice(7));
+    else if (a.indexOf('edit-') === 0) onEdit(btn, a.slice(5));
+    else if (a === 'save-edit') onSave(btn);
+    else if (a === 'cancel-edit') location.reload();
+  });
+})();
+`;
+
 export function renderConfigPage(model: ConfigPageModel): string {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -230,6 +293,7 @@ export function renderConfigPage(model: ConfigPageModel): string {
   .empty-state { font-style: italic; }
   label { display: inline-block; margin-right: 1rem; }
   form { margin-top: 0.75rem; }
+  .edit-form label { margin-right: .5rem; }
 </style>
 </head>
 <body>
@@ -240,6 +304,7 @@ ${backendsSection(model.backends)}
 ${mcpSection(model.mcpServers)}
 ${serviceEndpointsSection(model.serviceEndpoints)}
 ${devMachinesSection(model.devMachines ?? [])}
+<script>${CONFIG_CLIENT_JS}</script>
 </body>
 </html>`;
 }

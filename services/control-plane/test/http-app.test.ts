@@ -390,23 +390,29 @@ describe("dev-machine form encoding (the Config page posts an HTML form, not JSO
       payload
     });
 
-  it("accepts the page's own encoding and stores typed values", async () => {
+  const getMachine = async (name: string) =>
+    (await app.inject({ method: "GET", url: "/api/dev-machines", headers: auth }))
+      .json().find((x: { logicalName: string }) => x.logicalName === name);
+
+  it("accepts the page's own encoding and stores typed values (form → 303, record stored)", async () => {
     const res = await postForm("logicalName=mac-mini&host=192.168.1.192&port=22&user=karl&enabled=on");
-    expect(res.statusCode).toBe(201);
-    expect(res.json().port).toBe(22);
-    expect(res.json().enabled).toBe(true);
+    expect(res.statusCode).toBe(303);
+    expect(res.headers.location).toBe("/admin/config");
+    const m = await getMachine("mac-mini");
+    expect(m.port).toBe(22);
+    expect(m.enabled).toBe(true);
   });
 
   it("applies the default port when the form leaves the field blank", async () => {
     const res = await postForm("logicalName=blank-port&host=192.168.1.192&port=&user=karl&enabled=on");
-    expect(res.statusCode).toBe(201);
-    expect(res.json().port).toBe(22);
+    expect(res.statusCode).toBe(303);
+    expect((await getMachine("blank-port")).port).toBe(22);
   });
 
   it("treats an absent checkbox as disabled, not as an error", async () => {
     const res = await postForm("logicalName=unchecked&host=192.168.1.192&port=22&user=karl");
-    expect(res.statusCode).toBe(201);
-    expect(res.json().enabled).toBe(false);
+    expect(res.statusCode).toBe(303);
+    expect((await getMachine("unchecked")).enabled).toBe(false);
   });
 
   it("still rejects a genuinely bad port from a form (fail-closed, no write)", async () => {
@@ -452,5 +458,69 @@ describe("user guide at /help", () => {
   it("does not open anything else up: /harness still needs auth", async () => {
     const res = await app.inject({ method: "GET", url: "/harness" });
     expect(res.statusCode).toBe(401);
+  });
+});
+
+describe("config CRUD form posts redirect instead of dumping JSON (BUGS #21)", () => {
+  let app: FastifyInstance;
+  beforeEach(() => {
+    ({ app } = makeApp());
+  });
+  const form = (payload: string) => ({
+    headers: { ...auth, "content-type": "application/x-www-form-urlencoded" },
+    payload
+  });
+
+  it("POST /api/backends form → 303 to /admin/config; JSON → 201", async () => {
+    const r = await app.inject({ method: "POST", url: "/api/backends", ...form("displayName=b1&kind=local_alden1&endpoint=192.168.1.89:8080&enabled=on") });
+    expect(r.statusCode).toBe(303);
+    expect(r.headers.location).toBe("/admin/config");
+    const j = await app.inject({ method: "POST", url: "/api/backends", headers: auth, payload: { displayName: "b2", kind: "local_alden1", endpoint: "192.168.1.89:8080", enabled: true } });
+    expect(j.statusCode).toBe(201);
+    expect(j.json().displayName).toBe("b2");
+  });
+
+  it("POST /api/service-endpoints form → 303; JSON → 201", async () => {
+    const r = await app.inject({ method: "POST", url: "/api/service-endpoints", ...form("displayName=e1&key=gitea&endpoint=10.100.23.76:3000&enabled=on") });
+    expect(r.statusCode).toBe(303);
+    expect(r.headers.location).toBe("/admin/config");
+  });
+
+  it("POST /api/dev-machines form → 303; JSON → 201 (unchanged)", async () => {
+    const r = await app.inject({ method: "POST", url: "/api/dev-machines", ...form("logicalName=m1&host=192.168.1.192&port=22&user=karl&enabled=on") });
+    expect(r.statusCode).toBe(303);
+    expect(r.headers.location).toBe("/admin/config");
+  });
+
+  it("POST /api/mcp-servers form → 303", async () => {
+    const r = await app.inject({ method: "POST", url: "/api/mcp-servers", ...form("serverId=s1&serverName=S1&endpoint=10.100.23.90:9000") });
+    expect(r.statusCode).toBe(303);
+    expect(r.headers.location).toBe("/admin/config");
+  });
+});
+
+describe("backend/service-endpoint Enabled checkbox is honoured (BUGS #18)", () => {
+  let app: FastifyInstance;
+  let registry: RegistryService;
+  beforeEach(() => {
+    const repo = new SqliteRegistry(":memory:");
+    seedDefaults(repo);
+    registry = new RegistryService(repo);
+    const mcp = new McpRegistrationService({ createServer: vi.fn(), getServers: vi.fn(async () => ({ success: true, servers: [] })) } as never);
+    app = buildApp({ adminToken: TOKEN, registry, mcp });
+  });
+  const form = (p: string) => ({ headers: { ...auth, "content-type": "application/x-www-form-urlencoded" }, payload: p });
+
+  it("ticked checkbox on a backend form saves enabled:true", async () => {
+    await app.inject({ method: "POST", url: "/api/backends", ...form("displayName=on1&kind=local_alden1&endpoint=192.168.1.89:8080&enabled=on") });
+    expect(registry.listBackends().find((b) => b.displayName === "on1")!.enabled).toBe(true);
+  });
+  it("absent checkbox on a backend form saves enabled:false", async () => {
+    await app.inject({ method: "POST", url: "/api/backends", ...form("displayName=off1&kind=local_alden1&endpoint=192.168.1.89:8080") });
+    expect(registry.listBackends().find((b) => b.displayName === "off1")!.enabled).toBe(false);
+  });
+  it("ticked checkbox on a service-endpoint form saves enabled:true", async () => {
+    await app.inject({ method: "POST", url: "/api/service-endpoints", ...form("displayName=se1&key=gitea&endpoint=10.100.23.76:3000&enabled=on") });
+    expect(registry.listServiceEndpoints().find((e) => e.displayName === "se1")!.enabled).toBe(true);
   });
 });

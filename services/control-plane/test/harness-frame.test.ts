@@ -108,3 +108,29 @@ describe("renderHarnessFrame — Help", () => {
     }
   });
 });
+
+describe("renderHarnessFrame — logout control (BUGS #20)", () => {
+  it("renders a logout form posting to /logout when operator login is enabled", () => {
+    const html = renderHarnessFrame({ devMachines: [], loginEnabled: true });
+    expect(html).toMatch(/<form[^>]*method="post"[^>]*action="\/logout"/);
+    expect(html).toMatch(/Log ?out/i);
+  });
+  it("omits the logout control when operator login is disabled", () => {
+    const html = renderHarnessFrame({ devMachines: [], loginEnabled: false });
+    expect(html).not.toContain('action="/logout"');
+  });
+});
+
+describe("renderHarnessFrame — launch shortcuts persist while a tab is open (BUGS #22)", () => {
+  const html = () => renderHarnessFrame({ devMachines: [machine({ provisioned: true, enabled: true })] });
+  it("renders the terminal shortcuts OUTSIDE the hide-on-open welcome section", () => {
+    const h = html();
+    const start = h.indexOf("<section data-welcome>");
+    const welcomeBlock = h.slice(start, h.indexOf("</section>", start));
+    expect(h).toContain("data-open-terminal=");           // present in the page
+    expect(welcomeBlock).not.toContain("data-open-terminal="); // but NOT inside the welcome section
+  });
+  it("puts the shortcuts in a persistent launch bar", () => {
+    expect(html()).toMatch(/<nav class="launch-bar"[^>]*>[\s\S]*data-open-terminal=/);
+  });
+});

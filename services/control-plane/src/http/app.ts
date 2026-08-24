@@ -153,6 +153,30 @@ function devMachineFormBody(body: unknown, contentType: string | undefined): unk
   return out;
 }
 
+/**
+ * Config-page form normalizer for entities WITHOUT a port (backends, service endpoints).
+ * Same HTML-checkbox truth as devMachineFormBody: an unchecked box does not arrive, a checked box
+ * arrives as the string "on". JSON bodies pass through untouched. Fixes BUGS #18 (the Enabled tick
+ * was silently ignored for these two, because only /api/dev-machines ran a normalizer).
+ */
+function configFormBody(body: unknown, contentType: string | undefined): unknown {
+  if (typeof contentType !== "string" || !contentType.includes("application/x-www-form-urlencoded")) {
+    return body;
+  }
+  if (typeof body !== "object" || body === null) return body;
+  const src = body as Record<string, unknown>;
+  return { ...src, enabled: src.enabled === "on" || src.enabled === "true" || src.enabled === true };
+}
+
+/**
+ * True when the request is an HTML form submit (urlencoded). Config-page forms do a full-page POST,
+ * so on success the browser must be redirected back to /admin/config (303, POST->GET) rather than
+ * shown the raw JSON record — the BUGS #15 / #21 dead end. JSON/API callers get the record.
+ */
+function isUrlencodedForm(req: FastifyRequest): boolean {
+  return (req.headers["content-type"] ?? "").includes("application/x-www-form-urlencoded");
+}
+
 export function buildApp(opts: AppOptions): FastifyInstance {
   const app = Fastify({ logger: false });
   const { registry, mcp } = opts;
@@ -206,7 +230,8 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.get("/api/backends", async () => registry.listBackends());
 
   app.post("/api/backends", async (req, reply) => {
-    const created = registry.createBackend(req.body as never);
+    const created = registry.createBackend(configFormBody(req.body, req.headers["content-type"]) as never);
+    if (isUrlencodedForm(req)) { reply.redirect("/admin/config", 303); return; }
     reply.code(201);
     return created;
   });
@@ -224,7 +249,8 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.get("/api/service-endpoints", async () => registry.listServiceEndpoints());
 
   app.post("/api/service-endpoints", async (req, reply) => {
-    const created = registry.createServiceEndpoint(req.body as never);
+    const created = registry.createServiceEndpoint(configFormBody(req.body, req.headers["content-type"]) as never);
+    if (isUrlencodedForm(req)) { reply.redirect("/admin/config", 303); return; }
     reply.code(201);
     return created;
   });
@@ -245,6 +271,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     const created = registry.createDevMachine(
       devMachineFormBody(req.body, req.headers["content-type"]) as never
     );
+    if (isUrlencodedForm(req)) { reply.redirect("/admin/config", 303); return; }
     reply.code(201);
     return created;
   });
@@ -263,6 +290,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
 
   app.post("/api/mcp-servers", async (req, reply) => {
     const res = await mcp.register(req.body as never);
+    if (isUrlencodedForm(req)) { reply.redirect("/admin/config", 303); return; }
     reply.code(201);
     return res;
   });
@@ -287,7 +315,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   });
 
   // ---- Harness UI (frame + xterm.js terminal tabs + public xterm assets) — ADR-0005 §9 C.1/C.6 ----
-  registerHarnessRoutes(app, { registry });
+  registerHarnessRoutes(app, { registry, loginEnabled });
 
   // ---- Config page (server-rendered, behind the guard) ----
   app.get("/admin/config", async (_req, reply) => {
