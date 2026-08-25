@@ -78,9 +78,11 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   seedDefaults(repo);
   const registry = new RegistryService(repo);
 
-  const petaAdmin: PetaServerAdmin = cfg.peta
-    ? new PetaAdminClient(cfg.peta.url, cfg.peta.token, cfg.fetchFn)
-    : unconfiguredPeta();
+  // One Peta admin client serves BOTH the MCP-registration service and the approvals proxy
+  // (§9 C.3 admin routes + the keycard door's `approvals:read`). Unconfigured → the MCP service
+  // fails clearly and the approvals routes are simply not mounted (the door answers a labeled 503).
+  const petaClient = cfg.peta ? new PetaAdminClient(cfg.peta.url, cfg.peta.token, cfg.fetchFn) : undefined;
+  const petaAdmin: PetaServerAdmin = petaClient ?? unconfiguredPeta();
   const mcp = new McpRegistrationService(petaAdmin);
 
   // Key custody (ADR-0005/TM-020): every SSH use below resolves the harness key server-side by handle.
@@ -103,6 +105,7 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
     tmux,
     keycards,
     sessionLedger,
+    ...(petaClient ? { peta: petaClient } : {}),
     ...(cfg.operatorPassword ? { operatorPassword: cfg.operatorPassword } : {}),
     ...(cfg.secureCookies !== undefined ? { secureCookies: cfg.secureCookies } : {})
   });

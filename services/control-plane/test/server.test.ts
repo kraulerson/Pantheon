@@ -89,3 +89,39 @@ describe("createServer — session keycards (M1 task 2)", () => {
     expect(res.body).toContain("Session Keycards");
   });
 });
+
+describe("createServer — Peta approvals backend is wired when PETA_URL/PETA_ADMIN_TOKEN are set", () => {
+  /** A fake Peta admin endpoint: answers LIST_APPROVALS (9201) with one pending approval carrying arguments. */
+  function fakePetaFetch(): typeof fetch {
+    return (async (_url: unknown, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { action: number };
+      const payload =
+        body.action === 9201
+          ? { success: true, approvals: [{ approvalId: "ap-9", tool: "gitea_file_write", status: "pending", arguments: { content: "SECRET-CONTENT" } }] }
+          : { success: true, servers: [] };
+      return new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+  }
+
+  it("mounts the admin /approvals proxy and makes approvals:read live on the keycard door (reference-only)", async () => {
+    keyDir = mkdtempSync(join(tmpdir(), "pantheon-srv-keys-"));
+    app = await createServer({ adminToken: TOKEN, dbPath: ":memory:", keyDir, keyHandle: "harness", peta: { url: "http://peta.test", token: "peta-admin-token" }, fetchFn: fakePetaFetch() });
+    const adminList = await app.inject({ method: "GET", url: "/approvals", headers: auth });
+    expect(adminList.statusCode).toBe(200);
+    const minted = await app.inject({ method: "POST", url: "/api/keycards", headers: auth, payload: { principal: "cli", scopes: ["approvals:read"] } });
+    const token = minted.json().token as string;
+    const door = await app.inject({ method: "GET", url: "/keycard/v1/approvals", headers: { authorization: `Bearer ${token}` } });
+    expect(door.statusCode).toBe(200);
+    expect(door.json()).toEqual({ approvals: [{ id: "ap-9", tool: "gitea_file_write", status: "pending" }], truncated: false });
+    expect(door.body).not.toContain("SECRET-CONTENT");
+  });
+
+  it("without Peta configured the admin /approvals proxy is not mounted and the door answers a labeled 503", async () => {
+    app = await makeServer();
+    expect((await app.inject({ method: "GET", url: "/approvals", headers: auth })).statusCode).toBe(404);
+    const minted = await app.inject({ method: "POST", url: "/api/keycards", headers: auth, payload: { principal: "cli", scopes: ["approvals:read"] } });
+    const door = await app.inject({ method: "GET", url: "/keycard/v1/approvals", headers: { authorization: `Bearer ${minted.json().token}` } });
+    expect(door.statusCode).toBe(503);
+    expect(door.json()).toMatchObject({ state: "unavailable" });
+  });
+});
