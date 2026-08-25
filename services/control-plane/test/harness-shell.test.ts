@@ -8,7 +8,7 @@
  * executed against the rendered DOM.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { renderHarnessFrame, HARNESS_CLIENT_JS } from "../src/http/harness-frame.js";
 import type { DevMachine } from "../src/registry/types.js";
 
@@ -131,5 +131,285 @@ describe("tabbed harness shell (behavior)", () => {
     // instead assert the connected state + that input is forwarded
     const term = document.querySelector("[data-tab-panel]");
     expect(term).not.toBeNull();
+  });
+});
+
+// ---- tmux-aware launcher (M1 task 1): live session list → one button per session → attached tab ----
+
+type FetchReply = { status: number; body: unknown };
+function stubFetch(handler: (url: string) => FetchReply | Promise<FetchReply>): ReturnType<typeof vi.fn> {
+  const fn = vi.fn(async (url: string) => {
+    const r = await handler(url);
+    return { ok: r.status < 400, status: r.status, json: async () => r.body };
+  });
+  (window as unknown as { fetch: unknown }).fetch = fn;
+  return fn;
+}
+function sess(name: string, attachable = true): Record<string, unknown> {
+  return { name, windows: 1, attached: false, createdAt: "2026-08-24T10:00:00.000Z", attachable };
+}
+const okList = (sessions: unknown[]) => (): FetchReply => ({ status: 200, body: { machine: "mac-mini", state: "ok", sessions } });
+const slot = (): HTMLElement => document.querySelector('[data-tmux-list="mac-mini"]') as HTMLElement;
+
+describe("tmux-aware launcher (behavior)", () => {
+  beforeEach(() => {
+    FakeWS.instances = [];
+    document.body.innerHTML = "";
+  });
+
+  it("fetches the live list per ready machine and renders one button per session labeled '<machine> · <session>'", async () => {
+    const fetchFn = stubFetch(okList([sess("pantheon"), sess("Alden")]));
+    boot({ devMachines: [machine({ logicalName: "mac-mini" })] });
+    await vi.waitFor(() => expect(document.querySelectorAll('[data-tmux-attach="mac-mini"]').length).toBe(2));
+    const btn = document.querySelector('[data-tmux-session="pantheon"]') as HTMLElement;
+    expect(btn.tagName).toBe("BUTTON");
+    expect(btn.textContent).toContain("mac-mini · pantheon");
+    expect(fetchFn).toHaveBeenCalledWith(
+      expect.stringMatching(/\/harness\/tmux\/mac-mini$/),
+      expect.objectContaining({ credentials: "same-origin" })
+    );
+    expect(slot().getAttribute("data-state")).toBe("ready");
+  });
+
+  it("clicking a session button opens a tab ATTACHED to that session (?tmux=<name>), labeled with the session", async () => {
+    stubFetch(okList([sess("pantheon")]));
+    boot({ devMachines: [machine({ logicalName: "mac-mini" })] });
+    await vi.waitFor(() => expect(document.querySelector('[data-tmux-session="pantheon"]')).not.toBeNull());
+    (document.querySelector('[data-tmux-session="pantheon"]') as HTMLElement).click();
+    expect(FakeWS.instances).toHaveLength(1);
+    expect(FakeWS.instances[0].url).toMatch(/\/terminal\/mac-mini\?tmux=pantheon$/);
+    expect((document.querySelector("[data-tab]") as HTMLElement).textContent).toContain("mac-mini · pantheon");
+  });
+
+  it("an unreachable machine shows a labeled error (text + [!] icon), offers no session buttons, and the page keeps working", async () => {
+    stubFetch(() => ({ status: 502, body: { machine: "mac-mini", state: "unreachable", message: "mac-mini unreachable — SSH connection failed" } }));
+    boot({ devMachines: [machine({ logicalName: "mac-mini" })] });
+    await vi.waitFor(() => expect(slot().getAttribute("data-state")).toBe("error"));
+    expect(slot().textContent).toMatch(/\[!\].*unreachable/);
+    expect(document.querySelectorAll("[data-tmux-attach]").length).toBe(0);
+    (document.querySelector('[data-open-terminal="mac-mini"]') as HTMLElement).click(); // plain shell still works
+    expect(FakeWS.instances).toHaveLength(1);
+  });
+
+  it("no sessions → a labeled empty state in text, no buttons", async () => {
+    stubFetch(okList([]));
+    boot({ devMachines: [machine({ logicalName: "mac-mini" })] });
+    await vi.waitFor(() => expect(slot().getAttribute("data-state")).toBe("empty"));
+    expect(slot().textContent).toMatch(/no tmux sessions on mac-mini/i);
+    expect(document.querySelectorAll("[data-tmux-attach]").length).toBe(0);
+  });
+
+  it("a session the server marks NOT attachable is listed as text, never offered as a button", async () => {
+    stubFetch(okList([sess("weird name;x", false)]));
+    boot({ devMachines: [machine({ logicalName: "mac-mini" })] });
+    await vi.waitFor(() => expect(slot().getAttribute("data-state")).toBe("ready"));
+    expect(document.querySelectorAll("[data-tmux-attach]").length).toBe(0);
+    expect(slot().textContent).toContain("weird name;x");
+    expect(slot().textContent).toMatch(/not attachable/i);
+  });
+
+  it("defense in depth: a name failing the client allow-list is not offered even if the server says attachable", async () => {
+    stubFetch(okList([{ ...sess("x;id"), attachable: true }]));
+    boot({ devMachines: [machine({ logicalName: "mac-mini" })] });
+    await vi.waitFor(() => expect(slot().getAttribute("data-state")).toBe("ready"));
+    expect(document.querySelectorAll("[data-tmux-attach]").length).toBe(0);
+  });
+
+  it("renders session names via textContent — hostile markup in a name cannot inject DOM", async () => {
+    stubFetch(okList([sess("<img src=x onerror=alert(1)>", false)]));
+    boot({ devMachines: [machine({ logicalName: "mac-mini" })] });
+    await vi.waitFor(() => expect(slot().getAttribute("data-state")).toBe("ready"));
+    expect(document.querySelector("img")).toBeNull();
+    expect(slot().textContent).toContain("<img src=x");
+  });
+
+  it("the new-session form opens a tab with ?tmux=<name>&create=1 (attach-or-create)", async () => {
+    stubFetch(okList([]));
+    boot({ devMachines: [machine({ logicalName: "mac-mini" })] });
+    const form = document.querySelector('[data-tmux-new="mac-mini"]') as HTMLFormElement;
+    (form.querySelector('[name="session"]') as HTMLInputElement).value = "solo";
+    form.dispatchEvent(new window.Event("submit", { cancelable: true, bubbles: true }));
+    expect(FakeWS.instances).toHaveLength(1);
+    expect(FakeWS.instances[0].url).toMatch(/\/terminal\/mac-mini\?tmux=solo&create=1$/);
+    expect((document.querySelector("[data-tab]") as HTMLElement).textContent).toContain("mac-mini · solo");
+  });
+
+  it("the new-session form refuses an unsafe name client-side (no tab, no socket, text reason)", () => {
+    stubFetch(okList([]));
+    boot({ devMachines: [machine({ logicalName: "mac-mini" })] });
+    const form = document.querySelector('[data-tmux-new="mac-mini"]') as HTMLFormElement;
+    (form.querySelector('[name="session"]') as HTMLInputElement).value = "x;id";
+    form.dispatchEvent(new window.Event("submit", { cancelable: true, bubbles: true }));
+    expect(FakeWS.instances).toHaveLength(0);
+    expect(document.querySelectorAll("[data-tab]").length).toBe(0);
+    expect(form.textContent).toMatch(/letters, digits/i);
+  });
+
+  it("Refresh re-fetches the list once the previous load has settled", async () => {
+    const fetchFn = stubFetch(okList([]));
+    boot({ devMachines: [machine({ logicalName: "mac-mini" })] });
+    await vi.waitFor(() => expect(slot().getAttribute("data-state")).toBe("empty"));
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    (document.querySelector('[data-tmux-refresh="mac-mini"]') as HTMLElement).click();
+    await vi.waitFor(() => expect(fetchFn).toHaveBeenCalledTimes(2));
+  });
+
+  it("a network failure of the list request renders the labeled error state (never throws)", async () => {
+    (window as unknown as { fetch: unknown }).fetch = vi.fn(async () => {
+      throw new Error("boom");
+    });
+    boot({ devMachines: [machine({ logicalName: "mac-mini" })] });
+    await vi.waitFor(() => expect(slot().getAttribute("data-state")).toBe("error"));
+    expect(slot().textContent).toMatch(/\[!\]/);
+  });
+});
+
+// ---- audit remediation (2026-08-25): client-side findings ----
+
+const OK_EMPTY = { machine: "mac-mini", state: "ok", sessions: [], ignoredLines: 0, truncated: false };
+const statusEl = (): HTMLElement => slot().querySelector('[data-tmux-status]') as HTMLElement;
+
+describe("tmux-aware launcher — audit remediation (client)", () => {
+  beforeEach(() => {
+    FakeWS.instances = [];
+    document.body.innerHTML = "";
+  });
+
+  it("a signed-out (401) answer is labeled as such — not blamed on the machine's tmux", async () => {
+    stubFetch(() => ({ status: 401, body: { error: "unauthenticated" } }));
+    boot({ devMachines: [machine({ logicalName: "mac-mini" })] });
+    await vi.waitFor(() => expect(slot().getAttribute("data-state")).toBe("error"));
+    expect(slot().textContent).toMatch(/signed out|sign in/i);
+    expect(slot().textContent).not.toMatch(/tmux list unavailable/);
+  });
+
+  it("shows window count and 'attached' as VISIBLE button text (not only a tooltip)", async () => {
+    stubFetch(okList([{ ...sess("pantheon"), windows: 2, attached: true }]));
+    boot({ devMachines: [machine({ logicalName: "mac-mini" })] });
+    await vi.waitFor(() => expect(document.querySelector('[data-tmux-session="pantheon"]')).not.toBeNull());
+    const text = (document.querySelector('[data-tmux-session="pantheon"]') as HTMLElement).textContent ?? "";
+    expect(text).toContain("mac-mini · pantheon");
+    expect(text).toMatch(/2 win/);
+    expect(text).toMatch(/attached/);
+  });
+
+  it("labels the success state with a glyph and a count (CC1: every state labeled)", async () => {
+    stubFetch(okList([sess("a"), sess("b")]));
+    boot({ devMachines: [machine({ logicalName: "mac-mini" })] });
+    await vi.waitFor(() => expect(slot().getAttribute("data-state")).toBe("ready"));
+    expect(statusEl().textContent).toMatch(/\[✓\] 2 tmux session/);
+  });
+
+  it("keeps the buttons OUT of the live status region (screen readers are not re-read the whole list)", async () => {
+    stubFetch(okList([sess("a")]));
+    boot({ devMachines: [machine({ logicalName: "mac-mini" })] });
+    await vi.waitFor(() => expect(document.querySelector("[data-tmux-attach]")).not.toBeNull());
+    expect(statusEl().getAttribute("role")).toBe("status");
+    expect(statusEl().querySelector("button")).toBeNull();
+    expect(slot().querySelector("button")).not.toBeNull();
+  });
+
+  it("labels a machine-supplied failure detail as machine-supplied, separate from the first-party message", async () => {
+    stubFetch(() => ({ status: 502, body: { machine: "mac-mini", state: "failed", message: "tmux list-sessions failed (exit 2)", remoteDetail: "boom" } }));
+    boot({ devMachines: [machine({ logicalName: "mac-mini" })] });
+    await vi.waitFor(() => expect(slot().getAttribute("data-state")).toBe("error"));
+    expect(slot().textContent).toContain("tmux list-sessions failed (exit 2)");
+    expect(slot().textContent).toMatch(/machine said/i);
+    expect(slot().textContent).toContain("boom");
+  });
+
+  it("mentions ignored lines and truncation in text", async () => {
+    stubFetch(() => ({ status: 200, body: { ...OK_EMPTY, sessions: [sess("a")], ignoredLines: 2, truncated: true } }));
+    boot({ devMachines: [machine({ logicalName: "mac-mini" })] });
+    await vi.waitFor(() => expect(slot().getAttribute("data-state")).toBe("ready"));
+    expect(statusEl().textContent).toMatch(/2 unrecognised line/);
+    expect(statusEl().textContent).toMatch(/truncated/);
+  });
+
+  it("a session record without a string name is never offered as a button ('undefined' must not pass the allow-list)", async () => {
+    stubFetch(okList([{ windows: 1, attached: false, createdAt: "2026-08-24T10:00:00.000Z", attachable: true }]));
+    boot({ devMachines: [machine({ logicalName: "mac-mini" })] });
+    await vi.waitFor(() => expect(slot().getAttribute("data-state")).toBe("ready"));
+    expect(document.querySelectorAll("[data-tmux-attach]").length).toBe(0);
+    expect(slot().textContent).not.toContain("undefined");
+  });
+
+  it("ignores overlapping Refresh clicks while a list request is in flight (one dial, not N)", async () => {
+    let resolveFirst!: (r: unknown) => void;
+    const fetchFn = vi.fn(() => new Promise((res) => (resolveFirst = res)));
+    (window as unknown as { fetch: unknown }).fetch = fetchFn;
+    boot({ devMachines: [machine({ logicalName: "mac-mini" })] });
+    const refresh = document.querySelector('[data-tmux-refresh="mac-mini"]') as HTMLElement;
+    refresh.click();
+    refresh.click();
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    resolveFirst({ ok: true, status: 200, json: async () => OK_EMPTY });
+    await vi.waitFor(() => expect(slot().getAttribute("data-state")).toBe("empty"));
+    refresh.click();
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("times out client-side (15 s) with a labeled error — a wedged dial never pins the slot in 'loading'", async () => {
+    vi.useFakeTimers();
+    try {
+      (window as unknown as { fetch: unknown }).fetch = vi.fn(
+        (_url: string, opts: { signal?: AbortSignal }) =>
+          new Promise((_res, rej) => {
+            opts.signal?.addEventListener("abort", () => rej(new Error("aborted")));
+          })
+      );
+      boot({ devMachines: [machine({ logicalName: "mac-mini" })] });
+      expect(slot().getAttribute("data-state")).toBe("loading");
+      await vi.advanceTimersByTimeAsync(15_001);
+      expect(slot().getAttribute("data-state")).toBe("error");
+      expect(slot().textContent).toMatch(/timed out/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("re-fetches the list a few seconds after creating a session (after the server's cache window)", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchFn = stubFetch(okList([]));
+      boot({ devMachines: [machine({ logicalName: "mac-mini" })] });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetchFn).toHaveBeenCalledTimes(1);
+      const form = document.querySelector('[data-tmux-new="mac-mini"]') as HTMLFormElement;
+      (form.querySelector('[name="session"]') as HTMLInputElement).value = "solo";
+      form.dispatchEvent(new window.Event("submit", { cancelable: true, bubbles: true }));
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(fetchFn).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a dropped WebSocket updates the tab's status TEXT to disconnected (not just an invisible attribute)", () => {
+    stubFetch(okList([]));
+    boot({ devMachines: [machine({ logicalName: "mac-mini" })] });
+    (document.querySelector('[data-open-terminal="mac-mini"]') as HTMLElement).click();
+    const ws = FakeWS.instances[0];
+    ws.emit({ t: "ready", id: "abc" });
+    const status = document.querySelector(".term-status") as HTMLElement;
+    expect(status.textContent).toMatch(/connected/);
+    ws.onclose?.();
+    expect(status.getAttribute("data-state")).toBe("disconnected");
+    expect(status.textContent).toMatch(/disconnected/);
+  });
+
+  it("a terminal engine that fails to construct yields a labeled error and no socket (fails closed, in text)", () => {
+    stubFetch(okList([]));
+    boot({ devMachines: [machine({ logicalName: "mac-mini" })] });
+    (window as unknown as { Terminal: unknown }).Terminal = class {
+      constructor() {
+        throw new Error("xterm missing");
+      }
+    };
+    (document.querySelector('[data-open-terminal="mac-mini"]') as HTMLElement).click();
+    const status = document.querySelector(".term-status") as HTMLElement;
+    expect(status.getAttribute("data-state")).toBe("error");
+    expect(status.textContent).toMatch(/\[!\].*terminal engine/i);
+    expect(FakeWS.instances).toHaveLength(0);
   });
 });

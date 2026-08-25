@@ -21,7 +21,7 @@ import type { Preprocessor } from "../preprocessor/index.js";
 import { registerChatCompletionsRoute } from "./routes/chat-completions.js";
 import { registerInspectorRoute } from "./routes/inspector.js";
 import { registerApprovalsRoutes, type ApprovalsBackend } from "./routes/approvals.js";
-import { registerHarnessRoutes, HARNESS_ASSET_PATHS } from "./routes/harness.js";
+import { registerHarnessRoutes, HARNESS_ASSET_PATHS, type TmuxLister } from "./routes/harness.js";
 import { SessionStore } from "./auth/session.js";
 import { operatorGuard, registerAuthRoutes, AUTH_PUBLIC_PATHS } from "./auth/operator-auth.js";
 import { USER_GUIDE_HTML, USER_GUIDE_PATH } from "./user-guide.js";
@@ -61,6 +61,11 @@ export interface AppOptions {
   readonly sessions?: SessionStore;
   /** Add `Secure` to the session cookie (set true behind HTTPS). */
   readonly secureCookies?: boolean;
+  /**
+   * Live tmux session lister for the harness launch bar (M1 task 1; real: `listTmuxSessions` over
+   * `runRemoteCommand` + custody). Omit on a server with no SSH custody — the route answers 503.
+   */
+  readonly tmux?: TmuxLister;
 }
 
 /**
@@ -190,6 +195,12 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   // Parse application/x-www-form-urlencoded so the login form (and config-page forms) submit.
   app.register(formbody);
 
+  // On EVERY response (guard denials included): the app now has a browser-navigable JSON GET that
+  // echoes a (validated) name, so browsers must never content-sniff (audit 2026-08-25).
+  app.addHook("onSend", async (_req, reply) => {
+    reply.header("X-Content-Type-Options", "nosniff");
+  });
+
   // Admin-tier guard on every ADMIN route (fail-closed). Public, identity-gated routes
   // (the pre-processor chat entry, login page, static assets) are exempted.
   app.addHook("onRequest", async (req, reply) => {
@@ -315,7 +326,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   });
 
   // ---- Harness UI (frame + xterm.js terminal tabs + public xterm assets) — ADR-0005 §9 C.1/C.6 ----
-  registerHarnessRoutes(app, { registry, loginEnabled });
+  registerHarnessRoutes(app, { registry, loginEnabled, ...(opts.tmux ? { tmux: opts.tmux } : {}) });
 
   // ---- Config page (server-rendered, behind the guard) ----
   app.get("/admin/config", async (_req, reply) => {

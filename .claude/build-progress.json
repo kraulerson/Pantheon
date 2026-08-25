@@ -7,10 +7,11 @@
     "runnable-server-and-register-cli",
     "operator-browser-auth",
     "tabbed-harness-shell",
-    "devmachine-ui-enrollment"
+    "devmachine-ui-enrollment",
+    "tmux-aware-launcher"
   ],
-  "features_since_last_test": 0,
-  "features_since_last_health_check": 4,
+  "features_since_last_test": 1,
+  "features_since_last_health_check": 1,
   "test_interval": 2,
   "last_test_session": "2026-08-24",
   "testing_required": false,

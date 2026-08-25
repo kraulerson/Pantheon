@@ -162,3 +162,36 @@ Known gap: no host-key verification on either SSH path (BUGS #17).
 **Tests:** `test/devmachine-enrollment.test.ts`, `test/enrollment-route.test.ts`,
 `test/config-page-devmachines.test.ts`.
 **Audit:** `docs/security-audits/devmachine-ui-enrollment-security-audit.md`.
+
+---
+
+## Feature 8: tmux-aware Launcher (live tmux session listing + attach)
+
+**Phase Built:** 2 — M1 (terminal plane), task 1
+**Status:** Complete
+**Summary:** The harness launch bar asks each ready dev machine for its LIVE tmux sessions and shows
+one button per session (`<machine> · <session>`) that opens a terminal tab already attached to that
+session, plus a "+ tmux session" attach-or-create form — so a long-running Claude session survives
+closing the tab and can be picked up again from any browser. Listing runs `tmux list-sessions` over
+the same key-only SSH path as the terminal (10 s timeout, output cap, connection always closed); a tab
+runs `tmux attach-session -t =<name>` (exact match) or `tmux new-session -A -s <name>` on the PTY
+instead of a login shell. Session names are allow-listed before any remote command exists (server)
+and again before any button is offered (client). Ruled design (2026-08-20): live-list, not a
+per-machine field. `tmux` is resolved via an absolute-path PATH prefix (`/opt/homebrew/bin` first).
+**Key Interfaces:** `src/devmachine/tmux.ts` (allow-list, command builders, parser, labeled results),
+`src/devmachine/connection.ts` (`runRemoteCommand`; `connectTerminal` `command` option),
+`src/devmachine/terminal-gateway.ts` (`resolveConnectableMachine`),
+`src/http/routes/harness.ts` (`GET /harness/tmux/:logicalName` → `{ machine, state, … }`),
+`src/http/routes/terminal.ts` (`?tmux=<name>[&create=1]`), `src/http/harness-frame.ts` (launch bar +
+client). Wired in `src/server.ts` (`AppOptions.tmux`).
+**Related ADRs:** ADR-0005; ruling A-2 (APPROVAL_LOG 2026-08-20); attach-or-create line from
+`docs/2026-07-09-deployment-topology-container-tmux.md` §4.
+**Test Coverage:** Unit (`devmachine-tmux.test.ts`, `devmachine-connection.test.ts`); route
+integration via Fastify inject / injectWS (`harness-tmux-route.test.ts`, `terminal-route.test.ts`);
+render + jsdom behavior (`harness-frame.test.ts`, `harness-shell.test.ts`).
+**Known Limitations:** the list is a snapshot (results are cached ~3 s per machine, at most 4
+dials in flight, one request per machine at a time; Refresh re-reads; the list re-reads itself a few
+seconds after you create a session); attaching to a session that ended after listing fails with a
+labeled error rather than silently creating one; names outside the allow-list (or longer than 64
+characters) are shown but not attachable (rename on the machine); at most 100 sessions are listed
+(labelled "list truncated"); host-key verification is still TOFU on this path too (BUGS #17).

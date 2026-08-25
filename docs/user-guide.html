@@ -139,7 +139,10 @@ service itself, so the passphrase never appears in a log or in your shell histor
 <table>
   <tr><th>What you see</th><th>What it means</th><th>What to do</th></tr>
   <tr><td><strong>Claude CLI &rarr; <em>name</em></strong> (a button)</td>
-      <td>The machine is set up and switched on. Clicking opens a terminal tab connected to it.</td>
+      <td>The machine is set up and switched on. Clicking opens a terminal tab connected to it, in a
+          fresh shell. Next to it, the machine's running <strong>tmux sessions</strong> appear as
+          <strong><em>name</em> &middot; <em>session</em></strong> buttons — see
+          <a href="#tmux">tmux sessions on a machine</a>.</td>
       <td>Click it.</td></tr>
   <tr><td><em>name</em> — <strong>not provisioned</strong></td>
       <td>The machine is registered, but the harness has not installed its key on it yet, so it
@@ -153,6 +156,56 @@ service itself, so the passphrase never appears in a log or in your shell histor
 
 <p>Sessions open as tabs along the top; close one with its ✕. Each state is spelled out in words,
 never by colour alone.</p>
+
+<h3 id="tmux">tmux sessions on a machine</h3>
+
+<p>Beside each ready machine's <strong>Claude CLI &rarr; <em>name</em></strong> button, the harness asks
+that machine which <strong>tmux sessions</strong> are running <em>right now</em> and shows one button
+per session, labelled <strong><em>name</em> &middot; <em>session</em></strong>. Clicking one opens a
+terminal tab already <em>inside</em> that session — the same screen you would see by running
+<code>tmux attach</code> on the machine itself. That is what lets a long-running Claude session
+survive closing the tab: close it, come back later from any browser, click the same button, and you
+are looking at the same session again.</p>
+
+<table>
+  <tr><th>What you see</th><th>What it means</th><th>What to do</th></tr>
+  <tr><td><code>[~] listing tmux sessions on <em>name</em>…</code></td>
+      <td>The harness is asking the machine.</td>
+      <td>Wait a moment — up to ten seconds if the machine is slow to answer.</td></tr>
+  <tr><td><strong><em>name</em> &middot; <em>session</em></strong> (buttons)</td>
+      <td>These sessions are running on the machine right now.</td>
+      <td>Click one to attach. Several tabs, or another computer, can attach to the same session;
+          they all show the same screen.</td></tr>
+  <tr><td><code>[–] no tmux sessions on <em>name</em></code></td>
+      <td>tmux is installed, but nothing is running.</td>
+      <td>Use <strong>+ tmux session</strong> (below), or the plain <strong>Claude CLI</strong> button.</td></tr>
+  <tr><td><code>[!] <em>name</em>: <em>name</em> unreachable — …</code></td>
+      <td>The machine did not answer over SSH: asleep, off the network, or the Host/Port is wrong.</td>
+      <td>Wake or check the machine, then press <strong>Refresh tmux list</strong>.</td></tr>
+  <tr><td><code>[!] <em>name</em>: you are signed out — reload the page to sign in</code></td>
+      <td>Your console sign-in has expired; the machine was never asked.</td>
+      <td>Reload the page and sign in again.</td></tr>
+  <tr><td><code>[!] <em>name</em>: tmux list-sessions failed (exit <em>N</em>) — machine said: "…"</code></td>
+      <td>tmux ran but reported an error. The quoted part is whatever the <em>machine</em> printed —
+          it is shown for diagnosis only; treat it as the machine's words, not the harness's.</td>
+      <td>Run <code>tmux list-sessions</code> on the machine itself to see the full message.</td></tr>
+  <tr><td><code>[!] <em>name</em>: tmux is not installed …</code></td>
+      <td>The machine has no tmux. The harness looks in the usual Homebrew and system places.</td>
+      <td>Install it on the machine (<code>brew install tmux</code> on a Mac), then Refresh.</td></tr>
+  <tr><td><em>session</em> (not attachable: unsupported characters in name)</td>
+      <td>A session exists, but its name uses characters the harness refuses to put into a command.</td>
+      <td>Rename it on the machine (<code>tmux rename-session -t old new</code>) using only letters,
+          digits, <code>_</code> or <code>-</code>.</td></tr>
+</table>
+
+<p><strong>+ tmux session</strong>: type a name — letters, digits, <code>_</code> or <code>-</code>,
+up to 64 characters, not starting with <code>-</code> — and press the button. If a session with that
+name already exists you are attached to it; otherwise it is created and you are attached to the new
+one. To leave a session running, simply close the tab (or press <kbd>Ctrl-b</kbd> then <kbd>d</kbd>);
+the session keeps going on the machine. The list is a snapshot taken when the page loaded (answers are reused for a few seconds, so
+pressing Refresh repeatedly does not pester the machine) — press <strong>Refresh tmux list</strong>
+after starting or ending sessions elsewhere; after <strong>+ tmux session</strong> it re-reads itself
+a few seconds later.</p>
 
 <h2 id="config">5. The Configuration page — every field</h2>
 
@@ -296,7 +349,10 @@ ready. Common causes:</p>
 
 <h3>Step 3 — use it</h3>
 <p>Back on the harness page the machine appears as <strong>Claude CLI &rarr; <em>name</em></strong>.
-Click it to open a terminal tab. Closing the tab ends the session.</p>
+Click it to open a terminal tab in a fresh shell; closing that tab ends that shell. Its running tmux
+sessions appear beside it as <strong><em>name</em> &middot; <em>session</em></strong> buttons, and a
+tab opened from one of those survives being closed — see
+<a href="#tmux">tmux sessions on a machine</a>.</p>
 
 <h2 id="operating">7. Operating the harness</h2>
 

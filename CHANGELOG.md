@@ -19,6 +19,46 @@ for handoff clarity. Categories are ordered by impact severity.
 
 ## [Unreleased]
 
+### Security
+- 2026-08-25 **tmux-aware launcher — audit remediation** (three parallel Phase 2.4 audits: input
+  validation / injection, threat model / authz / secrets, client-side / CC1 —
+  `docs/security-audits/tmux-aware-launcher-security-audit.md`; 0 SEV-1, 1 SEV-2, 8 SEV-3, ~25 SEV-4
+  raised; every authz / secret / injection check PASSED). Fixed in-loop, test-first: the SSH-dial
+  amplifier is closed (`createTmuxLister` — per-machine coalescing, 3 s result cache, 4-dial cap;
+  client in-flight guard + 15 s timeout); list records carry a sentinel so shell-profile stdout
+  chatter is ignored + counted instead of wiping the list; names are never trimmed before validation,
+  display-capped at 64 chars, count-capped at 100; the machine's stderr travels as a separate
+  `remoteDetail` and is shown as `machine said: "…"` (trusted:false), never inside first-party text;
+  per-line anchored "no server running" check; byte-accurate output cap with single-pass UTF-8
+  decode; overall timeouts on BOTH ssh2 paths (handshake + channel open — `connectTerminal` had
+  none) and synchronous-throw conversion; `?session=<id>` reattach refused unless opened for the
+  same machine + target; branded `RemoteCommand` type at the exec seam; no reflective echo of the raw
+  path param; **`X-Content-Type-Options: nosniff` on every response**; a dead WebSocket now says
+  `[x] disconnected` in the tab (was attribute-only); `novalidate` so the form's labelled error is
+  the real path; 401 labelled "you are signed out"; window count / "attached elsewhere" in visible
+  button text; buttons rendered beside (not inside) the live status region. Deferred with rationale:
+  BUGS #25–#30 (+ #17 extended to the new path). `SameSite=Strict` NOT adopted (would bounce the
+  Homepage-tile navigation to `/login`); recorded as a residual.
+
+### Added
+- 2026-08-25 **tmux-aware launcher — live session listing (M1 task 1; ruling A-2, terminal plane
+  first).** The harness launch bar now lists each ready dev machine's LIVE tmux sessions as one
+  text-labelled button per session — `<machine> · <session>` — that opens a terminal tab ATTACHED to
+  that exact session, plus a **+ tmux session** form (attach-or-create). Mechanics: the page fetches
+  the new admin-guarded `GET /harness/tmux/:logicalName`, which runs `tmux list-sessions` over the
+  existing key-only SSH path (`runRemoteCommand`: 10 s timeout, 64 KiB output cap, connection always
+  closed); a tab targets a session via `/terminal/:name?tmux=<session>` (`tmux attach-session -t
+  =<name>`, exact match) or `&create=1` (`tmux new-session -A -s <name>`, the ruled attach-or-create
+  line). Session names are allow-listed (`[A-Za-z0-9_][A-Za-z0-9_-]{0,63}`) server-side before any
+  remote command is built and again client-side before a button is offered; unsafe names are listed
+  as text only. `tmux` is resolved through an absolute-path `PATH` prefix (`/opt/homebrew/bin` first)
+  because sshd's non-login shell does not see Homebrew. Every list state is text + icon (`[~]`
+  loading, `[–]` none, `[!]` unreachable / tmux missing / failed — CC1); unknown, disabled and
+  unprovisioned machines are refused before any dial (CC2). New `src/devmachine/tmux.ts`;
+  `runRemoteCommand` + command-aware `connectTerminal` in `connection.ts`;
+  `resolveConnectableMachine` in `terminal-gateway.ts`. 126 new tests (suite 475 passed / 5 honest
+  skips); audit `docs/security-audits/tmux-aware-launcher-security-audit.md`.
+
 ### Fixed
 - 2026-08-20 **UAT session 2 remediation** (all test-first; suite 349 passed / 5 honest skips):
   - **#21** config-page CRUD form posts now 303-redirect to `/admin/config` instead of dumping a

@@ -134,3 +134,65 @@ describe("renderHarnessFrame — launch shortcuts persist while a tab is open (B
     expect(html()).toMatch(/<nav class="launch-bar"[^>]*>[\s\S]*data-open-terminal=/);
   });
 });
+
+describe("renderHarnessFrame — tmux-aware launcher (M1 task 1)", () => {
+  const ready = machine({ logicalName: "mac-mini" });
+
+  it("renders a live tmux list slot, a Refresh control and a new-session form for each READY machine", () => {
+    const html = renderHarnessFrame({ devMachines: [ready] });
+    expect(html).toContain('data-tmux-list="mac-mini"');
+    expect(html).toContain('data-tmux-refresh="mac-mini"');
+    expect(html).toContain('data-tmux-new="mac-mini"');
+  });
+
+  it("renders NO tmux controls for a not-ready machine", () => {
+    const html = renderHarnessFrame({
+      devMachines: [machine({ logicalName: "unprov", provisioned: false }), machine({ id: "d", logicalName: "off", enabled: false })]
+    });
+    expect(html).not.toContain('data-tmux-list="unprov"');
+    expect(html).not.toContain('data-tmux-list="off"');
+    expect(html).not.toContain("data-tmux-new=");
+  });
+
+  it("labels the loading state in text with an icon (CC1), never colour alone", () => {
+    const html = renderHarnessFrame({ devMachines: [ready] });
+    expect(html).toMatch(/\[~\] listing tmux sessions on mac-mini/);
+    expect(html).toMatch(/data-tmux-list="mac-mini"[^>]*data-state="loading"/);
+  });
+
+  it("constrains new-session names to the allow-list at the input (the server re-validates)", () => {
+    const html = renderHarnessFrame({ devMachines: [ready] });
+    expect(html).toMatch(/pattern="\[A-Za-z0-9_\]\[A-Za-z0-9_-\]\{0,63\}"/);
+    expect(html).toMatch(/<form[^>]*data-tmux-new="mac-mini"[^>]*>[\s\S]*<input[^>]*name="session"/);
+  });
+
+  it("keeps the tmux controls in the persistent launch bar (BUGS #22 invariant)", () => {
+    const html = renderHarnessFrame({ devMachines: [ready] });
+    const bar = html.slice(html.indexOf('<nav class="launch-bar"'), html.indexOf("</nav>"));
+    expect(bar).toContain('data-tmux-list="mac-mini"');
+    expect(bar).toContain('data-tmux-new="mac-mini"');
+  });
+
+  it("escapes the machine name inside the tmux control attributes", () => {
+    const html = renderHarnessFrame({ devMachines: [machine({ logicalName: '<x>"' })] });
+    expect(html).not.toContain('data-tmux-list="<x>');
+    expect(html).toContain("&lt;x&gt;&quot;");
+  });
+});
+
+describe("renderHarnessFrame — tmux launcher audit remediation (2026-08-25)", () => {
+  const html = () => renderHarnessFrame({ devMachines: [machine({ logicalName: "mac-mini" })] });
+
+  it("the new-session form is novalidate so the labeled [!] text error is the real path (native bubbles swallow submit)", () => {
+    expect(html()).toMatch(/<form[^>]*data-tmux-new="mac-mini"[^>]*novalidate/);
+  });
+
+  it("per-machine controls carry the machine name in their VISIBLE text (unique accessible names)", () => {
+    expect(html()).toMatch(/<button[^>]*data-tmux-refresh="mac-mini"[^>]*>[^<]*mac-mini[^<]*<\/button>/);
+    expect(html()).toMatch(/<button type="submit"[^>]*>[^<]*tmux session[^<]*mac-mini[^<]*<\/button>/);
+  });
+
+  it("the live status text is its own role=status element inside the slot (buttons render beside it, not in it)", () => {
+    expect(html()).toMatch(/data-tmux-list="mac-mini"[^>]*>\s*<span[^>]*data-tmux-status[^>]*role="status"/);
+  });
+});

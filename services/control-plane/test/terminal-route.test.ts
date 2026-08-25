@@ -114,3 +114,103 @@ describe("terminal WebSocket route", () => {
     client.close();
   });
 });
+
+describe("terminal WebSocket route — tmux attach (M1 task 1)", () => {
+  /** Open a socket against a provisioned registry; return the first proactive frame. */
+  async function firstFrame(url: string, connect: ReturnType<typeof vi.fn>): Promise<Record<string, unknown>> {
+    app = Fastify();
+    await registerTerminalRoute(app, { registry: provisionedRegistry(true), terminals: new TerminalRegistry(), connect: connect as never });
+    await app.ready();
+    const q = frameQueue();
+    const client = await app.injectWS(url, {}, { onInit: (ws) => ws.on("message", q.push) });
+    const first = await q.next();
+    client.close();
+    return first;
+  }
+
+  it("?tmux=<name> opens the terminal ATTACHED to that exact session (attach command handed to connect)", async () => {
+    const connect = vi.fn(async () => fakeSession());
+    const first = await firstFrame("/terminal/mac-studio?tmux=pantheon", connect);
+    expect(first["t"]).toBe("ready");
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(String(connect.mock.calls[0]?.[2])).toMatch(/tmux attach-session -t =pantheon$/);
+  });
+
+  it("?tmux=<name>&create=1 uses attach-or-create (new session)", async () => {
+    const connect = vi.fn(async () => fakeSession());
+    const first = await firstFrame("/terminal/mac-studio?tmux=solo&create=1", connect);
+    expect(first["t"]).toBe("ready");
+    expect(String(connect.mock.calls[0]?.[2])).toMatch(/tmux new-session -A -s solo$/);
+  });
+
+  it("without ?tmux the plain login shell is opened (no remote command)", async () => {
+    const connect = vi.fn(async () => fakeSession());
+    await firstFrame("/terminal/mac-studio", connect);
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(connect.mock.calls[0]?.[2]).toBeUndefined();
+  });
+
+  it("a tmux name with shell metacharacters is refused BEFORE any SSH connect (labeled error frame)", async () => {
+    const connect = vi.fn(async () => fakeSession());
+    const first = await firstFrame("/terminal/mac-studio?tmux=" + encodeURIComponent("x;id"), connect);
+    expect(first["t"]).toBe("e");
+    expect(String(first["m"])).toMatch(/session name/i);
+    expect(connect).not.toHaveBeenCalled();
+  });
+});
+
+describe("terminal WebSocket route — audit remediation (2026-08-25)", () => {
+  it("a repeated ?tmux key (array) is refused before any dial", async () => {
+    const connect = vi.fn(async () => fakeSession());
+    app = Fastify();
+    await registerTerminalRoute(app, { registry: provisionedRegistry(true), terminals: new TerminalRegistry(), connect: connect as never });
+    await app.ready();
+    const q = frameQueue();
+    const client = await app.injectWS("/terminal/mac-studio?tmux=a&tmux=b", {}, { onInit: (ws) => ws.on("message", q.push) });
+    const first = await q.next();
+    client.close();
+    expect(first["t"]).toBe("e");
+    expect(connect).not.toHaveBeenCalled();
+  });
+
+  it("?session=<id> reattach is refused with a labeled error when the id belongs to another machine or target (no silent swap)", async () => {
+    const registry = provisionedRegistry(true);
+    const other = registry.createDevMachine({ logicalName: "linux-box", host: "192.168.1.202", user: "karl", enabled: true });
+    registry.markProvisioned(other.id, "harness");
+    const terminals = new TerminalRegistry();
+    const connect = vi.fn(async () => fakeSession());
+    app = Fastify();
+    await registerTerminalRoute(app, { registry, terminals, connect });
+    await app.ready();
+
+    const q1 = frameQueue();
+    const c1 = await app.injectWS("/terminal/mac-studio", {}, { onInit: (ws) => ws.on("message", q1.push) });
+    const ready = await q1.next();
+    const id = String(ready["id"]);
+    c1.close();
+
+    // Same id presented for a DIFFERENT machine → error frame, no new dial.
+    const q2 = frameQueue();
+    const c2 = await app.injectWS(`/terminal/linux-box?session=${id}`, {}, { onInit: (ws) => ws.on("message", q2.push) });
+    const m2 = await q2.next();
+    c2.close();
+    expect(m2["t"]).toBe("e");
+    expect(String(m2["m"])).toMatch(/does not belong/i);
+
+    // Same id, same machine, but a tmux target it was not opened with → error frame too.
+    const q3 = frameQueue();
+    const c3 = await app.injectWS(`/terminal/mac-studio?session=${id}&tmux=pantheon`, {}, { onInit: (ws) => ws.on("message", q3.push) });
+    const m3 = await q3.next();
+    c3.close();
+    expect(m3["t"]).toBe("e");
+
+    // Same id, same machine, same (plain-shell) target → reattaches, still one dial in total.
+    const q4 = frameQueue();
+    const c4 = await app.injectWS(`/terminal/mac-studio?session=${id}`, {}, { onInit: (ws) => ws.on("message", q4.push) });
+    const m4 = await q4.next();
+    c4.close();
+    expect(m4["t"]).toBe("ready");
+    expect(m4["id"]).toBe(id);
+    expect(connect).toHaveBeenCalledTimes(1);
+  });
+});

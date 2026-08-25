@@ -34,7 +34,11 @@ import {
   FileKeyCustody,
   TerminalRegistry,
   connectTerminal,
+  runRemoteCommand,
+  listTmuxSessions,
+  createTmuxLister,
   defaultKeyDir,
+  type RemoteCommand,
   type SshTarget
 } from "./devmachine/index.js";
 
@@ -74,18 +78,28 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
     : unconfiguredPeta();
   const mcp = new McpRegistrationService(petaAdmin);
 
+  // Key custody (ADR-0005/TM-020): every SSH use below resolves the harness key server-side by handle.
+  const custody = new FileKeyCustody(cfg.keyDir);
+  // Live tmux session list for the harness launch bar (M1 task 1) — a non-interactive capture over
+  // the same key-only path the terminal uses, wrapped so concurrent page loads / a mashed Refresh
+  // share one dial per machine, results are reused for a few seconds, and dials are capped.
+  const exec = (target: SshTarget, handle: string, command: RemoteCommand) => runRemoteCommand(target, handle, command, { custody });
+  const tmux = createTmuxLister((target, handle) => listTmuxSessions(target, handle, exec));
+
   const app = buildApp({
     adminToken: cfg.adminToken,
     registry,
     mcp,
+    tmux,
     ...(cfg.operatorPassword ? { operatorPassword: cfg.operatorPassword } : {}),
     ...(cfg.secureCookies !== undefined ? { secureCookies: cfg.secureCookies } : {})
   });
 
-  // Terminal modality (ADR-0005): key-only SSH brokered server-side from custody.
-  const custody = new FileKeyCustody(cfg.keyDir);
+  // Terminal modality (ADR-0005): key-only SSH brokered server-side from custody. `command` is the
+  // (already allow-listed) tmux attach line when a tab targets a tmux session; otherwise a login shell.
   const terminals = new TerminalRegistry();
-  const connect = (target: SshTarget, handle: string) => connectTerminal(target, handle, { custody });
+  const connect = (target: SshTarget, handle: string, command?: RemoteCommand) =>
+    connectTerminal(target, handle, { custody }, command === undefined ? {} : { command });
   await registerTerminalRoute(app, { registry, terminals, connect });
 
   // One-time enrollment from the Configuration page (ADR-0005): the operator supplies the target

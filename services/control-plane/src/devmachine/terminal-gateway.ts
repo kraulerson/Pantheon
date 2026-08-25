@@ -10,11 +10,13 @@
  *
  * Security (ADR-0005/TM-020): the bridge forwards ONLY operator-typed input frames to the PTY; it
  * never injects recalled `trusted:false` content. Malformed/unknown frames are ignored (fail safe).
+ * `resolveConnectableMachine` is the ONE place the fail-closed machine rules live (unknown /
+ * disabled / unprovisioned never dial) — the terminal route and the tmux list route both use it.
  */
 
 import { randomUUID } from "node:crypto";
 import { type DevMachine } from "../registry/types.js";
-import { type TerminalSession } from "./connection.js";
+import { type RemoteCommand, type TerminalSession } from "./connection.js";
 import { type SshTarget } from "./provisioning.js";
 
 /** A transport-agnostic duplex (a real WebSocket is adapted to this in the Fastify route). */
@@ -55,10 +57,21 @@ function parseClientFrame(raw: string): ClientFrame | null {
 
 const DEFAULT_SCROLLBACK_BYTES = 64 * 1024;
 
+/** Where a terminal was opened: the machine and the (allow-listed) remote command, if any. */
+export interface TerminalOrigin {
+  readonly logicalName: string;
+  readonly command: RemoteCommand | undefined;
+}
+
 export class ManagedTerminal {
   private scrollback = "";
   private sink: ((frame: string) => void) | undefined;
   private closed = false;
+  /**
+   * Set by {@link openTerminalForMachine}; a reattach (`?session=<id>`) must present the SAME
+   * machine + target or be refused — a session id never silently swaps to another machine's shell.
+   */
+  origin: TerminalOrigin | undefined;
 
   constructor(
     readonly id: string,
@@ -162,11 +175,45 @@ export class TerminalError extends Error {
   }
 }
 
+export interface MachineLookup {
+  getDevMachineByLogicalName(logicalName: string): DevMachine | undefined;
+}
+
+export interface ConnectableMachine {
+  readonly target: SshTarget;
+  /** Custody handle of the key to dial with — an opaque reference, never key material. */
+  readonly handle: string;
+}
+
+/**
+ * Resolve a DevMachine by logicalName and fail closed if it is unknown / disabled / unprovisioned.
+ * The single source of the "may we dial this machine at all" rule (TM-020).
+ */
+export function resolveConnectableMachine(logicalName: string, registry: MachineLookup): ConnectableMachine {
+  const machine = registry.getDevMachineByLogicalName(logicalName);
+  if (!machine) throw new TerminalError(`no dev machine with logicalName '${logicalName}'`);
+  if (!machine.enabled) throw new TerminalError(`dev machine '${logicalName}' is disabled`);
+  if (!machine.provisioned || machine.sshKeyHandle === "") {
+    throw new TerminalError(`dev machine '${logicalName}' is not provisioned`);
+  }
+  return {
+    target: { logicalName: machine.logicalName, host: machine.host, port: machine.port, user: machine.user },
+    handle: machine.sshKeyHandle
+  };
+}
+
 export interface OpenTerminalDeps {
-  readonly registry: { getDevMachineByLogicalName(logicalName: string): DevMachine | undefined };
+  readonly registry: MachineLookup;
   readonly terminals: TerminalRegistry;
-  /** Inject the SSH connect step (real: `connectTerminal` bound to custody). */
-  readonly connect: (target: SshTarget, handle: string) => Promise<TerminalSession>;
+  /**
+   * Inject the SSH connect step (real: `connectTerminal` bound to custody). `command`, when given,
+   * runs on the PTY instead of the login shell (tmux attach) — already allow-list validated upstream.
+   */
+  readonly connect: (target: SshTarget, handle: string, command?: RemoteCommand) => Promise<TerminalSession>;
+}
+
+export interface OpenTerminalOptions {
+  readonly command?: RemoteCommand;
 }
 
 /**
@@ -174,19 +221,14 @@ export interface OpenTerminalDeps {
  * then open a key-only SSH terminal and register it. Returns the ManagedTerminal (its `id` is the
  * reconnect handle). Never dials an unprovisioned machine.
  */
-export async function openTerminalForMachine(logicalName: string, deps: OpenTerminalDeps): Promise<ManagedTerminal> {
-  const machine = deps.registry.getDevMachineByLogicalName(logicalName);
-  if (!machine) throw new TerminalError(`no dev machine with logicalName '${logicalName}'`);
-  if (!machine.enabled) throw new TerminalError(`dev machine '${logicalName}' is disabled`);
-  if (!machine.provisioned || machine.sshKeyHandle === "") {
-    throw new TerminalError(`dev machine '${logicalName}' is not provisioned`);
-  }
-  const target: SshTarget = {
-    logicalName: machine.logicalName,
-    host: machine.host,
-    port: machine.port,
-    user: machine.user
-  };
-  const session = await deps.connect(target, machine.sshKeyHandle);
-  return deps.terminals.register(randomUUID(), session);
+export async function openTerminalForMachine(
+  logicalName: string,
+  deps: OpenTerminalDeps,
+  opts: OpenTerminalOptions = {}
+): Promise<ManagedTerminal> {
+  const { target, handle } = resolveConnectableMachine(logicalName, deps.registry);
+  const session = opts.command === undefined ? await deps.connect(target, handle) : await deps.connect(target, handle, opts.command);
+  const term = deps.terminals.register(randomUUID(), session);
+  term.origin = { logicalName, command: opts.command };
+  return term;
 }
