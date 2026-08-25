@@ -81,8 +81,9 @@ admin service, because M1 ships the terminal plane before the Facade exists.
   BUGS #36). Minting a machine credential is the strongest act on the admin surface, so keycard
   mint and revoke are named the first two routes to require the step-up once it exists.
 - Data model: the `keycard` table is additive DDL like every table in this service; the entity
-  carries `updatedAt`. Whether the Bible's "versioned migrations" wording is amended for the
-  single-operator SQLite convention is a ruling for Karl (offered 2026-08-25).
+  carries `updatedAt`. **Ruled A on 2026-08-25:** Bible §5 Principle 3 now carries a ratified
+  single-operator-SQLite exception (additive DDL at startup; destructive changes need a numbered
+  migration + backup; operational counters exempt from `version`).
 - `usage:read` answers a labelled 503 until the M2 usage ledger exists; the scope and route are
   real so the acceptance ("each scope grants exactly its routes") is testable now.
 - The Facade's future machine tier (Autonomy Driver) can reuse `KeycardService`'s shape (hash

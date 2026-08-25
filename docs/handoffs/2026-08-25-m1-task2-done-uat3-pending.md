@@ -37,12 +37,9 @@ pantheon-admin@pantheon` on `pantheon@192.168.1.93` (add `npm ci` when the lockf
   `completeness_verified` → `bugs_consolidated` → triage with Karl → `triage_complete` → fix
   Fix-Now items test-first → `remediation_complete` → `scripts/test-gate.sh --check-batch` →
   `gate_passed` → `--reset-counter`.
-- **Ruling offered to Karl (non-blocking):** data-model doctrine wording — Bible §5 Principle 3 says
-  "versioned, reversible migrations"; every control-plane table (registry, session, keycard) uses
-  additive `CREATE TABLE IF NOT EXISTS`. Options: (A) amend the Bible with a ratified
-  single-operator-SQLite exception (additive DDL; destructive changes need a numbered migration +
-  backup; operational counters exempt from `version`); (B) build a `schema_version` table + tiny
-  migration runner and add `version` to mutable entities. Recommendation: A. Record in APPROVAL_LOG.
+- **Data-model doctrine ruled A (2026-08-25, APPROVAL_LOG):** Bible §5 Principle 3 now carries the
+  additive-DDL exception for the control-plane's SQLite tables; destructive changes still need a
+  numbered migration + backup. Nothing pending on this.
 - Open BUGS: #17 (host-key pinning, 3 paths), #24 (MCP delete), #25–#30 (tab-shell / CSP /
   config-page pre-existing), #34 (log redaction + AuditEntry when pino lands), #35 (Peta client
   timeout/size cap), #36 (D6 step-up stub, project-wide).
@@ -64,7 +61,6 @@ per `docs/handoffs/2026-08-20-M1-build-plan.md`.
 > is open** — template `tests/uat/sessions/2026-08-25-session-3/templates/test-session-3-v1.html`,
 > agent results filed, checklist at `results_received`. First ask Karl for his UAT-3 results (or
 > take them from `submissions/`), then run the UAT checklist to `gate_passed` and
-> `--reset-counter` before any new feature. Karl also has a pending ruling card on the data-model
-> doctrine wording (recommend A). Then M1 task 3 — the Pending-Approvals inbox (TP-2). End every
+> `--reset-counter` before any new feature. Then M1 task 3 — the Pending-Approvals inbox (TP-2). End every
 > reply with a plain-English TL;DR; decisions to Karl as plain-English cards with pros/cons + a
 > recommendation; never write outside this repo without his express permission.

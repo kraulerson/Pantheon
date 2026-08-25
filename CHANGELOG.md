@@ -114,6 +114,10 @@ for handoff clarity. Categories are ordered by impact severity.
   `24.x`; deployed via `npm ci` (prebuilt binary) — three restart cycles: up in 2 s, 0 crashes.
 
 ### Documentation
+- 2026-08-25 **Data-model doctrine ruling A** — PROJECT_BIBLE §5 Principle 3 gains a ratified
+  exception for the control-plane's single-operator SQLite tables (forward-only additive DDL at
+  startup; destructive changes need a numbered migration + backup; operational counters exempt from
+  `version`). APPROVAL_LOG row; ADR-0008 consequence updated.
 - 2026-08-20 **Capability-gap study + operator decisions + architecture restructure.**
   Four-harness study (`docs/research/2026-08-20-harness-capability-gap-study.md`, OpenClaw/
   Odysseus/Hermes/dsh — all REJECT-as-adoption; Hermes FROZEN closed). Karl ruled all 20
