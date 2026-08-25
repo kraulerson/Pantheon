@@ -492,3 +492,31 @@ describe("keycard — audit remediation (2026-08-25)", () => {
     expect(made.keycards.list()).toHaveLength(0);
   });
 });
+
+describe("approvals:read — real Peta response shape (live finding 2026-08-25)", () => {
+  it("finds the list under data.requests (Peta 1.2.x LIST_APPROVALS) and projects each request reference-only", async () => {
+    const repo = new SqliteRegistry(":memory:");
+    seedDefaults(repo);
+    const keycards = new KeycardService(new SqliteKeycardStore(":memory:"), { now: () => T0 });
+    const peta = {
+      listApprovals: vi.fn(async () => ({
+        success: true,
+        data: {
+          requests: [{ requestId: "req-1", toolName: "obsidian_write", serverName: "obsidian", status: "pending", createdAt: "2026-08-25T11:00:00.000Z", arguments: { text: "SECRET-CONTENT" } }],
+          page: 1, pageSize: 20, hasMore: false
+        }
+      })),
+      decideApproval: vi.fn()
+    };
+    app = buildApp({ adminToken: TOKEN, registry: new RegistryService(repo), mcp: new McpRegistrationService({ createServer: vi.fn(), getServers: vi.fn() } as never), keycards, peta });
+    const t = keycards.mint({ principal: "a", scopes: ["approvals:read"] }).token;
+    const res = await app.inject({ method: "GET", url: "/keycard/v1/approvals", headers: bearer(t) });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ approvals: [{ id: "req-1", tool: "obsidian_write", server: "obsidian", status: "pending", createdAt: "2026-08-25T11:00:00.000Z" }], truncated: false });
+    expect(res.body).not.toContain("SECRET-CONTENT");
+    // an empty page is a clean empty list, not a shape error
+    peta.listApprovals.mockResolvedValueOnce({ success: true, data: { requests: [], page: 1, pageSize: 20, hasMore: false } });
+    const empty = await app.inject({ method: "GET", url: "/keycard/v1/approvals", headers: bearer(t) });
+    expect(empty.json()).toEqual({ approvals: [], truncated: false });
+  });
+});

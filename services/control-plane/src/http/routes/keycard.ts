@@ -84,22 +84,32 @@ export function projectApprovalReference(raw: unknown): ApprovalReference {
   const set = (k: keyof ApprovalReference, v: string | undefined): void => {
     if (v !== undefined) out[k] = v;
   };
-  set("id", pickString(o, "approvalId", "id"));
+  set("id", pickString(o, "approvalId", "requestId", "id"));
   set("tool", pickString(o, "tool", "toolName"));
-  set("server", pickString(o, "serverId", "server"));
+  set("server", pickString(o, "serverId", "serverName", "server"));
   set("status", pickString(o, "status", "state"));
   set("createdAt", pickString(o, "createdAt", "requestedAt", "timestamp"));
   set("requester", pickString(o, "userId", "requester", "identity"));
   return out;
 }
 
-/** Find the approvals array in Peta's response without trusting its shape. */
+const LIST_KEYS = ["requests", "approvals", "items", "pending"] as const;
+
+/**
+ * Find the approvals array in Peta's response without trusting its shape. Peta 1.2.x answers
+ * `LIST_APPROVALS` as `{ success, data: { requests: [...], page, pageSize, hasMore } }` (seen live
+ * 2026-08-25); older/other shapes put the list at the top level. Two levels, closed key list.
+ */
 function approvalsArray(res: unknown): unknown[] | undefined {
   if (Array.isArray(res)) return res;
   if (typeof res !== "object" || res === null) return undefined;
   const o = res as Record<string, unknown>;
-  for (const k of ["approvals", "data", "items", "pending"]) {
-    if (Array.isArray(o[k])) return o[k] as unknown[];
+  for (const k of LIST_KEYS) if (Array.isArray(o[k])) return o[k] as unknown[];
+  const data = o["data"];
+  if (Array.isArray(data)) return data;
+  if (typeof data === "object" && data !== null) {
+    const d = data as Record<string, unknown>;
+    for (const k of LIST_KEYS) if (Array.isArray(d[k])) return d[k] as unknown[];
   }
   return undefined;
 }
