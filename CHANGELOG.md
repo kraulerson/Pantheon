@@ -89,6 +89,12 @@ for handoff clarity. Categories are ordered by impact severity.
     explicitly configured **test** Peta only (never production).
 
 
+### Infrastructure
+- 2026-08-25 **`better-sqlite3` 11.10.0 → 12.11.1** (exact pin; ruling A, BUGS #31). 11.10.0
+  declared no Node 24 support and the VM (Node 24.19) abort-looped 2–5× at every service restart
+  (`Assertion failed: (env) != nullptr` in the addon's statement destructor). 12.11.1 lists
+  `24.x`; deployed via `npm ci` (prebuilt binary) — three restart cycles: up in 2 s, 0 crashes.
+
 ### Documentation
 - 2026-08-20 **Capability-gap study + operator decisions + architecture restructure.**
   Four-harness study (`docs/research/2026-08-20-harness-capability-gap-study.md`, OpenClaw/

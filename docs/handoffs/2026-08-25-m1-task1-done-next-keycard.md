@@ -4,9 +4,10 @@
 
 Branch `main`, clean, in sync with BOTH remotes (`origin` GitHub + `gitea` mirror) at the commit
 this handoff ships in (the code commits are **`65a88fe` feat, `94b1b9b` fix #32, `39316fa` fix #33**).
-VM 1093 is deployed at `39316fa` and live-verified. **Test gate: 1/2** — the next cutline feature
-trips a UAT session (needs Karl at a browser); batch accordingly. **0 open SEV-1/2**; BUGS #25–#31
-are open/deferred SEV-3/4 with rationale; #32/#33 fixed. No `pending-approval.json` sentinel.
+VM 1093 is deployed at **`82a92c5`** (code `39316fa` + the better-sqlite3 bump) and live-verified.
+**Test gate: 1/2** — the next cutline feature trips a UAT session (needs Karl at a browser); batch
+accordingly. **0 open SEV-1/2**; BUGS #25–#30 are open/deferred SEV-3/4 with rationale; #31/#32/#33
+fixed. No `pending-approval.json` sentinel.
 Suite **478 passed / 5 honest skips**, `tsc` + `eslint` clean.
 
 Karl is a non-programmer: **every reply ends with a plain-English TL;DR**; decisions go to him as
@@ -48,15 +49,11 @@ entrance answers 401 + `nosniff` without credentials; close frame drops the tmux
 ## What's blocked / waiting
 
 - **Nothing blocks task 2.** Gate is 1/2.
-- **BUGS #31 (SEV-3, open, characterised):** after every `systemctl restart`, the NEW admin process
-  aborts 2–5 times at startup (`Assertion failed: (env) != nullptr` in better-sqlite3
-  `Statement::~Statement`, via `node::RemoveEnvironmentCleanupHook`) before it stays up (~10–15 s
-  of `activating`; NRestarts hit 12 today). Self-heals; no data loss seen; **no application error
-  is printed** (not our `server failed to start` catch, not EADDRINUSE) — it is the native addon
-  tearing a statement down after the Node environment is gone: the known better-sqlite3 (pinned
-  11.10.0) vs Node 24.19 assertion, fixed upstream in 12.x. Fix needs a ruling (dependency pin
-  change): upgrade better-sqlite3 to 12.x, or run the VM service on Node 22 LTS. **Deploy rule
-  until fixed: after restart, poll `/assets/xterm.css` until 200 before verifying anything.**
+- **BUGS #31 FIXED (ruling A, commit `82a92c5`):** the admin service used to abort 2–5× at every
+  restart (`better-sqlite3` 11.10.0 had no Node 24 support). Now pinned 12.11.1; three restart
+  cycles on the VM: up in 2 s, 0 crashes. Deploys are plain again: `git pull --ff-only && npm ci &&
+  npm run build && sudo -n systemctl restart pantheon-admin@pantheon` (use `npm ci` whenever the
+  lockfile changed).
 - **Deploy mechanics (learned the hard way):** the VM's `origin` remote is the **Gitea** mirror, so
   pushing GitHub alone does NOT deploy. Push Gitea with the minimal-scope `GITEA_TOKEN` from
   `services/control-plane/.env.local` through a tiny credential-helper script (no keychain entry, no
@@ -95,10 +92,9 @@ Continue `docs/handoffs/2026-08-20-M1-build-plan.md`:
 ## Resume prompt
 
 > Continuing from `docs/handoffs/2026-08-25-m1-task1-done-next-keycard.md`. Branch `main`, both
-> remotes synced, VM 1093 deployed at `39316fa` and live-verified; M1 task 1 (tmux-aware launcher)
+> remotes synced, VM 1093 deployed at `82a92c5` and live-verified; M1 task 1 (tmux-aware launcher)
 > is DONE; test gate 1/2 (the next cutline feature trips UAT session 3 — needs Karl at a browser);
-> 0 open SEV-1/2; BUGS #31 (admin service aborts 2–5× at startup after each restart, self-heals —
-> poll `/assets/xterm.css` before verifying) is open. Begin **M1 task 2 — scoped session keycard
+> 0 open SEV-1/2; BUGS #31 fixed (better-sqlite3 12.11.1). Begin **M1 task 2 — scoped session keycard
 > (TP-3)** per `docs/handoffs/2026-08-20-M1-build-plan.md` on `docs/machine-auth-design.md`:
 > test-first Build Loop (`scripts/process-checklist.sh --start-feature`), read/propose scopes only,
 > deny-by-default, fail closed; commit + push BOTH remotes (the VM pulls from Gitea — token from
