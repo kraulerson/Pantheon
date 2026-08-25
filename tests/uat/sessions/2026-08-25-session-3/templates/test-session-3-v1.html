@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Pantheon Harness — UAT Session 3</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #0f0f17; color: #cdd6f4; line-height: 1.5; padding: 24px; max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 1.6rem; margin-bottom: 4px; }
+  .meta { color: #a6adc8; font-size: 0.9rem; margin-bottom: 24px; }
+  .progress-bar { background: #1e1e2e; border-radius: 8px; height: 8px; margin-bottom: 24px; overflow: hidden; }
+  .progress-fill { background: #a6e3a1; height: 100%; width: 0%; transition: width 0.3s; }
+  .progress-text { text-align: center; color: #a6adc8; font-size: 0.85rem; margin-bottom: 24px; }
+  h2 { font-size: 1.2rem; color: #89b4fa; margin: 32px 0 16px; padding-bottom: 8px; border-bottom: 1px solid #313244; }
+  .fixture-ref { background: #11111b; border: 1px solid #313244; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 0.85rem; color: #a6adc8; }
+  .fixture-ref strong { color: #cdd6f4; }
+  .fixture-ref code { background: #313244; padding: 2px 6px; border-radius: 3px; color: #f9e2af; }
+  .scenario { background: #1e1e2e; border-radius: 8px; margin-bottom: 12px; overflow: hidden; border-left: 4px solid #45475a; transition: border-color 0.2s; }
+  .scenario.pass { border-left-color: #a6e3a1; }
+  .scenario.fail { border-left-color: #f38ba8; }
+  .scenario-header { padding: 12px 16px; display: flex; align-items: center; gap: 12px; }
+  .scenario-num { background: #313244; color: #a6adc8; font-size: 0.8rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; min-width: 28px; text-align: center; }
+  .scenario-title { flex: 1; font-weight: 500; }
+  .btn-group { display: flex; gap: 4px; }
+  .btn { padding: 6px 14px; border: 1px solid #45475a; border-radius: 4px; background: transparent; color: #cdd6f4; cursor: pointer; font-size: 0.85rem; transition: all 0.15s; }
+  .btn:hover { background: #313244; }
+  .btn.pass-btn.active { background: #a6e3a1; color: #1e1e2e; border-color: #a6e3a1; font-weight: 600; }
+  .btn.fail-btn.active { background: #f38ba8; color: #1e1e2e; border-color: #f38ba8; font-weight: 600; }
+  .btn.skip-btn.active { background: #f9e2af; color: #1e1e2e; border-color: #f9e2af; font-weight: 600; }
+  .scenario-details { padding: 0 16px 8px 16px; display: none; }
+  .scenario-details.open { display: block; }
+  .steps { background: #11111b; padding: 10px 14px; border-radius: 4px; font-size: 0.85rem; color: #a6adc8; margin-bottom: 8px; }
+  .steps strong { color: #cdd6f4; }
+  .scenario-notes { padding: 4px 16px 12px 16px; }
+  .notes-input { width: 100%; background: #11111b; border: 1px solid #45475a; color: #cdd6f4; padding: 8px 12px; border-radius: 4px; font-size: 0.85rem; font-family: inherit; resize: vertical; min-height: 36px; }
+  .notes-input:focus { outline: none; border-color: #89b4fa; }
+  .toggle-details { background: none; border: none; color: #6c7086; cursor: pointer; font-size: 0.75rem; padding: 4px 8px; }
+  .toggle-details:hover { color: #89b4fa; }
+  .bugs-section { margin-top: 40px; }
+  .bug-entry { background: #1e1e2e; border-radius: 8px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #f38ba8; }
+  .bug-row { display: flex; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+  .bug-field { flex: 1; min-width: 200px; }
+  .bug-field label { display: block; color: #a6adc8; font-size: 0.8rem; margin-bottom: 4px; }
+  .bug-field input, .bug-field select, .bug-field textarea { width: 100%; background: #11111b; border: 1px solid #45475a; color: #cdd6f4; padding: 8px 12px; border-radius: 4px; font-size: 0.85rem; font-family: inherit; }
+  .bug-field textarea { resize: vertical; min-height: 60px; }
+  .bug-field input:focus, .bug-field select:focus, .bug-field textarea:focus { outline: none; border-color: #89b4fa; }
+  .bug-field select { appearance: auto; }
+  .add-bug-btn { background: #313244; border: 1px dashed #45475a; color: #a6adc8; padding: 10px; border-radius: 8px; width: 100%; cursor: pointer; font-size: 0.85rem; margin-bottom: 12px; }
+  .add-bug-btn:hover { border-color: #f38ba8; color: #f38ba8; }
+  .remove-bug { background: none; border: none; color: #f38ba8; cursor: pointer; font-size: 0.8rem; float: right; }
+  .overall-notes { margin-top: 32px; }
+  .overall-notes textarea { width: 100%; background: #11111b; border: 1px solid #45475a; color: #cdd6f4; padding: 12px; border-radius: 8px; font-size: 0.9rem; font-family: inherit; resize: vertical; min-height: 100px; }
+  .overall-notes textarea:focus { outline: none; border-color: #89b4fa; }
+  .export-section { margin-top: 32px; text-align: center; padding: 24px; }
+  .export-btn { background: #89b4fa; color: #1e1e2e; border: none; padding: 12px 32px; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; }
+  .export-btn:hover { background: #74c7ec; }
+  .export-btn:active { transform: scale(0.98); }
+  .copy-msg { color: #a6e3a1; margin-top: 8px; font-size: 0.85rem; display: none; }
+</style>
+</head>
+<body>
+
+
+<h1>Pantheon Harness — UAT Session 3</h1>
+
+
+<div class="meta">Date: 2026-08-25 | Features: tmux launcher, Session keycards, Regressions | Tester: <input id="tester-name" type="text" placeholder="Your name" style="background:#1e1e2e;border:1px solid #45475a;color:#cdd6f4;padding:4px 8px;border-radius:4px;font-size:0.85rem;width:140px;"></div>
+
+
+<div class="fixture-ref">
+<strong>Before you start — read this once.</strong><br><br>
+<strong>What you are testing:</strong> two new features on the Pantheon Harness console at
+<code>https://pantheon-admin.ferrumcorde.com</code> (VM 1093, inside the house only):
+the <strong>tmux-aware launcher</strong> (the harness lists the tmux sessions running on your Mac mini and opens a tab straight inside one)
+and <strong>Session Keycards</strong> (a small read-only pass you mint on the Configuration page for a Claude session to use).<br><br>
+<strong>You need:</strong> the console passphrase, your Mac mini with its usual tmux sessions running (leave them as they are), and the Terminal app on the Mac for a few copy-paste <code>curl</code> commands. Your Mac login password is NOT needed.<br><br>
+<strong>Throwaway things this session creates:</strong> a tmux session called <code>uat-three</code> (you delete it in scenario 7) and a keycard called <code>uat-card</code> (you revoke it in scenario 20). The two dev-machine test rows from last time (<code>uat-test-box</code>, <code>UAT-bad-port</code>) are used as-is; scenario 23 removes <code>UAT-bad-port</code>.<br><br>
+<strong>Copy-paste note:</strong> where a command says <code>PASTE_YOUR_pk1_CODE_HERE</code>, replace that with the keycard code you copied in scenario 12 (keep the quotes).<br><br>
+<strong>Do not</strong> kill or rename your existing tmux sessions (other than <code>uat-three</code>) and do not re-provision Mac-Mini.<br><br>
+<strong>How to use this page:</strong> each scenario shows its Steps and Expected result right below the title. Do the steps, then click <strong>Pass</strong>, <strong>Fail</strong>, or <strong>Skip</strong>, and add a note if anything looked odd. When finished, press <strong>Copy Results to Clipboard</strong> and send the text to the session.
+</div>
+
+<div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+<div class="progress-text" id="progress-text">0 / 0 completed</div>
+
+
+<h2>Feature 8: tmux-aware Launcher (live sessions &rarr; attached tabs)</h2>
+<div id="feature8"></div>
+
+<h2>Feature 9: Session Keycards (read-only door for CLI sessions)</h2>
+<div id="feature9"></div>
+
+<h2>Regressions &amp; Documentation</h2>
+<div id="feature3"></div>
+
+<div class="bugs-section">
+  <h2>Bugs Found</h2>
+  <div id="bugs-list"></div>
+  <button class="add-bug-btn" onclick="addBug()">+ Add Bug</button>
+</div>
+
+<div class="overall-notes">
+  <h2>Overall Notes</h2>
+  <textarea id="overall-notes" placeholder="Free-form observations, UX concerns, suggestions, things that felt wrong even if they technically worked..."></textarea>
+</div>
+
+<div class="export-section">
+  <button class="export-btn" onclick="exportResults()">Copy Results to Clipboard</button>
+  <div class="copy-msg" id="copy-msg">Copied! Paste into terminal or save to submissions folder.</div>
+</div>
+
+<script>
+// Each element MUST be an object with ALL of the following fields.
+// Do not omit any field. Do not add fields not listed here.
+// Do not modify any code outside the placeholder tokens (the ALL_CAPS
+// identifiers wrapped in double underscores, like the SCENARIOS_JSON one above).
+//
+// SCHEMA:
+// [
+//   {
+//     "id": number,        // Sequential integer starting at 1, unique across all features
+//     "title": string,     // Short imperative description, e.g., "Repair fills holes on open mesh"
+//     "steps": string,     // Numbered steps separated by \\n, e.g., "1. Open file\\n2. Click Analyze"
+//     "expected": string   // What should happen if the feature works correctly
+//   }
+// ]
+//
+// QUALITY CHECKLIST — every scenario MUST meet these before emission.
+// A scenario that fails any item is NOT READY for the tester; rewrite it.
+//
+// [ ] `steps` opens with a starting-state restatement. Use the same phrase
+//     project-wide, e.g., "You are in the project root with <runtime> active
+//     (see 'Before you start')." Without this, chained scenarios drift.
+// [ ] `steps` numbers every command. No "run the command from scenario N",
+//     no "see above", no "as before". Each scenario is self-contained.
+// [ ] `steps` commands are fully copy-pasteable. No placeholders, no
+//     "<project-path>", no shell pseudo-code, no `...` ellipses in the
+//     actual command lines.
+// [ ] `steps` prefers deterministic commands over ones whose output format
+//     varies across tool versions.
+// [ ] `expected` has a CONCRETE pass/fail anchor. At least ONE of:
+//       - an exact text string the tester can grep for;
+//       - an exit code the tester can read (the scenario should emit it:
+//         `echo "exit=$?"`);
+//       - a line count (`| wc -l`);
+//       - a deterministic single-value assertion.
+//     Prose like "works", "succeeds", "passes", "no errors" is NOT a
+//     concrete anchor. If you cannot write a concrete anchor, the
+//     scenario is not ready.
+// [ ] `expected` is ≥60 characters. Shorter is almost certainly
+//     underspecified.
+// [ ] If the scenario MUTATES repo/filesystem/env state, include numbered
+//     cleanup steps at the end AND a verification step (e.g.,
+//       git diff --exit-code <file> && echo RESTORED
+//     ). Informal parentheticals like "(restore)" are not acceptable.
+// [ ] If the scenario has an EXTERNAL dependency (Docker, a running
+//     service, network endpoint), include a probe step whose output tells
+//     the tester to proceed or Skip. Example:
+//       docker info >/dev/null 2>&1 && echo DOCKER_OK || echo SKIP_DOCKER_UNAVAILABLE
+//
+// ANTI-PATTERNS — do not emit scenarios matching these. The linter at
+// scripts/lint-uat-scenarios.sh will refuse any scenario whose:
+//   - `steps` does not open with a state-restatement keyword
+//     ("You are", "cd ", "Setup:", "Before starting", "Preconditions:");
+//   - `expected` contains only "works" / "succeeds" / "passes" /
+//     "no errors" / "builds successfully" / "completes" as its pass/fail
+//     description;
+//   - `steps` contains "command from scenario", "see above", "as before",
+//     "like scenario", "as in scenario";
+//   - `expected` is <60 characters;
+//   - `id` duplicates another scenario's id.
+//
+// BEFORE SAVING: run scripts/lint-uat-scenarios.sh on the populated file.
+// Must exit 0 before the UAT template is handed to a tester.
+//
+// EXAMPLE (do not copy verbatim — write scenarios specific to the features under test):
+// [
+//   {
+//     "id": 1,
+//     "feature": 7,
+//     "title": "Repair disabled after clean analysis on a simple cube",
+//     "steps": "You are in the app with the Mesh Repair panel open.\\n\\n1. Open examples/cube.stl via File > Open.\\n2. Click Analyze (keyboard: A).\\n3. Read the Repair button's disabled attribute via devtools OR confirm it appears greyed out.",
+//     "expected": "Analyze completes within 2 seconds and reports:\\n  Holes: 0\\n  Degenerate faces: 0\\nThe Repair button has the disabled attribute and is visually greyed out.\\n\\nPASS if both counts are 0 AND Repair is disabled. FAIL if either count is non-zero or Repair is enabled."
+//   }
+// ]
+const scenarios = [
+  {
+    "id": 1,
+    "feature": 8,
+    "title": "The launch bar lists the tmux sessions running on the Mac mini",
+    "steps": "You are signed in at https://pantheon-admin.ferrumcorde.com/harness.\n1. Look at the launch bar directly under the header.\n2. Find the Mac-Mini entry and wait up to ten seconds.\n3. On the Mac, open Terminal and run: tmux ls",
+    "expected": "Next to 'Claude CLI → Mac-Mini' the status text goes from '[~] listing tmux sessions on Mac-Mini…' to '[✓] N tmux session(s) on Mac-Mini:' followed by one button per session, each named 'Mac-Mini · <session> (N win…)'. The session names match what tmux ls printed on the Mac (for example 0, Alden-2, homelab-3, lancache-1, pantheon). Any session you currently have open in a Terminal window says 'attached elsewhere' in its button text."
+  },
+  {
+    "id": 2,
+    "feature": 8,
+    "title": "Attach to an existing session and land inside it",
+    "steps": "You are signed in on the harness page with the tmux list loaded, and session 0 on the Mac is NOT open in any of your own Terminal windows.\n1. Click the button 'Mac-Mini · 0'.\n2. Wait for the tab to connect.\n3. Type: echo hello  and press Enter.",
+    "expected": "A tab labelled 'Mac-Mini · 0' opens, its status line reads '[✓] connected to Mac-Mini · 0', and the terminal shows a tmux screen — the status bar along the bottom names the session as [0]. It is NOT a fresh, empty login shell. The word hello is printed inside that tmux session."
+  },
+  {
+    "id": 3,
+    "feature": 8,
+    "title": "Attaching from the harness shows up as an attached client on the Mac",
+    "steps": "You are attached to 'Mac-Mini · 0' in a harness tab (leave it open).\n1. On the Mac, in Terminal, run: tmux ls",
+    "expected": "The line for session 0 ends with (attached) while the harness tab is open. No new session was created — the number of sessions listed is the same as before you clicked — and every other session is untouched."
+  },
+  {
+    "id": 4,
+    "feature": 8,
+    "title": "Closing the tab detaches the client but the session keeps running",
+    "steps": "You are attached to 'Mac-Mini · 0' in a harness tab.\n1. Close that tab by clicking its ✕.\n2. On the Mac, in Terminal, run: tmux ls",
+    "expected": "The tab disappears. tmux ls still lists session 0 — the session and whatever runs inside it survive — but it is no longer marked (attached), unless one of your own Terminal windows is inside it. Nothing else changed on the Mac."
+  },
+  {
+    "id": 5,
+    "feature": 8,
+    "title": "Create a brand-new tmux session from the harness",
+    "steps": "You are signed in on the harness page.\n1. In the Mac-Mini row, type  uat-three  into the box labelled 'New tmux session on Mac-Mini'.\n2. Press the button '+ tmux session on Mac-Mini'.\n3. Wait about five seconds, then look at the launch bar again.\n4. On the Mac run: tmux ls",
+    "expected": "A tab 'Mac-Mini · uat-three' opens inside a brand-new tmux session (its bottom status bar shows [uat-three]). Within a few seconds the launch bar re-reads itself and shows a new 'Mac-Mini · uat-three' button, and tmux ls on the Mac now lists uat-three."
+  },
+  {
+    "id": 6,
+    "feature": 8,
+    "title": "A bad session name is refused with a text message and no tab",
+    "steps": "You are signed in on the harness page.\n1. In the Mac-Mini row, type  bad name;x  into the 'New tmux session on Mac-Mini' box.\n2. Press '+ tmux session on Mac-Mini'.",
+    "expected": "No tab opens. A text message appears next to the box reading '[!] use 1–64 letters, digits, _ or - (no leading -)'. Nothing is created on the Mac (tmux ls does not show a new session)."
+  },
+  {
+    "id": 7,
+    "feature": 8,
+    "title": "A button for a session that no longer exists fails visibly, not silently",
+    "steps": "You are signed in on the harness page and the launch bar shows a 'Mac-Mini · uat-three' button.\n1. On the Mac run: tmux kill-session -t uat-three\n2. Do NOT press Refresh. Click the 'Mac-Mini · uat-three' button in the harness.\n3. Wait a few seconds, then on the Mac run: tmux ls",
+    "expected": "The tab opens and then shows a text failure — a tmux line such as \"can't find session\" and/or the status '[x] disconnected — close tab to dismiss'. It must NOT quietly create a new session: tmux ls on the Mac does not list uat-three."
+  },
+  {
+    "id": 8,
+    "feature": 8,
+    "title": "Refresh re-reads the list from the Mac",
+    "steps": "You are signed in on the harness page and the launch bar still shows a 'Mac-Mini · uat-three' button although that session was killed on the Mac.\n1. Press 'Refresh tmux list (Mac-Mini)'.\n2. Wait up to ten seconds.",
+    "expected": "The status text briefly reads '[~] listing tmux sessions on Mac-Mini…', then the list re-appears without the uat-three button and the count in '[✓] N tmux session(s) on Mac-Mini' is one lower than before. Your other session buttons are still there."
+  },
+  {
+    "id": 9,
+    "feature": 8,
+    "title": "A machine that is not provisioned gets no tmux controls",
+    "steps": "You are signed in on the harness page.\n1. Find the launch-bar entries for uat-test-box and UAT-bad-port.",
+    "expected": "Both appear only as text — 'Claude CLI → uat-test-box — not provisioned' and the same for UAT-bad-port — with no button, no tmux list, no Refresh and no '+ tmux session' box. The Mac-Mini row still has its button, its tmux list, Refresh and the new-session box."
+  },
+  {
+    "id": 10,
+    "feature": 9,
+    "title": "The Configuration page has a Session Keycards section",
+    "steps": "You are signed in, on https://pantheon-admin.ferrumcorde.com/admin/config.\n1. Scroll down to the heading 'Session Keycards'.",
+    "expected": "The section has a short explanation, then either 'No session keycards minted' or a table of cards, then a line 'Refused keycard attempts: N (last: …) · Rate-limited: N', then a 'Mint a keycard' form with a Principal box, three tick-boxes (usage:read, approvals:read, sessions:read), 'Valid for (days)' prefilled with 90, and a 'Mint keycard' button."
+  },
+  {
+    "id": 11,
+    "feature": 9,
+    "title": "Minting with no scope ticked is refused with a readable message",
+    "steps": "You are signed in on the Configuration page, in the 'Mint a keycard' form.\n1. Type  uat-card  into Principal.\n2. Leave all three scope boxes unticked.\n3. Press Mint keycard.",
+    "expected": "You are returned to the Configuration page with a banner reading '[!] Error: Invalid scopes — keycard not minted. Tick at least one of …'. No row named uat-card appears in the keycard table. You must NOT see a bare white page of {\"error\": …} text."
+  },
+  {
+    "id": 12,
+    "feature": 9,
+    "title": "Minting a keycard shows the code exactly once",
+    "steps": "You are signed in on the Configuration page, in the 'Mint a keycard' form.\n1. Principal: uat-card. Tick sessions:read and usage:read (NOT approvals:read). Leave 90 days.\n2. Press Mint keycard.\n3. Copy the long code that starts with pk1_ into a text file — you need it for the next scenarios and will revoke it at the end.",
+    "expected": "A page titled 'Keycard minted' appears, naming uat-card and the two scopes, with a warning '[!] Copy the keycard now. It will not be shown again.' and the code (pk1_ followed by 64 letters/digits) in a box. There is a 'Back to Configuration' link. The address bar does NOT contain the pk1_ code."
+  },
+  {
+    "id": 13,
+    "feature": 9,
+    "title": "Reloading the keycard page does not reveal the code again",
+    "steps": "You are on the 'Keycard minted' page and have copied the pk1_ code.\n1. Press the browser's Reload button.\n2. Click 'Back to Configuration'.",
+    "expected": "The reloaded page says the keycard has already been collected (or is no longer available) and shows NO pk1_ code. Back on Configuration a green-tick banner reads 'Success: Keycard minted…', and the table lists uat-card as '[✓] Active' with sessions:read, usage:read and '0 uses / 0 denied'. The table itself never shows the pk1_ code."
+  },
+  {
+    "id": 14,
+    "feature": 9,
+    "title": "The keycard opens the door from the Mac",
+    "steps": "You are on the Mac with the pk1_ code copied. In Terminal, replace PASTE_YOUR_pk1_CODE_HERE with your code and run:\n1. curl -s -H \"Authorization: Bearer PASTE_YOUR_pk1_CODE_HERE\" https://pantheon-admin.ferrumcorde.com/keycard/v1/whoami",
+    "expected": "One line of JSON comes back naming the card: {\"principal\":\"uat-card\",\"scopes\":[\"sessions:read\",\"usage:read\"],\"expiresAt\":\"…\"} — no login page, no HTML, and the pk1_ code itself does not appear in the answer."
+  },
+  {
+    "id": 15,
+    "feature": 9,
+    "title": "Scopes are enforced exactly — granted, refused, and not-built-yet each say so in text",
+    "steps": "You are on the Mac with the pk1_ code (which has sessions:read and usage:read but NOT approvals:read). Run each of these, replacing the placeholder:\n1. curl -s -H \"Authorization: Bearer PASTE_YOUR_pk1_CODE_HERE\" https://pantheon-admin.ferrumcorde.com/keycard/v1/sessions\n2. curl -s -H \"Authorization: Bearer PASTE_YOUR_pk1_CODE_HERE\" https://pantheon-admin.ferrumcorde.com/keycard/v1/approvals\n3. curl -s -H \"Authorization: Bearer PASTE_YOUR_pk1_CODE_HERE\" https://pantheon-admin.ferrumcorde.com/keycard/v1/usage",
+    "expected": "Command 1 answers {\"sessions\":[]} (or a list of session records with ids and dates — never message text). Command 2 answers {\"error\":\"insufficient_scope\",\"required\":\"approvals:read\"}. Command 3 answers {\"state\":\"unavailable\",\"message\":\"the usage ledger is not built yet…\"} — a labelled not-built-yet, not a crash or an HTML error page."
+  },
+  {
+    "id": 16,
+    "feature": 9,
+    "title": "A keycard cannot open any admin address",
+    "steps": "You are on the Mac with the pk1_ code. Run these two commands (they print only a status number):\n1. curl -s -o /dev/null -w '%{http_code}\\n' -H \"Authorization: Bearer PASTE_YOUR_pk1_CODE_HERE\" https://pantheon-admin.ferrumcorde.com/api/backends\n2. curl -s -o /dev/null -w '%{http_code}\\n' -H \"Authorization: Bearer PASTE_YOUR_pk1_CODE_HERE\" https://pantheon-admin.ferrumcorde.com/admin/config",
+    "expected": "Both commands print 403. The keycard is refused on every admin address — it opens only the /keycard/v1/ door. If either prints 200 the card can reach the admin side, which is a failure."
+  },
+  {
+    "id": 17,
+    "feature": 9,
+    "title": "Your browser sign-in cannot open the keycard door",
+    "steps": "You are signed in to the console in your browser.\n1. In the address bar open https://pantheon-admin.ferrumcorde.com/keycard/v1/whoami",
+    "expected": "The browser shows the text {\"error\":\"keycard_required\"} — NOT your card details and NOT the harness page or a login redirect. The keycard door deliberately ignores browser sign-in; only a keycard opens it."
+  },
+  {
+    "id": 18,
+    "feature": 9,
+    "title": "The use and deny counters move",
+    "steps": "You are signed in on the Configuration page, after running the curl commands above (whoami, sessions, approvals, usage).\n1. Reload the page.\n2. Read the uat-card row and the line under the table.",
+    "expected": "The uat-card row reads '4 uses / 1 denied' (whoami, sessions, approvals and usage were each served once; the approvals request was then denied for lacking the scope). 'Refused keycard attempts' has not changed, because every request so far carried a real card."
+  },
+  {
+    "id": 19,
+    "feature": 9,
+    "title": "A made-up keycard is refused and counted",
+    "steps": "You are on the Mac. Run this exactly (the code is sixty-four zeros):\n1. curl -s -H \"Authorization: Bearer pk1_0000000000000000000000000000000000000000000000000000000000000000\" https://pantheon-admin.ferrumcorde.com/keycard/v1/whoami\n2. Back in the browser, reload the Configuration page and read the line under the keycard table.",
+    "expected": "The command answers {\"error\":\"invalid_keycard\"}. On the Configuration page 'Refused keycard attempts' is one higher than before and shows a time from a moment ago (the 'last:' part) — this is how a leaked or guessed pass becomes visible."
+  },
+  {
+    "id": 20,
+    "feature": 9,
+    "title": "Revoke asks first, then refuses the card from the very next request",
+    "steps": "You are signed in on the Configuration page with uat-card listed as Active, and the pk1_ code still in your text file.\n1. Press Revoke on the uat-card row, read the dialog, and choose Cancel.\n2. Press Revoke again and choose OK.\n3. On the Mac run the whoami command again: curl -s -H \"Authorization: Bearer PASTE_YOUR_pk1_CODE_HERE\" https://pantheon-admin.ferrumcorde.com/keycard/v1/whoami\n4. Reload the Configuration page.",
+    "expected": "The dialog names uat-card and says it cannot be undone. After Cancel the row is unchanged. After OK a green-tick banner reads 'Success: Keycard revoked…' and the row shows '[x] Revoked <time>' with no Revoke button. The curl now answers {\"error\":\"keycard_revoked\"}, and after the reload the row's 'denied' count is one higher. Delete the pk1_ code from your text file."
+  },
+  {
+    "id": 21,
+    "feature": 3,
+    "title": "Bare address and sign-out still behave (regressions #15, #20)",
+    "steps": "You are signed in.\n1. Type https://pantheon-admin.ferrumcorde.com in the address bar with no path and press Enter.\n2. Press Log out in the header.\n3. Press the browser Back button.",
+    "expected": "Step 1 lands on the harness page (heading 'Pantheon Harness'), not a raw 'Route GET:/ not found' text. Step 2 shows the login page. Step 3 shows the login page again, not cached harness content — the session is dead server-side."
+  },
+  {
+    "id": 22,
+    "feature": 3,
+    "title": "The Help page explains both new features in plain language",
+    "steps": "You are anywhere on the LAN, signed in or not.\n1. Open https://pantheon-admin.ferrumcorde.com/help\n2. Find the sub-headings 'tmux sessions on a machine' and 'Session Keycards'.",
+    "expected": "Both sub-headings exist. The tmux part has a table of the messages you can see ([~], [✓], [–], [!]) and explains '+ tmux session'. The keycard part explains Principal, Scopes and 'Valid for', warns that the code is shown once, and describes Revoke. Nothing in the page shows an internal IP address or a password."
+  },
+  {
+    "id": 23,
+    "feature": 3,
+    "title": "Configuration Edit and Remove still work (regression #19)",
+    "steps": "You are signed in on https://pantheon-admin.ferrumcorde.com/admin/config, in the Dev Machines table.\n1. Press Edit on the uat-test-box row, change nothing, and press Cancel.\n2. Press Remove on the UAT-bad-port row and confirm the dialog with OK.",
+    "expected": "Edit turns the row into an inline form with the current values filled in, and Cancel puts the normal row back. Remove asks for confirmation; after OK the page reloads and the UAT-bad-port row is gone, while uat-test-box and Mac-Mini remain."
+  }
+];
+
+function renderScenarios() {
+  scenarios.forEach(s => {
+    const container = document.getElementById('feature' + s.feature);
+    if (!container) return;
+    container.innerHTML += '<div class="scenario" id="scenario-' + s.id + '">' +
+      '<div class="scenario-header">' +
+        '<span class="scenario-num">' + s.id + '</span>' +
+        '<span class="scenario-title">' + s.title + '</span>' +
+        '<button class="toggle-details" onclick="toggleDetails(' + s.id + ')">details</button>' +
+        '<div class="btn-group">' +
+          '<button class="btn pass-btn" onclick="setResult(' + s.id + ',\'pass\',this)">Pass</button>' +
+          '<button class="btn fail-btn" onclick="setResult(' + s.id + ',\'fail\',this)">Fail</button>' +
+          '<button class="btn skip-btn" onclick="setResult(' + s.id + ',\'skip\',this)">Skip</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="scenario-details open" id="details-' + s.id + '">' +
+        '<div class="steps"><strong>Steps:</strong><br>' + s.steps.replace(/\n/g,'<br>') + '</div>' +
+        '<div class="steps"><strong>Expected:</strong><br>' + s.expected + '</div>' +
+      '</div>' +
+      '<div class="scenario-notes">' +
+        '<textarea class="notes-input" id="notes-' + s.id + '" placeholder="Notes — observations, issues, anything worth recording"></textarea>' +
+      '</div>' +
+    '</div>';
+  });
+}
+
+const results = {};
+
+function setResult(id, result, btn) {
+  results[id] = result;
+  const sc = document.getElementById('scenario-' + id);
+  sc.className = 'scenario ' + (result === 'skip' ? '' : result);
+  sc.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  updateProgress();
+}
+
+function toggleDetails(id) {
+  document.getElementById('details-' + id).classList.toggle('open');
+}
+
+function updateProgress() {
+  const done = Object.keys(results).length;
+  const pct = (done / scenarios.length * 100).toFixed(0);
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('progress-text').textContent = done + ' / ' + scenarios.length + ' completed';
+}
+
+var bugCount = 0;
+// JS string fragment per feature being tested, concatenated into the select's innerHTML.
+// Example:
+//   '<option>7 - Mesh Repair</option><option>8 - Scale/Rotate/Mirror</option>'
+function addBug() {
+  bugCount++;
+  var n = bugCount;
+  document.getElementById('bugs-list').innerHTML +=
+    '<div class="bug-entry" id="bug-' + n + '">' +
+      '<button class="remove-bug" onclick="document.getElementById(\'bug-' + n + '\').remove()">remove</button>' +
+      '<div class="bug-row">' +
+        '<div class="bug-field"><label>Severity</label><select id="bug-sev-' + n + '">' +
+          '<option>SEV-1 (crash/data loss)</option><option>SEV-2 (broken, workaround exists)</option>' +
+          '<option selected>SEV-3 (minor UX)</option><option>SEV-4 (polish/enhancement)</option>' +
+        '</select></div>' +
+        '<div class="bug-field"><label>Feature</label><select id="bug-feat-' + n + '">' +
+          '<option value="8">Feature 8: tmux-aware Launcher</option><option value="9">Feature 9: Session Keycards</option><option value="3">Regressions &amp; Documentation</option>' +
+        '</select></div>' +
+      '</div>' +
+      '<div class="bug-field"><label>Description</label><input id="bug-desc-' + n + '" placeholder="What went wrong?"></div>' +
+      '<div class="bug-field" style="margin-top:8px"><label>Steps to Reproduce</label><textarea id="bug-steps-' + n + '" placeholder="1. ...\n2. ...\n3. ..."></textarea></div>' +
+      '<div class="bug-field" style="margin-top:8px"><label>Expected vs Actual</label><textarea id="bug-exp-' + n + '" placeholder="Expected: ...\nActual: ..."></textarea></div>' +
+    '</div>';
+}
+
+function exportResults() {
+  var tester = document.getElementById('tester-name').value || 'Unknown';
+  var md = '# ' + document.querySelector('h1').textContent + ' Results\n\n';
+  md += '**Date:** 2026-08-25\n';
+  md += '**Tester:** ' + tester + '\n';
+  md += '**Features:** tmux launcher, Session keycards, Regressions\n\n';
+
+  var pass = 0, fail = 0, skip = 0;
+  for (var k in results) {
+    if (results[k] === 'pass') pass++;
+    else if (results[k] === 'fail') fail++;
+    else if (results[k] === 'skip') skip++;
+  }
+  var untested = scenarios.length - Object.keys(results).length;
+  md += '**Summary:** ' + pass + ' passed, ' + fail + ' failed, ' + skip + ' skipped, ' + untested + ' not tested\n\n---\n\n';
+
+  md += '## Scenarios\n\n';
+  md += '| # | Scenario | Result | Notes |\n';
+  md += '|---|---|---|---|\n';
+  scenarios.forEach(function(s) {
+    var r = results[s.id] || 'not tested';
+    var icon = r === 'pass' ? 'PASS' : r === 'fail' ? 'FAIL' : r === 'skip' ? 'SKIP' : '-';
+    var el = document.getElementById('notes-' + s.id);
+    var notes = el ? el.value.replace(/\|/g, '/').replace(/\n/g, ' ').replace(/`/g, "'").replace(/\[/g, '(').replace(/\]/g, ')').replace(/\*/g, '-') : '';
+    md += '| ' + s.id + ' | ' + s.title + ' | ' + icon + ' | ' + notes + ' |\n';
+  });
+
+  var bugEntries = document.querySelectorAll('.bug-entry');
+  if (bugEntries.length > 0) {
+    md += '\n---\n\n## Bugs Found\n\n';
+    var i = 0;
+    bugEntries.forEach(function(el) {
+      i++;
+      var id = el.id.split('-')[1];
+      var sev = document.getElementById('bug-sev-' + id);
+      var feat = document.getElementById('bug-feat-' + id);
+      var desc = document.getElementById('bug-desc-' + id);
+      var steps = document.getElementById('bug-steps-' + id);
+      var exp = document.getElementById('bug-exp-' + id);
+      md += '### Bug ' + i + '\n';
+      md += '- **Severity:** ' + (sev ? sev.value : '') + '\n';
+      md += '- **Feature:** ' + (feat ? feat.value : '') + '\n';
+      md += '- **Description:** ' + (desc ? desc.value : '') + '\n';
+      md += '- **Steps:** ' + (steps ? steps.value.replace(/\n/g, '; ') : '') + '\n';
+      md += '- **Expected vs Actual:** ' + (exp ? exp.value.replace(/\n/g, '; ') : '') + '\n\n';
+    });
+  }
+
+  var overall = document.getElementById('overall-notes').value;
+  if (overall) {
+    md += '\n---\n\n## Overall Notes\n\n' + overall + '\n';
+  }
+
+  navigator.clipboard.writeText(md).then(function() {
+    var msg = document.getElementById('copy-msg');
+    msg.style.display = 'block';
+    setTimeout(function() { msg.style.display = 'none'; }, 3000);
+  });
+}
+
+renderScenarios();
+</script>
+</body>
+</html>
