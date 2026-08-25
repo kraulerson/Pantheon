@@ -296,6 +296,42 @@ owner or identities (skeleton step 2), so registrations here have nothing to tal
   your machines.
 </div>
 
+<h3 id="keycards">Session Keycards</h3>
+
+<p>A <strong>keycard</strong> is a small, read-only pass you can hand to a Claude session running on
+one of your machines, so it can ask the harness questions — which sessions exist, which approvals
+are waiting (as references only, never the content), how much has been used — <em>without</em>
+holding your console password or admin token. A keycard cannot change anything, cannot approve
+anything, and cannot open the Configuration page: it opens exactly one door,
+<code>/keycard/v1/…</code>, and nothing else.</p>
+
+<table>
+  <tr><th>Field</th><th>What to put</th></tr>
+  <tr><td><strong>Principal</strong></td><td>A label for who holds it, e.g. <code>cli-mac-mini</code>. Letters, digits, <code>.</code> <code>_</code> <code>-</code>; up to 64 characters.</td></tr>
+  <tr><td><strong>Scopes</strong></td><td>Tick what the holder may read: <code>sessions:read</code> (session list), <code>approvals:read</code> (pending-approval references), <code>usage:read</code> (usage totals — answers "not built yet" until the usage ledger exists). Nothing is ticked by default; an unticked scope is simply refused.</td></tr>
+  <tr><td><strong>Valid for (days)</strong></td><td>How long the pass lasts (default 90, at most 365). After that it stops working on its own.</td></tr>
+</table>
+
+<p>Press <strong>Mint keycard</strong>. The next page shows the pass <strong>once</strong> — a long
+code starting with <code>pk1_</code>. Copy it straight away; it will not be shown again (reloading that
+page says "already collected"), because the harness keeps only a fingerprint of it. If you forget to
+tick a scope, the page comes back with a message naming the problem and nothing is minted. Give it to the session as an environment variable (for
+example <code>PANTHEON_KEYCARD</code>). The session then sends it as a bearer header, e.g.
+<code>curl -H "Authorization: Bearer $PANTHEON_KEYCARD" https://pantheon-admin.ferrumcorde.com/keycard/v1/whoami</code>.</p>
+
+<table>
+  <tr><th>What you see in the table</th><th>What it means</th></tr>
+  <tr><td><code>[✓] Active</code></td><td>The pass works. <strong>Revoke</strong> stops it immediately.</td></tr>
+  <tr><td><code>[x] Revoked</code></td><td>You revoked it; any use is refused. Mint a new one if needed.</td></tr>
+  <tr><td><code>[!] Expired</code></td><td>Its validity ran out; any use is refused.</td></tr>
+  <tr><td><code>[!] Invalid</code></td><td>The stored record is unreadable (this should never happen on its own); the pass is refused. Revoke it and mint a new one.</td></tr>
+  <tr><td><em>Refused keycard attempts / Rate-limited</em> (below the table)</td><td>How many times someone presented a pass the harness did not accept, and when it last happened — the way to notice a leaked or replayed pass.</td></tr>
+  <tr><td><em>uses / denied</em></td><td>How often the pass was accepted, and how often it asked for something outside its scopes. A rising "denied" count on a pass you did not expect to misbehave is worth a look.</td></tr>
+</table>
+
+<p>If a pass leaks, press <strong>Revoke</strong> — the very next request with it is refused. To
+rotate, mint a new one first, hand it over, then revoke the old one.</p>
+
 <h2 id="devmachine">6. Setting up a dev machine, start to finish</h2>
 
 <p>Two steps: <strong>register</strong> it (tell the harness where it is), then

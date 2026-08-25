@@ -67,3 +67,25 @@ describe("createServer", () => {
     await expect(createServer({ adminToken: "", dbPath: ":memory:", keyDir })).rejects.toThrow();
   });
 });
+
+describe("createServer — session keycards (M1 task 2)", () => {
+  it("wires the keycard door: mint on the admin API, then the card opens /keycard/v1/* and nothing else", async () => {
+    app = await makeServer();
+    const minted = await app.inject({ method: "POST", url: "/api/keycards", headers: auth, payload: { principal: "cli-mac-mini", scopes: ["sessions:read"] } });
+    expect(minted.statusCode).toBe(201);
+    const token = minted.json().token as string;
+    const who = await app.inject({ method: "GET", url: "/keycard/v1/whoami", headers: { authorization: `Bearer ${token}` } });
+    expect(who.statusCode).toBe(200);
+    expect(who.json()).toMatchObject({ principal: "cli-mac-mini" });
+    const sessions = await app.inject({ method: "GET", url: "/keycard/v1/sessions", headers: { authorization: `Bearer ${token}` } });
+    expect(sessions.statusCode).toBe(200);
+    expect(sessions.json()).toEqual({ sessions: [] });
+    expect((await app.inject({ method: "GET", url: "/api/backends", headers: { authorization: `Bearer ${token}` } })).statusCode).toBe(403);
+  });
+
+  it("the Configuration page shows the Session Keycards section", async () => {
+    app = await makeServer();
+    const res = await app.inject({ method: "GET", url: "/admin/config", headers: auth });
+    expect(res.body).toContain("Session Keycards");
+  });
+});

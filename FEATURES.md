@@ -196,3 +196,38 @@ seconds after you create a session); attaching to a session that ended after lis
 labeled error rather than silently creating one; names outside the allow-list (or longer than 64
 characters) are shown but not attachable (rename on the machine); at most 100 sessions are listed
 (labelled "list truncated"); host-key verification is still TOFU on this path too (BUGS #17).
+
+---
+
+## Feature 9: Scoped Session Keycard (read-only machine door for CLI sessions)
+
+**Phase Built:** 2 — M1 (terminal plane), task 2 (TP-3)
+**Status:** Complete
+**Summary:** A Claude-CLI session can hold a **keycard** — a narrow, deny-by-default credential
+(`usage:read | approvals:read | sessions:read`, a closed enum with no write or management scope to
+grant) that opens exactly one door, `/keycard/v1/*`, and nothing else. The door is its own auth
+domain: the operator cookie is ignored there, the admin bearer is rejected there, and a keycard is
+rejected on every admin route. The server stores only `SHA-256(token)`; the raw `pk1_…` token is
+shown once at mint (JSON, or a no-store HTML page from the Configuration form). Revocation and
+expiry (default 90 d, max 365) fail closed on the next call; uses and denies are counted per card
+and shown on the Configuration page, alongside door-wide refused-attempt / rate-limited counters.
+Approvals read through a keycard are reference-only (D8) and bounded (10 s, 200 items, 256 chars).
+60 calls / minute / card plus a door-wide pre-auth budget (120 refusals / minute). The form mint is
+Post/Redirect/Get to a one-shot token page; every admin-surface form is protected against same-site
+CSRF by a `Sec-Fetch-Site` check.
+**Key Interfaces:** `src/keycard/{types,service,sqlite-store}.ts`, `src/http/auth/keycard-guard.ts`
+(`KEYCARD_PREFIX`, guard), `src/http/routes/keycard.ts` (`GET /keycard/v1/{whoami,usage,approvals,
+sessions}`; admin `GET|POST /api/keycards`, `POST /api/keycards/:id/revoke`), `src/http/app.ts`
+(guard dispatch, `AppOptions.keycards` / `sessionLedger`), `src/http/config-page.ts` (Session
+Keycards section), `src/session/sqlite-store.ts` (`list()`), `src/server.ts` (wiring;
+`PANTHEON_SESSION_DB`).
+**Related ADRs:** ADR-0008; `docs/machine-auth-design.md`; ruling TP-3 (APPROVAL_LOG 2026-08-20).
+**Test Coverage:** Unit (`keycard-service.test.ts` against the real SQLite store); route integration
+(`keycard-routes.test.ts` — auth-domain separation, scope matrix, D8 projection, no management route
+at any scope, rate cap, admin mint/list/revoke, one-time token page); render
+(`config-page-keycards.test.ts`, `config-page-interactivity.test.ts` — Revoke confirm); wiring
+(`server.test.ts`); `session-store.test.ts` (`list()`). Audit remediation adds 27 tests.
+**Known Limitations:** `usage:read` answers a labelled 503 until the M2 usage ledger exists; per-call
+audit entries arrive with the M2 step-04 audit work (counters only for now); no automatic rotation
+(mint new + revoke old); the door rides the admin service behind the same internal-DNS Caddy
+entrance (design's internal-network bind not applied — CLI sessions live on LAN dev machines).

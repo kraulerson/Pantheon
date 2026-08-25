@@ -64,6 +64,10 @@ What it must NEVER be able to do (deny-by-default, enforced Facade-side):
 - **Network wall:** the machine API binds to the internal compose network only — it is
   NOT published through Caddy and not reachable from LAN/Tailscale. The Driver runs
   inside the same Docker network. (Defense-in-depth with the bearer, not instead of it.)
+  *Note (2026-08-25, ADR-0008):* the **session keycard** door (`/keycard/v1/*`, the CLI-session
+  read tier) deliberately does NOT get this wall — its holders live on LAN dev machines — and
+  rides the admin service behind the internal-DNS Caddy entrance instead. The wall above still
+  binds the future Autonomy Driver machine API on the Facade.
 - Operator UI auth (cookies) is **rejected** on `/machine/v1/*`; machine bearers are
   **rejected** everywhere else. No endpoint accepts both tiers.
 

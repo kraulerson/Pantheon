@@ -41,6 +41,24 @@ for handoff clarity. Categories are ordered by impact severity.
   Homepage-tile navigation to `/login`); recorded as a residual.
 
 ### Added
+- 2026-08-25 **Scoped session keycard (M1 task 2, TP-3; ADR-0008).** A Claude-CLI session can now
+  hold a narrow read-only credential that opens exactly one door — `GET /keycard/v1/{whoami,usage,
+  approvals,sessions}` — with a closed scope enum (`usage:read | approvals:read | sessions:read`; no
+  write or management scope exists to grant, TM-011). The door is its own auth domain (operator
+  cookie ignored, admin bearer rejected; a keycard is rejected on every admin route). Hash-only
+  custody (`SHA-256(token)`), token shown once at mint on the D6 admin surface (`POST /api/keycards`
+  JSON, or a `no-store` HTML page from the new Configuration-page **Session Keycards** section),
+  revoke/expiry fail closed, per-card use/deny counters, 60 calls/min/card, approvals reference-only
+  (D8). `usage:read` answers a labelled 503 until the M2 ledger exists. New `src/keycard/*`,
+  `src/http/auth/keycard-guard.ts`, `src/http/routes/keycard.ts`; `SessionStore.list()`;
+  `PANTHEON_SESSION_DB`. Three parallel audits → 28 fixes in-loop (door-wide refused/429 counters +
+  `useCount` = served; pre-auth budget; **`Sec-Fetch-Site` CSRF check on every state-changing route**;
+  Peta bounds + `listApprovals`-only dependency; read-side validation of stored scopes/counters; PRG
+  one-shot token page; field-level error banners + success receipts; Revoke confirm + unique names;
+  pill contract; bare `/keycard/v1`; `frameworkErrors` headers; `LIMIT 500`; non-null expiry +
+  `updatedAt`), 4 deferred (BUGS #34–#36 + a data-model wording ruling). 72 new tests (suite 545
+  passed / 5 honest skips); audit `docs/security-audits/scoped-session-keycard-security-audit.md`;
+  interface doc `docs/api and interfaces/keycard-door.md`.
 - 2026-08-25 **tmux-aware launcher — live session listing (M1 task 1; ruling A-2, terminal plane
   first).** The harness launch bar now lists each ready dev machine's LIVE tmux sessions as one
   text-labelled button per session — `<machine> · <session>` — that opens a terminal tab ATTACHED to

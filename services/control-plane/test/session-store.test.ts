@@ -75,3 +75,19 @@ describe("SqliteSessionStore", () => {
     store.close();
   });
 });
+
+describe("SqliteSessionStore.list (keycard sessions:read — M1 task 2)", () => {
+  it("lists sessions newest first with metadata only", async () => {
+    const { SqliteSessionStore } = await import("../src/session/sqlite-store.js");
+    const store = new SqliteSessionStore(":memory:");
+    store.getOrCreate("s-old", { identityId: "alden-1", backendId: "b1" });
+    await new Promise((r) => setTimeout(r, 5));
+    store.getOrCreate("s-new", { identityId: null, backendId: "b1" });
+    store.markTaint("s-old");
+    const list = store.list();
+    expect(list.map((s) => s.id)).toEqual(["s-new", "s-old"]);
+    expect(list[1]).toMatchObject({ id: "s-old", identityId: "alden-1", taintFlag: true, closedAt: null });
+    expect(Object.keys(list[0] as object).sort()).toEqual(["backendId", "closedAt", "createdAt", "id", "identityId", "taintFlag"]);
+    store.close();
+  });
+});

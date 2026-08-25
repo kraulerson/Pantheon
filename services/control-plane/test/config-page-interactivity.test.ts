@@ -90,3 +90,26 @@ describe("config page — Edit reveals a prefilled form and Save PUTs it (BUGS #
     expect(body).toEqual({ displayName: "Alden Brain", endpoint: "10.0.0.9:9000", enabled: true });
   });
 });
+
+describe("config page — keycard Revoke asks for a labeled confirm (BUGS-audit 2026-08-25)", () => {
+  const keycard = { id: "k-1", principal: "cli-mac-mini", scopes: ["sessions:read"], createdAt: "2026-08-25T12:00:00.000Z", updatedAt: "2026-08-25T12:00:00.000Z", expiresAt: "2026-11-23T12:00:00.000Z", revokedAt: null, lastUsedAt: null, useCount: 0, denyCount: 0 };
+  function submitRevoke(confirmAnswer: boolean): boolean {
+    const html = page({ keycards: [keycard] });
+    const vc = new VirtualConsole();
+    const dom = new JSDOM(html, { runScripts: "dangerously", virtualConsole: vc });
+    const w = dom.window as unknown as { document: Document; confirm: (m: string) => boolean; Event: typeof Event };
+    let asked = "";
+    w.confirm = (m: string) => { asked = m; return confirmAnswer; };
+    const form = w.document.querySelector('[data-form="revoke-keycard"]') as HTMLFormElement;
+    const ev = new w.Event("submit", { bubbles: true, cancelable: true });
+    form.dispatchEvent(ev);
+    expect(asked).toMatch(/cli-mac-mini/);
+    return ev.defaultPrevented;
+  }
+  it("cancelling the confirm prevents the submit", () => {
+    expect(submitRevoke(false)).toBe(true);
+  });
+  it("accepting the confirm lets the form submit", () => {
+    expect(submitRevoke(true)).toBe(false);
+  });
+});

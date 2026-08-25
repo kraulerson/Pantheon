@@ -69,6 +69,15 @@ export class SqliteSessionStore implements SessionStore {
   }
 
   /** Set taint true. Monotonic — only ever sets 1, never 0; no-op on an unknown session. */
+  /** Newest first, at most 500; metadata only — the entity carries no content. */
+  list(): Session[] {
+    const rows = this.db
+      .prepare(`SELECT id, identity_id, backend_id, taint_flag, created_at, closed_at FROM session ORDER BY created_at DESC, rowid DESC LIMIT 500`)
+      .all() as SessionRow[];
+    return rows.map((r) => SqliteSessionStore.toSession(r));
+  }
+
+  /** Set taint true. Monotonic — only ever sets 1, never 0; no-op on an unknown session. */
   markTaint(id: string): void {
     this.db.prepare("UPDATE session SET taint_flag = 1 WHERE id = ?").run(id);
   }

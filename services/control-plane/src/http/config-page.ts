@@ -8,8 +8,15 @@
  */
 
 import type { Backend, DevMachine, ServiceEndpoint } from "../registry/types.js";
+import { KEYCARD_SCOPES, keycardStatus, type Keycard, type KeycardStats } from "../keycard/types.js";
 
 export interface ConfigPageModel {
+  /** Session keycards (M1 task 2). Omit on a server where the feature is not wired → no section. */
+  readonly keycards?: readonly Keycard[];
+  /** Door-wide refusal / rate-limit counters (shown beside the keycard table). */
+  readonly keycardStats?: KeycardStats;
+  /** Clock for the keycard state pills (tests); defaults to now. */
+  readonly now?: string;
   readonly backends: readonly Backend[];
   readonly mcpServers: readonly unknown[];
   readonly serviceEndpoints: readonly ServiceEndpoint[];
@@ -22,7 +29,8 @@ export interface ConfigPageModel {
 }
 
 /** Escape the five HTML-significant characters — fail-closed against markup injection. */
-function esc(value: unknown): string {
+/** HTML escape for text and attribute contexts. Exported so sibling pages share ONE primitive. */
+export function escapeHtml(value: unknown): string {
   return String(value)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -30,6 +38,7 @@ function esc(value: unknown): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
+const esc = escapeHtml;
 
 /** Status pill: text label + shape glyph + machine-readable token. NEVER color-only (CC1). */
 function statusPill(enabled: boolean): string {
@@ -213,9 +222,69 @@ function devMachinesSection(machines: readonly DevMachine[]): string {
   <p class="empty-state">SSH key is installed by the provisioning step and held in vault custody — never entered or shown here.</p></section>`;
 }
 
+
+/**
+ * Session Keycards section (M1 task 2, TP-3; §7 tier 4; ADR-0008). The operator mints a narrow
+ * read-only credential for a CLI session here (D6 admin surface), sees every card's state in TEXT
+ * (CC1 — the same pill contract as the rest of the page) with its served / denied counters plus the
+ * door-wide refused-attempt counters (deny-by-default is only trustworthy if denies are visible),
+ * and revokes (a labeled confirm, a unique accessible name per button). The token itself is shown
+ * ONCE, on the one-shot mint page — never here (the server holds only a hash).
+ */
+function keycardPill(c: Keycard, nowIso: string): string {
+  const st = keycardStatus(c, nowIso);
+  const label = st === "active" ? "Active" : st === "revoked" ? "Revoked" : st === "expired" ? "Expired" : "Invalid";
+  const glyph = st === "active" ? "[✓]" : st === "revoked" ? "[x]" : "[!]";
+  return `<span class="status" data-status="${st}" role="img" aria-label="${label}"><span class="glyph">${glyph}</span> ${label}</span>`;
+}
+
+function keycardsSection(cards: readonly Keycard[], nowIso: string, stats: KeycardStats | undefined): string {
+  const rows =
+    cards.length === 0
+      ? `<p class="empty-state" data-state="empty">No session keycards minted. Mint one below to give a Claude-CLI session read-only access to the harness API.</p>`
+      : `<table><thead><tr><th>Principal</th><th>Scopes</th><th>State</th><th>Created</th><th>Expires</th><th>Last used</th><th>Served / denied</th><th>Actions</th></tr></thead><tbody>${cards
+          .map(
+            (c) =>
+              `<tr><td>${esc(c.principal)}</td><td><code>${c.scopes.map(esc).join(", ")}</code></td><td>${keycardPill(c, nowIso)}</td><td>${esc(
+                c.createdAt
+              )}</td><td>${esc(c.expiresAt)}</td><td>${esc(c.lastUsedAt ?? "never")}</td><td>${esc(c.useCount)} uses / ${esc(c.denyCount)} denied</td><td>${
+                c.revokedAt === null
+                  ? `<form action="/api/keycards/${esc(c.id)}/revoke" method="post" data-form="revoke-keycard" data-confirm="${esc(
+                      `Revoke the keycard for ${c.principal}? The holder is refused on its very next request. This cannot be undone.`
+                    )}" style="display:inline"><button type="submit" aria-label="${esc(`Revoke keycard for ${c.principal}, created ${c.createdAt}`)}">Revoke</button></form>`
+                  : `<span class="muted">revoked ${esc(c.revokedAt)}</span>`
+              }</td></tr>`
+          )
+          .join("")}</tbody></table>`;
+  const statsLine = stats
+    ? `<p class="muted" data-keycard-stats>Refused keycard attempts: ${esc(stats.refusedAuth)} (last: ${esc(
+        stats.lastRefusedAt ?? "never"
+      )}) · Rate-limited: ${esc(stats.rateLimited)}</p>`
+    : "";
+  const scopeBoxes = KEYCARD_SCOPES.map((sc) => `<label><input type="checkbox" name="scopes" value="${esc(sc)}"> ${esc(sc)}</label>`).join(" ");
+  return `<section aria-labelledby="h-keycards"><h2 id="h-keycards">Session Keycards</h2>
+  <p class="muted">A keycard lets a Claude-CLI session READ from the harness (sessions, pending approvals as references, usage) — never write, never manage. The card is shown once when minted; the harness keeps only its fingerprint.</p>
+  ${rows}
+  ${statsLine}
+  <form action="/api/keycards" method="post" data-form="mint-keycard">
+    <h3>Mint a keycard</h3>
+    <label>Principal (who holds it) <input name="principal" pattern="[A-Za-z0-9_][A-Za-z0-9._-]{0,63}" maxlength="64" placeholder="cli-mac-mini" required></label>
+    <fieldset><legend>Scopes (read-only; deny-by-default) — tick at least one</legend>${scopeBoxes}</fieldset>
+    <label>Valid for (days) <input type="number" name="ttlDays" min="1" max="365" value="90"></label>
+    <button type="submit">Mint keycard</button>
+  </form></section>`;
+}
+
 export const CONFIG_CLIENT_JS = `
 (function () {
   var doc = document;
+  // Keycard revoke is permanent: ask first, with the card named (audit 2026-08-25).
+  Array.prototype.forEach.call(doc.querySelectorAll('[data-form="revoke-keycard"]'), function (f) {
+    f.addEventListener('submit', function (e) {
+      var msg = f.getAttribute('data-confirm') || 'Revoke this keycard? This cannot be undone.';
+      if (!window.confirm(msg)) e.preventDefault();
+    });
+  });
   var ROUTES = { backend: '/api/backends', endpoint: '/api/service-endpoints', devmachine: '/api/dev-machines', mcp: '/api/mcp-servers' };
   function esc(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
   function fieldsFor(kind, b) {
@@ -304,6 +373,7 @@ ${backendsSection(model.backends)}
 ${mcpSection(model.mcpServers)}
 ${serviceEndpointsSection(model.serviceEndpoints)}
 ${devMachinesSection(model.devMachines ?? [])}
+${model.keycards !== undefined ? keycardsSection(model.keycards, model.now ?? new Date().toISOString(), model.keycardStats) : ""}
 <script>${CONFIG_CLIENT_JS}</script>
 </body>
 </html>`;

@@ -33,5 +33,7 @@ export interface SessionStore {
   getOrCreate(id: string, binding: SessionBinding): Session;
   get(id: string): Session | undefined;
   markTaint(id: string): void;
+  /** Newest first; metadata only (this entity never carries content). Bounded. */
+  list(): Session[];
   close(): void;
 }

@@ -25,6 +25,10 @@ import { registerHarnessRoutes, HARNESS_ASSET_PATHS, type TmuxLister } from "./r
 import { SessionStore } from "./auth/session.js";
 import { operatorGuard, registerAuthRoutes, AUTH_PUBLIC_PATHS } from "./auth/operator-auth.js";
 import { USER_GUIDE_HTML, USER_GUIDE_PATH } from "./user-guide.js";
+import { isKeycardPath, keycardGuard } from "./auth/keycard-guard.js";
+import { registerKeycardAdminRoutes, registerKeycardDoor } from "./routes/keycard.js";
+import type { KeycardService } from "../keycard/service.js";
+import type { Session } from "../session/types.js";
 
 /** Result of an admin-tier check. `ok:false` carries the HTTP status to fail closed with. */
 export type GuardResult = { ok: true } | { ok: false; status: 401 | 403; reason: string };
@@ -66,7 +70,32 @@ export interface AppOptions {
    * `runRemoteCommand` + custody). Omit on a server with no SSH custody — the route answers 503.
    */
   readonly tmux?: TmuxLister;
+  /**
+   * Session keycards (M1 task 2, TP-3 — PROJECT_BIBLE §7 tier 4). When provided, the keycard door
+   * `/keycard/v1/*` (its own auth domain) and the admin mint/list/revoke routes are mounted and the
+   * Configuration page shows the Session Keycards section. Omit → the prefix answers 503 (fail closed).
+   */
+  readonly keycards?: KeycardService;
+  /** Session metadata source for `sessions:read` (the Facade's session store). Absent → labeled 503. */
+  readonly sessionLedger?: { list(): Session[] };
+  /** Upstream budget for the keycard approvals read (default 10 s; tests shorten it). */
+  readonly approvalsTimeoutMs?: number;
 }
+
+/**
+ * Allow-listed Configuration-page banner codes (`?error=` / `?notice=`). A code that is not listed
+ * renders nothing — query text is never reflected into the page (§8/TM-008).
+ */
+const CONFIG_PAGE_ERRORS: Readonly<Record<string, string>> = {
+  keycard_principal: "Invalid principal — keycard not minted. Use 1–64 letters, digits, '.', '_' or '-' (not starting with '-').",
+  keycard_scopes: "Invalid scopes — keycard not minted. Tick at least one of usage:read, approvals:read, sessions:read.",
+  keycard_ttl: "Invalid validity — keycard not minted. Use a whole number of days from 1 to 365.",
+  keycard_not_found: "That keycard no longer exists — nothing changed."
+};
+const CONFIG_PAGE_NOTICES: Readonly<Record<string, string>> = {
+  keycard_minted: "Keycard minted. It was shown once on the previous page; the harness keeps only its fingerprint.",
+  keycard_revoked: "Keycard revoked — the holder is refused from its very next request."
+};
 
 /**
  * Public, non-admin routes (identity-gated, fail-closed in their own handlers). The admin guard
@@ -183,7 +212,14 @@ function isUrlencodedForm(req: FastifyRequest): boolean {
 }
 
 export function buildApp(opts: AppOptions): FastifyInstance {
-  const app = Fastify({ logger: false });
+  const app = Fastify({
+    logger: false,
+    // A malformed URL never reaches a route or a hook; answer it ourselves so the body is sanitized
+    // (no reflected path) and the security header still lands (audit 2026-08-25).
+    frameworkErrors: (_error, _req, reply) => {
+      void (reply as FastifyReply).code(400).header("X-Content-Type-Options", "nosniff").send({ error: "bad_request" });
+    }
+  });
   const { registry, mcp } = opts;
 
   // #9 browser login (§7 tier-1): when an operator passphrase is configured, the guard also accepts
@@ -203,8 +239,38 @@ export function buildApp(opts: AppOptions): FastifyInstance {
 
   // Admin-tier guard on every ADMIN route (fail-closed). Public, identity-gated routes
   // (the pre-processor chat entry, login page, static assets) are exempted.
+  const kcGuard = keycardGuard(opts.keycards);
+  app.decorateRequest("keycard", null);
   app.addHook("onRequest", async (req, reply) => {
-    if (PUBLIC_PATHS.has(req.routeOptions.url ?? req.url.split("?")[0] ?? "")) return;
+    const routePath = req.routeOptions.url ?? req.url.split("?")[0] ?? "";
+    const rawPath = req.url.split("?")[0] ?? "";
+    // CSRF (audit 2026-08-25): the session cookie is SameSite=Lax, which still travels on a
+    // same-SITE cross-origin POST (any other service under the same registrable domain — the chat UI,
+    // for one). Browsers label every request with Sec-Fetch-Site; a state-changing request the
+    // browser itself marks cross-site or same-site is refused before any guard runs. Same-origin
+    // form posts and non-browser API clients (no header) pass. Topology-safe, unlike Origin==Host
+    // (the household edge proxy rewrites Host).
+    if (req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS") {
+      const site = req.headers["sec-fetch-site"];
+      if (site === "cross-site" || site === "same-site") {
+        reply.code(403).send({ error: "cross_origin_rejected" });
+        return;
+      }
+    }
+    // Keycard door (§7 tier 4, docs/machine-auth-design.md §4): its OWN auth domain, dispatched
+    // FIRST and by raw path as well as route pattern (bare `/keycard/v1` included), so even an
+    // unmatched URL in the domain meets the keycard guard — never the admin guard, never a login
+    // redirect. The operator cookie is not consulted here and the admin bearer is not a keycard.
+    if (isKeycardPath(rawPath) || isKeycardPath(routePath)) {
+      const kc = kcGuard(req);
+      if (!kc.ok) {
+        reply.code(kc.status).send({ error: kc.reason });
+        return;
+      }
+      req.keycard = kc.card;
+      return;
+    }
+    if (PUBLIC_PATHS.has(routePath)) return;
     const result = await guard(req);
     if (!result.ok) {
       // A logged-out BROWSER navigation → redirect to the login page (no metadata leaked, §7);
@@ -328,8 +394,21 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   // ---- Harness UI (frame + xterm.js terminal tabs + public xterm assets) — ADR-0005 §9 C.1/C.6 ----
   registerHarnessRoutes(app, { registry, loginEnabled, ...(opts.tmux ? { tmux: opts.tmux } : {}) });
 
+  // ---- Session keycards (M1 task 2): admin mint/list/revoke (guarded above) + the keycard door ----
+  if (opts.keycards) {
+    registerKeycardAdminRoutes(app, { keycards: opts.keycards });
+    const peta = opts.peta;
+    registerKeycardDoor(app, {
+      keycards: opts.keycards,
+      // The door gets a READER only — the decide verb is structurally out of its reach.
+      ...(peta ? { approvals: { listApprovals: () => peta.listApprovals() } } : {}),
+      ...(opts.approvalsTimeoutMs !== undefined ? { approvalsTimeoutMs: opts.approvalsTimeoutMs } : {}),
+      ...(opts.sessionLedger ? { sessionLedger: opts.sessionLedger } : {})
+    });
+  }
+
   // ---- Config page (server-rendered, behind the guard) ----
-  app.get("/admin/config", async (_req, reply) => {
+  app.get<{ Querystring: { error?: unknown; notice?: unknown } }>("/admin/config", async (req, reply) => {
     let mcpServers: unknown[] = [];
     let error: string | undefined;
     try {
@@ -337,12 +416,19 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     } catch {
       error = "MCP server list unavailable — Peta unreachable.";
     }
+    // Allow-listed banner codes from a redirect (never reflected text).
+    const errCode = typeof req.query.error === "string" ? req.query.error : "";
+    const noticeCode = typeof req.query.notice === "string" ? req.query.notice : "";
+    if (error === undefined && Object.hasOwn(CONFIG_PAGE_ERRORS, errCode)) error = CONFIG_PAGE_ERRORS[errCode];
+    const notice = Object.hasOwn(CONFIG_PAGE_NOTICES, noticeCode) ? CONFIG_PAGE_NOTICES[noticeCode] : undefined;
     const html = renderConfigPage({
       backends: registry.listBackends(),
       serviceEndpoints: registry.listServiceEndpoints(),
       devMachines: registry.listDevMachines(),
       mcpServers,
-      ...(error !== undefined ? { error } : {})
+      ...(opts.keycards ? { keycards: opts.keycards.list(), keycardStats: opts.keycards.stats() } : {}),
+      ...(error !== undefined ? { error } : {}),
+      ...(notice !== undefined ? { notice } : {})
     });
     reply.type("text/html").send(html);
   });

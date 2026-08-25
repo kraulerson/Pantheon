@@ -123,3 +123,11 @@ the old token back in service; the Mac-side `.rotbak` restores the client copy.
 APPROVAL_LOG rows for Steps 2/3/6; vault decision-doc notes (Decision A mirror live;
 I2 eval folder DONE); memory updated (26-day → now 60+-day rotation debt CLOSED);
 final verification checklist from the remediation plan run top to bottom.
+
+## Session keycards (any time, ~1 minute each; ADR-0008)
+
+Keycards are independent rows, so rotation is overlap-by-construction: on the Configuration page
+**Mint keycard** for the same principal → hand the new `pk1_…` to the CLI session (shown once on
+the one-shot page) → verify it with `GET /keycard/v1/whoami` → **Revoke** the old card (labeled
+confirm; refused from its very next request). A leaked card: **Revoke** first, then mint. There is no
+escrow — a lost card is re-minted, never recovered.

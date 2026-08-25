@@ -9,6 +9,7 @@
  *   PANTHEON_SECURE_COOKIES=true (behind HTTPS) — add Secure to the session cookie
  *   PANTHEON_DB      (./data/control-plane.db) — registry SQLite path (persistent)
  *   PANTHEON_KEY_DIR (~/.pantheon/keys)        — harness SSH key custody dir
+ *   PANTHEON_SESSION_DB (= PANTHEON_DB)        — session-metadata SQLite path read by `sessions:read` keycards
  *   PETA_URL + PETA_ADMIN_TOKEN  (optional)    — Peta admin API for MCP-server registration
  *   PORT (8088) / HOST (0.0.0.0)
  *
@@ -30,6 +31,8 @@ import { registerEnrollmentRoute } from "./http/routes/enrollment.js";
 import { enrollMachine } from "./devmachine/enrollment.js";
 import { ssh2EnrollmentPort } from "./devmachine/enrollment-ssh.js";
 import { ChildProcessRunner, SshKeygenGenerator } from "./devmachine/index.js";
+import { KeycardService, SqliteKeycardStore } from "./keycard/index.js";
+import { SqliteSessionStore } from "./session/sqlite-store.js";
 import {
   FileKeyCustody,
   TerminalRegistry,
@@ -53,6 +56,8 @@ export interface ServerConfig {
   readonly secureCookies?: boolean;
   /** Custody handle of the shared harness keypair (PANTHEON_KEY_HANDLE, default "harness"). */
   readonly keyHandle: string;
+  /** Session-metadata SQLite path for `sessions:read` keycards (PANTHEON_SESSION_DB; default = dbPath). */
+  readonly sessionDbPath?: string;
   /** Injected fetch for the Peta client (tests). */
   readonly fetchFn?: typeof fetch;
 }
@@ -86,11 +91,18 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   const exec = (target: SshTarget, handle: string, command: RemoteCommand) => runRemoteCommand(target, handle, command, { custody });
   const tmux = createTmuxLister((target, handle) => listTmuxSessions(target, handle, exec));
 
+  // Session keycards (M1 task 2, TP-3): hash-only store in the registry DB; session metadata for
+  // `sessions:read` from the Facade's session table (same file unless PANTHEON_SESSION_DB says otherwise).
+  const keycards = new KeycardService(new SqliteKeycardStore(cfg.dbPath));
+  const sessionLedger = new SqliteSessionStore(cfg.sessionDbPath ?? cfg.dbPath);
+
   const app = buildApp({
     adminToken: cfg.adminToken,
     registry,
     mcp,
     tmux,
+    keycards,
+    sessionLedger,
     ...(cfg.operatorPassword ? { operatorPassword: cfg.operatorPassword } : {}),
     ...(cfg.secureCookies !== undefined ? { secureCookies: cfg.secureCookies } : {})
   });
@@ -128,6 +140,7 @@ export function configFromEnv(env: Record<string, string | undefined>): ServerCo
     dbPath: env["PANTHEON_DB"] ?? resolve("data/control-plane.db"),
     keyDir: env["PANTHEON_KEY_DIR"] ?? defaultKeyDir(),
     keyHandle: env["PANTHEON_KEY_HANDLE"] ?? "harness",
+    ...(env["PANTHEON_SESSION_DB"] ? { sessionDbPath: env["PANTHEON_SESSION_DB"] } : {}),
     ...(peta ? { peta } : {}),
     ...(env["PANTHEON_OPERATOR_PASSWORD"] ? { operatorPassword: env["PANTHEON_OPERATOR_PASSWORD"] } : {}),
     ...(env["PANTHEON_SECURE_COOKIES"] === "true" ? { secureCookies: true } : {})
