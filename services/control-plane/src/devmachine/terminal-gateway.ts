@@ -27,8 +27,12 @@ export interface DuplexSocket {
   close(): void;
 }
 
-/** Client→server frames: input keystrokes and PTY resize. */
-type ClientFrame = { t: "i"; d: string } | { t: "r"; c: number; r: number };
+/**
+ * Client→server frames: input keystrokes, PTY resize, and an EXPLICIT close (`{t:"c"}`, BUGS #33).
+ * A dropped socket only detaches (reconnectable); an explicit close ends the SSH session, so a
+ * closed tmux tab does not leave a ghost tmux client attached on the dev machine.
+ */
+type ClientFrame = { t: "i"; d: string } | { t: "r"; c: number; r: number } | { t: "c" };
 
 /** Server→client frames: PTY output, session exit. (Errors use `{t:"e",m}`.) */
 function outputFrame(data: string): string {
@@ -52,6 +56,7 @@ function parseClientFrame(raw: string): ClientFrame | null {
   if (m["t"] === "r" && Number.isInteger(m["c"]) && Number.isInteger(m["r"])) {
     return { t: "r", c: m["c"] as number, r: m["r"] as number };
   }
+  if (m["t"] === "c") return { t: "c" };
   return null;
 }
 
@@ -124,14 +129,15 @@ export class ManagedTerminal {
   }
 }
 
-/** Wire a duplex socket to a managed terminal. Socket close => detach (reconnectable). */
+/** Wire a duplex socket to a managed terminal. Socket close => detach (reconnectable); `{t:"c"}` => end. */
 export function attachSocket(socket: DuplexSocket, term: ManagedTerminal): void {
   term.attach((frame) => socket.send(frame));
   socket.onMessage((raw) => {
     const frame = parseClientFrame(raw);
     if (!frame) return;
     if (frame.t === "i") term.input(frame.d);
-    else term.resize(frame.c, frame.r);
+    else if (frame.t === "r") term.resize(frame.c, frame.r);
+    else term.close(); // explicit tab close: end the SSH session (the registry evicts on close)
   });
   socket.onClose(() => term.detach());
 }

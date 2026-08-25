@@ -77,6 +77,9 @@ export const HARNESS_CLIENT_JS = `
   }
   function closeTab(id) {
     var t = tabs[id]; if (!t) return;
+    // Explicit close ENDS the session server-side (BUGS #33): a closed tmux tab must not leave a
+    // ghost tmux client attached on the machine. A dropped socket (no frame) only detaches.
+    try { if (t.ws && t.ws.readyState === 1) t.ws.send(JSON.stringify({ t: 'c' })); } catch (e) {}
     try { if (t.ws) t.ws.close(); } catch (e) {}
     try { if (t.term && t.term.dispose) t.term.dispose(); } catch (e) {}
     if (t.btn.parentNode) t.btn.parentNode.removeChild(t.btn);

@@ -56,7 +56,8 @@ hardening follow-up). Live provisioning requires the operator at the keyboard.
 **Summary:** Bridges a browser xterm.js terminal to a remote SSH PTY (ADR-0005 §9 C.6). A
 `ManagedTerminal` wraps the SSH `TerminalSession` with bounded scrollback and an attach/detach
 lifecycle so a dropped WebSocket does not kill the shell — the operator reconnects and reattaches to
-the live session (replaying recent scrollback). The `attachSocket` bridge speaks a small JSON frame
+the live session (replaying recent scrollback); an EXPLICIT tab close (`{t:"c"}`, BUGS #33,
+2026-08-25) ends the session instead. The `attachSocket` bridge speaks a small JSON frame
 protocol and forwards **only** operator keystrokes to the PTY (never recalled `trusted:false`
 content — closes the TM-020 RCE concern). `openTerminalForMachine` fails closed on
 unknown/unprovisioned/disabled machines before dialing. Exposed as `GET /terminal/:logicalName`.

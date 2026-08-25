@@ -413,3 +413,22 @@ describe("tmux-aware launcher — audit remediation (client)", () => {
     expect(FakeWS.instances).toHaveLength(0);
   });
 });
+
+describe("tab close ends the session (BUGS #33)", () => {
+  beforeEach(() => {
+    FakeWS.instances = [];
+    document.body.innerHTML = "";
+  });
+
+  it('closing a tab sends {t:"c"} (end the SSH session → tmux client detaches) BEFORE closing the socket', async () => {
+    stubFetch(okList([sess("pantheon")]));
+    boot({ devMachines: [machine({ logicalName: "mac-mini" })] });
+    await vi.waitFor(() => expect(document.querySelector('[data-tmux-session="pantheon"]')).not.toBeNull());
+    (document.querySelector('[data-tmux-session="pantheon"]') as HTMLElement).click();
+    const ws = FakeWS.instances[0];
+    (document.querySelector("[data-close]") as HTMLElement).click();
+    expect(ws.sent).toContain(JSON.stringify({ t: "c" }));
+    expect(ws.closed).toBe(true);
+    expect(document.querySelectorAll("[data-tab]").length).toBe(0);
+  });
+});

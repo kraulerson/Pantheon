@@ -214,3 +214,50 @@ describe("terminal WebSocket route — audit remediation (2026-08-25)", () => {
     expect(connect).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("explicit tab close (BUGS #33)", () => {
+  it('a {t:"c"} frame ENDS the SSH session and evicts the terminal — closing a tab must not leave a ghost tmux client', async () => {
+    let closeCb: (() => void) | undefined;
+    let closed = false;
+    const session: TerminalSession = {
+      write: () => {},
+      onData: () => {},
+      onClose: (cb) => {
+        closeCb = cb;
+      },
+      resize: () => {},
+      close: () => {
+        closed = true;
+        closeCb?.();
+      }
+    };
+    const terminals = new TerminalRegistry();
+    app = Fastify();
+    await registerTerminalRoute(app, { registry: provisionedRegistry(true), terminals, connect: vi.fn(async () => session) });
+    await app.ready();
+    const q = frameQueue();
+    const client = await app.injectWS("/terminal/mac-studio?tmux=pantheon", {}, { onInit: (ws) => ws.on("message", q.push) });
+    const ready = await q.next();
+    expect(terminals.get(String(ready["id"]))).toBeDefined();
+    client.send(JSON.stringify({ t: "c" }));
+    await waitFor(() => closed);
+    expect(terminals.get(String(ready["id"]))).toBeUndefined();
+    client.close();
+  });
+
+  it("a plain socket drop (no close frame) still only DETACHES — the session stays reconnectable", async () => {
+    let closed = false;
+    const session: TerminalSession = { write: () => {}, onData: () => {}, onClose: () => {}, resize: () => {}, close: () => (closed = true) };
+    const terminals = new TerminalRegistry();
+    app = Fastify();
+    await registerTerminalRoute(app, { registry: provisionedRegistry(true), terminals, connect: vi.fn(async () => session) });
+    await app.ready();
+    const q = frameQueue();
+    const client = await app.injectWS("/terminal/mac-studio", {}, { onInit: (ws) => ws.on("message", q.push) });
+    const ready = await q.next();
+    client.close();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(closed).toBe(false);
+    expect(terminals.get(String(ready["id"]))).toBeDefined();
+  });
+});

@@ -60,6 +60,10 @@ for handoff clarity. Categories are ordered by impact severity.
   skips); audit `docs/security-audits/tmux-aware-launcher-security-audit.md`.
 
 ### Fixed
+- 2026-08-25 **#33** closing a terminal tab now ENDS its SSH session (client sends `{t:"c"}`; the
+  bridge closes the session and the registry evicts it) — previously the session, and with it a ghost
+  tmux client, stayed attached on the dev machine forever. A bare socket drop still only detaches
+  (reconnectable). Found live on the first tmux attach.
 - 2026-08-25 **#32** attaching to an EXISTING tmux session failed under zsh (`zsh:1: 0 not found`):
   the exact-match target is now single-quoted (`tmux attach-session -t '=<name>'`, `-s '<name>'`).
   Found by the live WebSocket attach check on VM 1093 minutes after the first deploy; fixed
