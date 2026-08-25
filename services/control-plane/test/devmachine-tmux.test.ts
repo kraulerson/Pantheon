@@ -86,15 +86,19 @@ describe("command builders", () => {
     expect(cmd).toContain(`${S}#{session_windows}:#{session_attached}:#{session_created}:#{session_name}`);
   });
 
-  it("attach command targets the EXACT session (= prefix) — never a fuzzy/prefix match", () => {
+  it("attach command targets the EXACT session (= prefix), SINGLE-QUOTED so zsh's =cmd expansion cannot eat it", () => {
+    // Live finding 2026-08-25: zsh (the Mac's login shell) expands an unquoted `=0` to "the path of a
+    // command named 0" → "zsh:1: 0 not found". The allow-list contains no quote characters, so a
+    // single-quoted target is literal under sh, bash and zsh alike.
     const cmd = buildTmuxAttachCommand("pantheon");
     expect(cmd).toContain("/opt/homebrew/bin");
-    expect(cmd).toMatch(/tmux attach-session -t =pantheon$/);
+    expect(cmd).toMatch(/tmux attach-session -t '=pantheon'$/);
     expect(cmd).not.toContain("new-session");
+    expect(buildTmuxAttachCommand("0")).toMatch(/-t '=0'$/);
   });
 
-  it("create option uses the ruled attach-or-create line", () => {
-    expect(buildTmuxAttachCommand("solo", { create: true })).toMatch(/tmux new-session -A -s solo$/);
+  it("create option uses the ruled attach-or-create line (name single-quoted for the same reason)", () => {
+    expect(buildTmuxAttachCommand("solo", { create: true })).toMatch(/tmux new-session -A -s 'solo'$/);
   });
 
   it("refuses to build an attach command from an unsafe name (fail closed — nothing is interpolated)", () => {

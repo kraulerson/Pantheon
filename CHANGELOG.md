@@ -60,6 +60,10 @@ for handoff clarity. Categories are ordered by impact severity.
   skips); audit `docs/security-audits/tmux-aware-launcher-security-audit.md`.
 
 ### Fixed
+- 2026-08-25 **#32** attaching to an EXISTING tmux session failed under zsh (`zsh:1: 0 not found`):
+  the exact-match target is now single-quoted (`tmux attach-session -t '=<name>'`, `-s '<name>'`).
+  Found by the live WebSocket attach check on VM 1093 minutes after the first deploy; fixed
+  test-first. Also characterised (not fixed) the deploy restart abort as **#31**.
 - 2026-08-20 **UAT session 2 remediation** (all test-first; suite 349 passed / 5 honest skips):
   - **#21** config-page CRUD form posts now 303-redirect to `/admin/config` instead of dumping a
     raw-JSON page (all four routes; JSON/API callers unchanged) — the `Add …` dead end.

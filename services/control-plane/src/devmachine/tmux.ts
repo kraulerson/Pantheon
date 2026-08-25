@@ -74,10 +74,13 @@ export function buildTmuxListCommand(): RemoteCommand {
  */
 export function buildTmuxAttachCommand(name: string, opts: { readonly create?: boolean } = {}): RemoteCommand {
   const safe = assertTmuxSessionName(name);
+  // Single-quoted on purpose (BUGS #32): sshd runs the line through the user's login shell, and zsh
+  // expands an unquoted `=word` to "the path of command word" ("zsh:1: 0 not found"). The allow-list
+  // admits no quote characters, so the quoted form is literal under sh, bash and zsh alike.
   return (
     opts.create
-      ? `${TMUX_PATH_PREFIX} tmux new-session -A -s ${safe}`
-      : `${TMUX_PATH_PREFIX} tmux attach-session -t =${safe}`
+      ? `${TMUX_PATH_PREFIX} tmux new-session -A -s '${safe}'`
+      : `${TMUX_PATH_PREFIX} tmux attach-session -t '=${safe}'`
   ) as RemoteCommand;
 }
 

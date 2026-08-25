@@ -133,14 +133,14 @@ describe("terminal WebSocket route — tmux attach (M1 task 1)", () => {
     const first = await firstFrame("/terminal/mac-studio?tmux=pantheon", connect);
     expect(first["t"]).toBe("ready");
     expect(connect).toHaveBeenCalledTimes(1);
-    expect(String(connect.mock.calls[0]?.[2])).toMatch(/tmux attach-session -t =pantheon$/);
+    expect(String(connect.mock.calls[0]?.[2])).toMatch(/tmux attach-session -t '=pantheon'$/);
   });
 
   it("?tmux=<name>&create=1 uses attach-or-create (new session)", async () => {
     const connect = vi.fn(async () => fakeSession());
     const first = await firstFrame("/terminal/mac-studio?tmux=solo&create=1", connect);
     expect(first["t"]).toBe("ready");
-    expect(String(connect.mock.calls[0]?.[2])).toMatch(/tmux new-session -A -s solo$/);
+    expect(String(connect.mock.calls[0]?.[2])).toMatch(/tmux new-session -A -s 'solo'$/);
   });
 
   it("without ?tmux the plain login shell is opened (no remote command)", async () => {

@@ -91,3 +91,20 @@ bounded resource use (coalescing, cache, concurrency cap, timeouts on every path
 secret and injection check passed; every in-scope SEV-2/SEV-3 is fixed with a regression test; the
 deferred items are pre-existing and tracked with rationale. Suite 475 passed / 5 honest skips.
 **Cleared to proceed.**
+
+## Live verification (VM 1093 → Mac mini, 2026-08-25, post-deploy)
+
+- `GET /harness/tmux/Mac-Mini` (bearer, from the VM): **200**, `x-content-type-options: nosniff`,
+  `state:"ok"`, the Mac's five real sessions (`0`, `Alden-2`, `homelab-3`, `lancache-1`, `pantheon`),
+  `ignoredLines: 0` — matches `tmux ls` on the Mac exactly.
+- WebSocket `?tmux=pantheon-verify&create=1` (a throwaway name): `ready`, 1 KiB of PTY output showing
+  the tmux status bar and a zsh prompt inside the new session — attach-or-create works end to end.
+  Session killed on the Mac afterwards.
+- WebSocket `?tmux=x%3Bid`: labeled error frame, no dial (`READY=false`).
+- WebSocket `?tmux=0` (attach to the detached session): **FAILED on first deploy** — `zsh:1: 0 not
+  found`. The unquoted exact-match target `=0` is eaten by zsh's `=cmd` expansion. Fixed as BUGS #32
+  (single-quoted target), re-verified below.
+- Public entrance `https://pantheon-admin.ferrumcorde.com/harness/tmux/Mac-Mini`: **401** +
+  `nosniff` with no credentials (guard fail-closed through the household Caddy hop).
+- Deploy watch item characterised as BUGS #31: the OLD process aborts in `better-sqlite3`'s
+  `Statement::~Statement()` on SIGTERM teardown; systemd auto-restarts it after 3 s; healthy after.
