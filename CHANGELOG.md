@@ -77,6 +77,14 @@ for handoff clarity. Categories are ordered by impact severity.
   `resolveConnectableMachine` in `terminal-gateway.ts`. 126 new tests (suite 475 passed / 5 honest
   skips); audit `docs/security-audits/tmux-aware-launcher-security-audit.md`.
 
+### Changed
+- 2026-08-26 **Chat page: two modes, switchable per conversation (ruling "both modes").**
+  `deploy/librechat.yaml` now carries the identity route **"Pantheon"** (→ the Facade; answers an
+  error until M2 builds it, labelled as such) plus **"Basic LLM - Alden-1 brain"** (`192.168.1.89`,
+  Qwen3.5 122B) and **"Basic LLM - 27B (llm-mini)"** (`192.168.1.206`, key via `.env`
+  `LLM_MINI_API_KEY`) — raw brains, no persona/memory/tools, nothing to gate. User guide §3
+  explains the picker; Bible §9 C.1 records the realisation. Deploy config only, no harness code.
+
 ### Fixed
 - 2026-08-25 **#33** closing a terminal tab now ENDS its SSH session (client sends `{t:"c"}`; the
   bridge closes the session and the registry evicts it) — previously the session, and with it a ghost

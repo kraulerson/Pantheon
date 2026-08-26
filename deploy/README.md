@@ -26,7 +26,11 @@ third-party stack is compose-managed for pinning and restart policy.
   admin service on the host), `tls internal`, §11 security headers.
 - `.env.example` — compose variables. Copy to `.env` (gitignored), fill with
   `openssl rand -hex 32` secrets.
-- `librechat.yaml` — LibreChat custom endpoint pointed at the Facade
+- `librechat.yaml` — LibreChat custom endpoints: **"Pantheon"** (identity route → the Facade,
+  live when M2 lands) and **"Basic LLM - …"** (one raw-brain endpoint per LAN llama.cpp server —
+  no persona, no memory, no tools; ruling 2026-08-26 "both modes"). The 27B brain's key comes from
+  `.env` (`LLM_MINI_API_KEY`). The operator switches modes with LibreChat's endpoint picker.
+  Historically: LibreChat custom endpoint pointed at the Facade
   (`host.docker.internal:8089`). The identity-header wiring is the decision-B spike's
   open question — see `docs/skeleton-steps/step-08-librechat-spike.md`.
 - `systemd/` — unit templates for admin/Facade/obsidian-mcp. Instantiated as

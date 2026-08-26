@@ -1,15 +1,27 @@
-# LibreChat custom-endpoint config — points LibreChat at the Pantheon Facade
-# (docs/phase-1/architecture.md:220-224: OpenAI-compatible pre-processor/proxy,
-#  custom endpoint via baseURL — NOT a fork, NOT an in-process hook).
+# LibreChat custom-endpoint config (deploy/README.md §Files; ruling 2026-08-26 "both modes").
 #
-# VERIFY at deploy (Investigation A / decision B spike): the exact header-interpolation
-# and per-conversation identity wiring is the load-bearing uncertainty the LibreChat
-# spike exists to resolve. This file is the starting configuration for that spike.
+# The chat page offers TWO kinds of endpoint, switchable per conversation with LibreChat's own
+# endpoint picker (top-left of a new chat) — that IS the persona/basic switch the operator asked for:
+#
+#   1. "Pantheon" — the IDENTITY route. Points at the Facade (M2 skeleton steps 3–8: grounding,
+#      taint, write gate, cost meter, session binding). NOT BUILT YET: nothing listens on 8089, so
+#      this endpoint answers an error until the Facade lands. Kept so the switch exists from day one.
+#   2. "Basic LLM — …" — the RAW BRAIN route, one endpoint per brain. No persona, no memory, no
+#      tools, no Peta, no write gate — LibreChat talks straight to the llama.cpp server on the LAN.
+#      That is the point: a plain model conversation when no identity is wanted (Bible §9 C.1 bare
+#      session, ruling 2026-08-26). Nothing on this path can call a tool, so there is nothing to gate.
+#
+# Secrets: the 27B brain enforces an API key; it comes from deploy/.env (gitignored) as
+# LLM_MINI_API_KEY — never here. The Alden-1 brain server takes no key today.
+#
+# VERIFY at the M2 LibreChat spike (step-08): the exact header-interpolation and per-conversation
+# identity wiring for the Pantheon endpoint is that spike's open question.
 
 version: 1.2.1 # VERIFY: librechat.yaml schema version for the pinned LibreChat build
 
 endpoints:
   custom:
+    # ---- 1. Identity route (Facade) — live when M2 lands ----
     - name: "Pantheon"
       # The Facade runs on the VM host (systemd), not in compose:
       baseURL: "http://host.docker.internal:8089/v1"
@@ -19,6 +31,7 @@ endpoints:
         fetch: false
       titleConvo: true
       titleModel: "alden-1"
+      modelDisplayLabel: "Pantheon identity (Facade — not built until M2)"
       directEndpoint: true
       headers:
         # Identity/session wiring — THE SPIKE QUESTION (step-08): which LibreChat
@@ -26,3 +39,26 @@ endpoints:
         # architecture.md:223 and landscape:81:
         x-pantheon-identity: "alden-1" # static single-identity for the skeleton smoke test
         # x-pantheon-session: "{{LIBRECHAT_USER_ID}}" # VERIFY available placeholders in the spike
+
+    # ---- 2. Basic LLM — raw brains, no persona ----
+    - name: "Basic LLM - Alden-1 brain"
+      # llama.cpp server on the Alden-1 box (BackendRegistry seed `local_alden1`). No API key today.
+      baseURL: "http://192.168.1.89:8080/v1"
+      apiKey: "not-needed"
+      models:
+        default: ["Qwen3.5-122B-A10B-UD-Q4_K_XL-00001-of-00003.gguf"] # the id the server reports; fetch refreshes it
+        fetch: true
+      titleConvo: true
+      titleModel: "current_model"
+      modelDisplayLabel: "Basic LLM - Alden-1 brain (Qwen3.5 122B, no persona)"
+
+    - name: "Basic LLM - 27B (llm-mini)"
+      # llama.cpp server on the 7900XTX box; enforces a key (deploy/.env LLM_MINI_API_KEY).
+      baseURL: "http://192.168.1.206:8080/v1"
+      apiKey: "${LLM_MINI_API_KEY}"
+      models:
+        default: ["/home/karl/models/heretic-v2-Q5_K_M.gguf"] # the id the server reports; fetch refreshes it
+        fetch: true
+      titleConvo: true
+      titleModel: "current_model"
+      modelDisplayLabel: "Basic LLM - 27B heretic (llm-mini, no persona)"

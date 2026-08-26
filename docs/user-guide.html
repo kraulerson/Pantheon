@@ -112,13 +112,31 @@ service itself, so the passphrase never appears in a log or in your shell histor
   <li><strong>Help &amp; FAQ</strong> — in your profile menu; opens this guide.</li>
 </ul>
 
-<div class="warn">
-  <strong>The chat page cannot answer you yet.</strong>
-  No AI model is connected to it. You can sign in, look around and open the settings, but sending a
-  message will not produce a reply. Connecting a model is skeleton step 8 — see
-  <a href="#not-yet">What is not built yet</a>. The working AI route today is a
-  <strong>terminal session to a dev machine</strong>, described below.
-</div>
+<h3 id="chat-modes">Two ways to chat: Basic LLM or a persona</h3>
+
+<p>When you start a new chat, the <strong>endpoint picker</strong> (top-left of the message area)
+offers two kinds of entry. Pick per conversation; you can have both kinds open at once.</p>
+
+<table>
+  <tr><th>Entry</th><th>What you get</th><th>Status</th></tr>
+  <tr><td><strong>Basic LLM - Alden-1 brain</strong></td>
+      <td>A plain conversation with the big model on the Alden-1 machine (Qwen 3.5, 122B). No persona, no
+          memory, no tools — just the model. It thinks before it answers, so the first words can take a moment.</td>
+      <td>Works now.</td></tr>
+  <tr><td><strong>Basic LLM - 27B (llm-mini)</strong></td>
+      <td>A plain conversation with the faster 27B model on the graphics-card box. Same rules: no persona,
+          no memory, no tools.</td>
+      <td>Works now.</td></tr>
+  <tr><td><strong>Pantheon</strong></td>
+      <td>The identity route — talk to <em>Alden-1 the persona</em>, with its memory, its rules and the
+          write-approval gate. This goes through the harness's Facade.</td>
+      <td><strong>Not built yet</strong> (skeleton steps 3–8). Sending a message here shows an error
+          until then — see <a href="#not-yet">What is not built yet</a>.</td></tr>
+</table>
+
+<p>Rule of thumb: <strong>Basic LLM</strong> when you just want an answer from a model; <strong>Pantheon</strong>
+when you want to talk to a specific identity that remembers and can act (once it is connected).
+Nothing you say to a Basic LLM entry is stored by the harness or seen by any identity.</p>
 
 <h2 id="harness">4. The harness page</h2>
 
