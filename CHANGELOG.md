@@ -84,6 +84,12 @@ for handoff clarity. Categories are ordered by impact severity.
   Qwen3.5 122B) and **"Basic LLM - 27B (llm-mini)"** (`192.168.1.206`, key via `.env`
   `LLM_MINI_API_KEY`) — raw brains, no persona/memory/tools, nothing to gate. User guide §3
   explains the picker; Bible §9 C.1 records the realisation. Deploy config only, no harness code.
+- 2026-08-26 **Thinking is selectable per conversation** (ruling): each raw brain now has a **(fast)**
+  entry (`addParams: chat_template_kwargs.enable_thinking=false` — measured: first word in 0.3–0.5 s
+  instead of 23–31 s) and a **(thinking)** entry (reasoning streamed visibly via
+  `customParams.reasoningKey`, no auto-title). Measured on both brains: only `enable_thinking`
+  is honoured per request; effort/budget fields are ignored. The Reasoning-effort dropdown on every
+  endpoint is recorded as an M2 Facade requirement (skeleton step 05).
 
 ### Fixed
 - 2026-08-25 **#33** closing a terminal tab now ENDS its SSH session (client sends `{t:"c"}`; the

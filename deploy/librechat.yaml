@@ -41,24 +41,62 @@ endpoints:
         # x-pantheon-session: "{{LIBRECHAT_USER_ID}}" # VERIFY available placeholders in the spike
 
     # ---- 2. Basic LLM — raw brains, no persona ----
-    - name: "Basic LLM - Alden-1 brain"
-      # llama.cpp server on the Alden-1 box (BackendRegistry seed `local_alden1`). No API key today.
+    # Per-conversation THINKING choice (ruling 2026-08-26): the brains honour exactly one per-request
+    # control, `chat_template_kwargs.enable_thinking` (on/off — effort levels and budgets are ignored
+    # by these llama.cpp builds), and LibreChat cannot put that nested key in its Parameters panel.
+    # So each brain gets TWO picker entries: "fast" (thinking off — a factual answer starts in ~0.3 s)
+    # and "thinking" (the model's hidden reasoning, streamed visibly as a "Thinking" block). The real
+    # target — a Reasoning-effort dropdown on every endpoint, translated per brain — is an M2 Facade
+    # requirement (docs/skeleton-steps/step-05-streaming-passthrough.md).
+    #
+    # Title generation: LibreChat names a conversation with a hidden second request; on a thinking
+    # entry that request would itself think for ~20 s and slow the next turn, so titles stay on for
+    # the fast entries only.
+
+    - name: "Basic LLM - Alden-1 brain (fast)"
       baseURL: "http://192.168.1.89:8080/v1"
       apiKey: "not-needed"
       models:
-        default: ["Qwen3.5-122B-A10B-UD-Q4_K_XL-00001-of-00003.gguf"] # the id the server reports; fetch refreshes it
+        default: ["Qwen3.5-122B-A10B-UD-Q4_K_XL-00001-of-00003.gguf"]
         fetch: true
+      addParams:
+        chat_template_kwargs:
+          enable_thinking: false
       titleConvo: true
       titleModel: "current_model"
-      modelDisplayLabel: "Basic LLM - Alden-1 brain (Qwen3.5 122B, no persona)"
+      modelDisplayLabel: "Basic LLM - Alden-1 brain (Qwen3.5 122B, fast: no thinking, no persona)"
 
-    - name: "Basic LLM - 27B (llm-mini)"
-      # llama.cpp server on the 7900XTX box; enforces a key (deploy/.env LLM_MINI_API_KEY).
+    - name: "Basic LLM - Alden-1 brain (thinking)"
+      baseURL: "http://192.168.1.89:8080/v1"
+      apiKey: "not-needed"
+      models:
+        default: ["Qwen3.5-122B-A10B-UD-Q4_K_XL-00001-of-00003.gguf"]
+        fetch: true
+      customParams:
+        reasoningKey: reasoning_content
+      titleConvo: false
+      modelDisplayLabel: "Basic LLM - Alden-1 brain (Qwen3.5 122B, thinking shown, no persona)"
+
+    - name: "Basic LLM - 27B llm-mini (fast)"
       baseURL: "http://192.168.1.206:8080/v1"
       apiKey: "${LLM_MINI_API_KEY}"
       models:
-        default: ["/home/karl/models/heretic-v2-Q5_K_M.gguf"] # the id the server reports; fetch refreshes it
+        default: ["/home/karl/models/heretic-v2-Q5_K_M.gguf"]
         fetch: true
+      addParams:
+        chat_template_kwargs:
+          enable_thinking: false
       titleConvo: true
       titleModel: "current_model"
-      modelDisplayLabel: "Basic LLM - 27B heretic (llm-mini, no persona)"
+      modelDisplayLabel: "Basic LLM - 27B heretic (llm-mini, fast: no thinking, no persona)"
+
+    - name: "Basic LLM - 27B llm-mini (thinking)"
+      baseURL: "http://192.168.1.206:8080/v1"
+      apiKey: "${LLM_MINI_API_KEY}"
+      models:
+        default: ["/home/karl/models/heretic-v2-Q5_K_M.gguf"]
+        fetch: true
+      customParams:
+        reasoningKey: reasoning_content
+      titleConvo: false
+      modelDisplayLabel: "Basic LLM - 27B heretic (llm-mini, thinking shown, no persona)"

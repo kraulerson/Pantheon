@@ -83,3 +83,22 @@ Revert commit; the non-streaming path is regression-tested independently.
 
 Directly satisfies "Streaming visibly works in the UI"; provides the usage tap step 6
 depends on.
+
+## Added requirement — per-conversation thinking control (ruling 2026-08-26)
+
+Karl: the thinking level must be **selectable per conversation for every LLM selection, identity
+or raw, with the full range the brain supports**. Measured 2026-08-26: both llama.cpp brains honour
+exactly one per-request control, `chat_template_kwargs.enable_thinking` (on/off); `reasoning_effort`,
+`reasoning_budget`, `thinking_budget` and flat keys are ignored. LibreChat's Parameters panel exposes
+a **Reasoning effort** dropdown (`minimal | low | medium | high`) but cannot send a nested key, so the
+Facade is the translator:
+
+- The Facade MUST read `reasoning_effort` from the incoming request and translate it per bound brain
+  into what that brain honours today: `minimal | low` → `chat_template_kwargs.enable_thinking=false`,
+  `medium | high` → thinking on; when a brain gains a real budget/effort control, map the four levels
+  onto it (a per-brain table, not code branches).
+- Bare sessions (no identity — Bible §9 C.1 "none") route through the Facade too, so the same
+  dropdown works on the Basic LLM entries; the four picker variants in `deploy/librechat.yaml`
+  ("fast" / "thinking" per brain) are the interim and collapse back to one entry per brain then.
+- The Facade MUST forward `reasoning_content` deltas so LibreChat shows the "Thinking" block; the
+  title-generation request MUST run with thinking off regardless of the conversation's setting.

@@ -119,13 +119,21 @@ offers two kinds of entry. Pick per conversation; you can have both kinds open a
 
 <table>
   <tr><th>Entry</th><th>What you get</th><th>Status</th></tr>
-  <tr><td><strong>Basic LLM - Alden-1 brain</strong></td>
-      <td>A plain conversation with the big model on the Alden-1 machine (Qwen 3.5, 122B). No persona, no
-          memory, no tools — just the model. It thinks before it answers, so the first words can take a moment.</td>
+  <tr><td><strong>Basic LLM - Alden-1 brain (fast)</strong></td>
+      <td>A plain conversation with the big model on the Alden-1 machine (Qwen 3.5, 122B) with its hidden
+          "thinking" switched off: the answer starts in about half a second. No persona, no memory, no tools.</td>
       <td>Works now.</td></tr>
-  <tr><td><strong>Basic LLM - 27B (llm-mini)</strong></td>
-      <td>A plain conversation with the faster 27B model on the graphics-card box. Same rules: no persona,
-          no memory, no tools.</td>
+  <tr><td><strong>Basic LLM - Alden-1 brain (thinking)</strong></td>
+      <td>The same model, allowed to think first. You see its reasoning stream in a collapsible "Thinking"
+          block, then the answer — expect 20–40 seconds on even simple questions. Conversations here are
+          not auto-titled (that would cost another 20 s of thinking).</td>
+      <td>Works now.</td></tr>
+  <tr><td><strong>Basic LLM - 27B llm-mini (fast)</strong></td>
+      <td>The faster 27B model on the graphics-card box, thinking off: answers start in about a third of a
+          second. Same rules: no persona, no memory, no tools.</td>
+      <td>Works now.</td></tr>
+  <tr><td><strong>Basic LLM - 27B llm-mini (thinking)</strong></td>
+      <td>The 27B allowed to think, reasoning shown. Not auto-titled.</td>
       <td>Works now.</td></tr>
   <tr><td><strong>Pantheon</strong></td>
       <td>The identity route — talk to <em>Alden-1 the persona</em>, with its memory, its rules and the
@@ -134,9 +142,12 @@ offers two kinds of entry. Pick per conversation; you can have both kinds open a
           until then — see <a href="#not-yet">What is not built yet</a>.</td></tr>
 </table>
 
-<p>Rule of thumb: <strong>Basic LLM</strong> when you just want an answer from a model; <strong>Pantheon</strong>
-when you want to talk to a specific identity that remembers and can act (once it is connected).
-Nothing you say to a Basic LLM entry is stored by the harness or seen by any identity.</p>
+<p>Rule of thumb: <strong>fast</strong> for everyday questions; <strong>thinking</strong> for puzzles and careful
+work; <strong>Pantheon</strong> when you want to talk to a specific identity that remembers and can act (once
+it is connected). Nothing you say to a Basic LLM entry is stored by the harness or seen by any identity.
+(Why two entries per model: these models only understand thinking <em>on</em> or <em>off</em>, and the chat
+page cannot pass that switch from its settings panel yet — a Reasoning-effort setting on every entry is
+planned with the chat plane.)</p>
 
 <h2 id="harness">4. The harness page</h2>
 
