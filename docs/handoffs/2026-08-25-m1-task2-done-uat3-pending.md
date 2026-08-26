@@ -3,7 +3,7 @@
 ## Where we are
 
 Branch `main`, clean, in sync with BOTH remotes (`origin` GitHub + `gitea` — the VM pulls from
-Gitea; push both). VM 1093 deployed at **`cb1dcbf`** and live-verified through the household Caddy
+Gitea; push both). VM 1093 deployed at **`eb73977`** and live-verified through the household Caddy
 entrance. **Test gate: 2/2 — TRIPPED.** UAT session 3 is open (`process-checklist` steps
 `agents_dispatched`, `template_generated`, `orchestrator_notified` done; next step is
 `results_received`). **No new feature may start until UAT-3 is run, triaged, remediated and the
@@ -28,6 +28,30 @@ pantheon-admin@pantheon` on `pantheon@192.168.1.93` (add `npm ci` when the lockf
    test-session-3-v1.html` — 23 scenarios (tmux launcher 9, keycards 11, regressions 3), lint clean;
    agent results in `agent-results/` (automated suite from verbatim output; adversarial probe
    consolidating the six audits + live probes).
+
+## Added 2026-08-26 — chat page work (config only, no harness code; both remotes + VM in sync)
+
+- **Ruling "both modes" (B, permanent; APPROVAL_LOG 2026-08-26; `16cce5c`):** `deploy/librechat.yaml`
+  now has the identity route **"Pantheon"** (→ Facade :8089, dead until M2, labelled) plus raw-brain
+  entries. **Ruling "thinking selectable per conversation" (`eb73977`):** per raw brain two picker
+  entries — **"(fast)"** (`addParams: chat_template_kwargs.enable_thinking=false`, titles on) and
+  **"(thinking)"** (`customParams.reasoningKey: reasoning_content`, `titleConvo: false`). Brains:
+  `.89` Alden-1 brain (Strix Halo, Qwen3.5-122B-A10B MoE, no key), `.206` llm-mini (7900XTX,
+  heretic-v2 27B, key REQUIRED → VM `deploy/.env` `LLM_MINI_API_KEY`, source `/etc/llama-qwen/apikey`
+  on `.206`; never in the repo). LibreChat container needs `docker compose up -d librechat` after
+  `.env` changes (env_file), `restart` after yaml-only changes.
+- **Latency findings (measured):** llm-mini IS faster (29 vs 21.6 tok/s; TTFT 0.3 vs 0.5 s) but only
+  ~35% (the 122B is MoE, ~10B active). The 27–31 s waits Karl saw = ~330 words of hidden reasoning;
+  thinking off → first word in 0.3–0.5 s. Both llama.cpp builds honour ONLY
+  `chat_template_kwargs.enable_thinking` per request (effort/budget fields ignored); LibreChat's
+  panel cannot send a nested key → the picker variants are the interim. **M2 requirement recorded in
+  `docs/skeleton-steps/step-05-streaming-passthrough.md`:** the Facade translates LibreChat's
+  Reasoning-effort dropdown per brain for identity AND bare sessions; title requests thinking-off.
+- **Ruling A (data-model doctrine, `82a358f`):** Bible §5 P3 additive-DDL exception recorded.
+- **Pending Karl checks:** (1) does a "(fast)" chat answer within ~1 s (proves LibreChat forwards
+  the nested `addParams`)? (2) the LibreChat login prompt on 08-26 = the 7-day refresh-token default
+  expiring (account made 08-19); offer `REFRESH_TOKEN_EXPIRY` (days) in `deploy/.env` + recreate.
+  (3) UAT-3 still not run.
 
 ## What's blocked / waiting
 
@@ -55,8 +79,8 @@ per `docs/handoffs/2026-08-20-M1-build-plan.md`.
 
 ## Resume prompt
 
-> Continuing from `docs/handoffs/2026-08-25-m1-task2-done-uat3-pending.md`. Branch `main`, both
-> remotes synced, VM 1093 deployed at `cb1dcbf` and live-verified; M1 tasks 1 and 2 are DONE
+> Continuing from `docs/handoffs/2026-08-25-m1-task2-done-uat3-pending.md` (read its 2026-08-26 section too). Branch `main`, both
+> remotes synced, VM 1093 deployed at `eb73977` and live-verified; M1 tasks 1 and 2 are DONE
 > (tmux-aware launcher, scoped session keycard); the test gate is TRIPPED (2/2) and **UAT session 3
 > is open** — template `tests/uat/sessions/2026-08-25-session-3/templates/test-session-3-v1.html`,
 > agent results filed, checklist at `results_received`. First ask Karl for his UAT-3 results (or
