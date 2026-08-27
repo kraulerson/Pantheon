@@ -271,3 +271,38 @@ decide affordance, nav link); `keycard-routes.test.ts` unchanged and green (door
 "pending" = not in Peta's resolved vocabulary (an unknown or missing status is shown, fail-visible);
 the Peta client still has no byte cap / fetch abort (BUGS #35 — the timeout stops waiting, not the
 transfer).
+
+---
+
+## Feature 11: The harness under the chat address (one front door, terminal half) + LibreChat theme
+
+**Phase Built:** 2 — M1 (terminal plane), operator correction 2026-08-27
+**Status:** Complete
+**Summary:** The console is reachable at `https://pantheon.ferrumcorde.com/harness/` — the chat
+address — so the operator's development sessions no longer live behind a door labelled "admin".
+The VM's Caddy path-splits the chat site (`handle_path /harness/*` → admin service, with
+`X-Forwarded-Prefix: /harness`); the service reads that validated prefix per request and builds
+every URL it emits through one helper, so the admin address keeps working unchanged (root mount) and
+the keycard door keeps its URL. Pages share one stylesheet with LibreChat's own token values and
+follow LibreChat's light/dark choice; the harness's Chat tab embeds the chat page when opened from
+the chat address (same origin), and links to it from the admin address. LibreChat's footer gains
+**Terminals** and **Configuration** links. Registration stays on the Configuration page.
+**Key Interfaces:** `src/http/base-path.ts` (`BASE_PATH_HEADER`, `basePathFrom`, `requestBase`,
+`withBase`), `src/http/theme.ts` (`THEME_ASSET_PATH`, `HARNESS_THEME_CSS`, `THEME_BOOT_JS`,
+`pageHead`, `XTERM_THEME_JS`), every page renderer takes `base` (`HarnessFrameModel`,
+`TerminalTabModel`, `ConfigPageModel`, `ApprovalsInboxModel`, keycard pages, login page); client
+scripts read `<html data-base>` (and `data-chat-url`); `deploy/Caddyfile` (chat site path split),
+`deploy/.env.example` (`CUSTOM_FOOTER`).
+**Related ADRs:** ADR-0005 (single entry point, both modalities); step-08 item 5 (one front door —
+HOW: frame links into chat, chat links into the frame, one address); ruling 2026-08-27
+(APPROVAL_LOG); design `docs/2026-08-27-harness-under-chat-address-design.md`.
+**Test Coverage:** `base-path.test.ts` (header validation, `withBase`), `theme.test.ts` (token values,
+boot script behaviour in jsdom incl. storage events), `mount-prefix.test.ts` (every page, form,
+asset, redirect and login round-trip under the prefix; root mount unchanged; unclean header fails
+closed; public stylesheet; static invariant over `src/http`), `harness-shell.test.ts` (socket and
+tmux fetch under the base; Chat tab iframe vs link).
+**Known Limitations:** the entry point on the chat page is a footer link (LibreChat has no custom
+nav hook; an upstream "custom links" proposal may follow); two sign-ins remain (console passphrase
+and LibreChat account) until M2; the `/harness` → `/harness/` redirect is Caddy-only (not unit
+tested; verified live); `pantheon-admin.*` keeps `X-Frame-Options: DENY` so the Chat tab there is a
+link, not an embed.

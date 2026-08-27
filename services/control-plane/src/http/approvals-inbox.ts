@@ -6,6 +6,8 @@
  */
 
 import { escapeHtml as esc } from "./config-page.js";
+import { withBase } from "./base-path.js";
+import { pageHead } from "./theme.js";
 import type { ApprovalReference } from "../approvals/projection.js";
 
 export type InboxState = "ok" | "empty" | "unavailable" | "failed";
@@ -23,6 +25,8 @@ export interface ApprovalsInboxModel {
   /** Our own label for `failed` / `unavailable` — never upstream text. */
   readonly message?: string;
   readonly nowMs: number;
+  /** Mount prefix for this request (`/harness` on the chat site, `""` on the admin site). */
+  readonly base?: string;
 }
 
 /** Age in words from an ISO time; unparseable or missing → "unknown age" (labelled, not blank). */
@@ -81,25 +85,21 @@ function notes(model: ApprovalsInboxModel): string {
 }
 
 export function renderApprovalsInbox(model: ApprovalsInboxModel): string {
+  const base = model.base ?? "";
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-base="${esc(base)}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pantheon Harness — Pending Approvals</title>
+${pageHead(base)}
 <style>
-  body { font-family: system-ui, sans-serif; margin: 1.5rem; }
-  table { border-collapse: collapse; width: 100%; }
-  th, td { border: 1px solid #aaa; padding: 0.35rem 0.5rem; text-align: left; vertical-align: top; }
-  .ref { font-family: monospace; }
-  .banner { border: 2px solid #333; padding: 0.6rem; margin-bottom: 1rem; border-radius: 4px; }
-  .empty-state { font-style: italic; }
-  .muted { opacity: .75; }
+  body { margin: 1.5rem; }
 </style>
 </head>
 <body>
 <h1>Pantheon Harness — Pending Approvals</h1>
-<p><a href="/harness">&larr; Harness</a> &middot; <a href="/admin/config">Configuration</a> &middot; <a href="/help">Help — user guide</a> &middot; <a href="/admin/approvals">Reload</a></p>
+<p><a href="${withBase(base, "/harness")}">&larr; Harness</a> &middot; <a href="${withBase(base, "/admin/config")}">Configuration</a> &middot; <a href="${withBase(base, "/help")}">Help — user guide</a> &middot; <a href="${withBase(base, "/admin/approvals")}">Reload</a></p>
 <p class="muted">Every request Peta reports as waiting for your decision, from every session and identity, as a reference line: who asked, which tool, which target, how long ago. No request contents are shown here.</p>
 <main data-state="${model.state}">
 ${body(model)}

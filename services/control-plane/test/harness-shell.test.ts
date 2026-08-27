@@ -533,3 +533,54 @@ describe("terminal tabs fill the tab (fit addon) — operator report 2026-08-27"
     expect(status.textContent).toMatch(/failed to load/);
   });
 });
+
+
+describe("mount prefix in the client (design 2026-08-27 — harness under the chat address)", () => {
+  beforeEach(() => {
+    FakeWS.instances = [];
+    FakeFitAddon.instances = [];
+    document.body.innerHTML = "";
+    document.documentElement.removeAttribute("data-base");
+    document.documentElement.removeAttribute("data-chat-url");
+  });
+
+  it("opens the terminal socket under the base the server rendered on <html>", () => {
+    document.documentElement.setAttribute("data-base", "/harness");
+    boot({ devMachines: [machine({ logicalName: "linux-box" })] });
+    (document.querySelector('[data-open-terminal="linux-box"]') as HTMLElement).click();
+    expect(FakeWS.instances[0].url).toMatch(/\/harness\/terminal\/linux-box$/);
+  });
+
+  it("fetches the live tmux list under the base", async () => {
+    document.documentElement.setAttribute("data-base", "/harness");
+    const fetchFn = vi.fn(() => new Promise(() => {}));
+    (window as unknown as { fetch: unknown }).fetch = fetchFn;
+    boot({ devMachines: [machine({ logicalName: "mac-mini" })] });
+    await vi.waitFor(() => expect(fetchFn).toHaveBeenCalled());
+    expect(String((fetchFn.mock.calls[0] as unknown[])[0])).toMatch(/^\/harness\/harness\/tmux\/mac-mini$/);
+  });
+
+  it("Chat opens as an embedded same-origin tab when served under the chat address", () => {
+    document.documentElement.setAttribute("data-base", "/harness");
+    boot({ devMachines: [machine({ logicalName: "linux-box" })] });
+    (document.querySelector('[name="aiSystem"]') as HTMLSelectElement).value = "local_alden1";
+    const form = document.querySelector('[data-form="new-session"]') as HTMLFormElement;
+    form.dispatchEvent(new window.Event("submit", { cancelable: true, bubbles: true }));
+    const frame = document.querySelector('[data-tab-panel][data-kind="chat"] iframe.chat-host') as HTMLIFrameElement | null;
+    expect(frame).not.toBeNull();
+    expect(frame?.getAttribute("src")).toBe("/");
+    expect(FakeWS.instances).toHaveLength(0);
+  });
+
+  it("on the admin address (no base) Chat is a labelled link to the chat address, never a cross-site iframe", () => {
+    document.documentElement.setAttribute("data-chat-url", "https://chat.example.test/");
+    boot({ devMachines: [machine({ logicalName: "linux-box" })] });
+    (document.querySelector('[name="aiSystem"]') as HTMLSelectElement).value = "local_alden1";
+    const form = document.querySelector('[data-form="new-session"]') as HTMLFormElement;
+    form.dispatchEvent(new window.Event("submit", { cancelable: true, bubbles: true }));
+    const panel = document.querySelector('[data-tab-panel][data-kind="chat"]') as HTMLElement;
+    expect(panel.querySelector("iframe")).toBeNull();
+    expect(panel.textContent).toMatch(/chat address/);
+    expect((panel.querySelector("a") as HTMLAnchorElement).getAttribute("href")).toBe("https://chat.example.test/");
+  });
+});

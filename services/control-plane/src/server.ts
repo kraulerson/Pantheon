@@ -26,6 +26,16 @@ import { SqliteRegistry, seedDefaults } from "./registry/sqlite-repository.js";
 import { RegistryService } from "./registry/service.js";
 import { McpRegistrationService, type PetaServerAdmin } from "./registry/mcp-registration.js";
 import { PetaAdminClient } from "./peta/index.js";
+
+/** `PANTHEON_CHAT_URL`: only an https origin (optionally a port, trailing slash) is accepted — anything else is ignored loudly. */
+export function chatUrlFrom(raw: string | undefined): string | undefined {
+  if (raw === undefined || raw === "") return undefined;
+  if (!/^https:\/\/[a-z0-9.-]+(:\d{1,5})?\/?$/i.test(raw)) {
+    console.error(`PANTHEON_CHAT_URL ignored: expected https://host[:port]/ (got ${JSON.stringify(raw)})`);
+    return undefined;
+  }
+  return raw.endsWith("/") ? raw : `${raw}/`;
+}
 import { registerTerminalRoute } from "./http/routes/terminal.js";
 import { registerEnrollmentRoute } from "./http/routes/enrollment.js";
 import { enrollMachine } from "./devmachine/enrollment.js";
@@ -54,6 +64,8 @@ export interface ServerConfig {
   readonly operatorPassword?: string;
   /** Add `Secure` to the session cookie (set true behind HTTPS/your reverse proxy). */
   readonly secureCookies?: boolean;
+  /** The chat page's address (https://host[:port]/) for the Chat tab on the admin site. */
+  readonly chatUrl?: string;
   /** Custody handle of the shared harness keypair (PANTHEON_KEY_HANDLE, default "harness"). */
   readonly keyHandle: string;
   /** Session-metadata SQLite path for `sessions:read` keycards (PANTHEON_SESSION_DB; default = dbPath). */
@@ -107,7 +119,8 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
     sessionLedger,
     ...(petaClient ? { peta: petaClient } : {}),
     ...(cfg.operatorPassword ? { operatorPassword: cfg.operatorPassword } : {}),
-    ...(cfg.secureCookies !== undefined ? { secureCookies: cfg.secureCookies } : {})
+    ...(cfg.secureCookies !== undefined ? { secureCookies: cfg.secureCookies } : {}),
+    ...(cfg.chatUrl !== undefined ? { chatUrl: cfg.chatUrl } : {})
   });
 
   // Terminal modality (ADR-0005): key-only SSH brokered server-side from custody. `command` is the
@@ -134,6 +147,7 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
 
 export function configFromEnv(env: Record<string, string | undefined>): ServerConfig {
   const adminToken = env["ADMIN_API_TOKEN"] ?? "";
+  const chatUrl = chatUrlFrom(env["PANTHEON_CHAT_URL"]);
   const peta =
     env["PETA_URL"] && env["PETA_ADMIN_TOKEN"]
       ? { url: env["PETA_URL"], token: env["PETA_ADMIN_TOKEN"] }
@@ -146,7 +160,8 @@ export function configFromEnv(env: Record<string, string | undefined>): ServerCo
     ...(env["PANTHEON_SESSION_DB"] ? { sessionDbPath: env["PANTHEON_SESSION_DB"] } : {}),
     ...(peta ? { peta } : {}),
     ...(env["PANTHEON_OPERATOR_PASSWORD"] ? { operatorPassword: env["PANTHEON_OPERATOR_PASSWORD"] } : {}),
-    ...(env["PANTHEON_SECURE_COOKIES"] === "true" ? { secureCookies: true } : {})
+    ...(env["PANTHEON_SECURE_COOKIES"] === "true" ? { secureCookies: true } : {}),
+    ...(chatUrl !== undefined ? { chatUrl } : {})
   };
 }
 

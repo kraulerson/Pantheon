@@ -41,7 +41,20 @@ pantheon.lan, pantheon.ferrumcorde.com, 192.168.1.93 {
 	tls internal
 	import security_headers
 	header X-Frame-Options "SAMEORIGIN"
-	reverse_proxy librechat:3080
+	# The console UNDER the chat address (ruling 2026-08-27, docs/2026-08-27-harness-under-chat-
+	# address-design.md): /harness/* goes to the admin service with the prefix stripped and announced
+	# in X-Forwarded-Prefix — the service builds every link, redirect, asset and WebSocket URL from
+	# that header. LibreChat's own /login, /api/* and /assets/* are untouched. SAMEORIGIN above is
+	# what lets the harness embed the chat page as a tab. The admin site below stays a root mount.
+	redir /harness /harness/ 308
+	handle_path /harness/* {
+		reverse_proxy host.docker.internal:8088 {
+			header_up X-Forwarded-Prefix /harness
+		}
+	}
+	handle {
+		reverse_proxy librechat:3080
+	}
 }
 
 # ---- Control-plane admin service (config page, approvals, harness frame, terminals) --
@@ -56,5 +69,9 @@ admin.pantheon.lan, 192.168.1.93:8443 {
 	import security_headers
 	header X-Frame-Options "DENY"
 	# WebSocket upgrade for /terminal/* works through reverse_proxy automatically.
-	reverse_proxy host.docker.internal:8088
+	# Root mount: a client-supplied X-Forwarded-Prefix must never reach the service here
+	# (audit 2026-08-27 F4) — only the chat site above sets it, and there it overwrites.
+	reverse_proxy host.docker.internal:8088 {
+		header_up -X-Forwarded-Prefix
+	}
 }

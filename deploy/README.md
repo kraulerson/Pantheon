@@ -109,3 +109,13 @@ If that menu entry ever stops working after a LibreChat upgrade, check that vari
 
 Console posture is unchanged: fail-closed 401 without the operator passphrase, `X-Frame-Options:
 DENY`, and no public DNS record.
+
+## The harness under the chat address (2026-08-27)
+
+`Caddyfile` path-splits the chat site: `/harness/*` → the admin service with `X-Forwarded-Prefix:
+/harness` (the service builds every URL from it); everything else → LibreChat. After changing the
+Caddyfile: `docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile` (or `docker
+compose restart caddy`) — a reload closes live terminal WebSockets, so do it in a quiet moment. Two
+`.env` values change with it (`CUSTOM_FOOTER`, `HELP_AND_FAQ_URL` → `/harness/help`) → `docker compose
+up -d librechat` to apply. The admin service needs `PANTHEON_CHAT_URL` in its `.env.local` for the
+Chat tab on the admin site. The admin site (`:8443`) is a root mount and needs nothing else.

@@ -52,6 +52,33 @@ for handoff clarity. Categories are ordered by impact severity.
   Homepage-tile navigation to `/login`); recorded as a residual.
 
 ### Added
+- 2026-08-27 **The harness under the chat address, in LibreChat's clothes** (`harness-under-chat-address`;
+  ruling 2026-08-27, design `docs/2026-08-27-harness-under-chat-address-design.md`; resolves step-08
+  item 5 for the terminal plane). The VM's Caddy now serves the console at
+  `https://pantheon.ferrumcorde.com/harness/*` (`handle_path` + `X-Forwarded-Prefix: /harness`);
+  the service builds every link, form action, asset, redirect, client fetch and WebSocket URL through
+  `withBase(requestBase(req), path)` (`src/http/base-path.ts`; the header is validated to
+  `^(/[a-z0-9-]+){1,3}$`, anything else fails closed to the root mount), so on the admin address every
+  URL, redirect and cookie is unchanged and the keycard door keeps its URL (pages there now share the
+  stylesheet, follow the OS light/dark preference, and carry `data-base=\"\"`). Shared stylesheet
+  `/assets/harness.css` (`src/http/theme.ts`) carries LibreChat v0.8.7's own token values (surfaces
+  `#fff`/`#0d0d0d`, text, borders, `system-ui, Inter` / `Roboto Mono`) and a boot script that
+  follows LibreChat's `color-theme` choice (same-origin localStorage) or the OS preference; xterm gets
+  a matching theme. The harness's Chat tab embeds the chat page (same-origin `<iframe src="/">`) when
+  served under the chat address, and is a labelled link on the admin address (a cross-site iframe
+  would make the sign-in cookie third-party). `CUSTOM_FOOTER` → `[Terminals](/harness/) |
+  [Configuration](/harness/admin/config)`; `HELP_AND_FAQ_URL` → `/harness/help` on the chat
+  address. Static invariant test: no `src/http` file may emit a bare absolute
+  `href/action/src/redirect/fetch`. **Audit hardenings (2026-08-27, test-first):** the console
+  session cookie is scoped to the mount (`Path=/harness` under the chat address) so the chat backend
+  never receives it; the terminal WebSocket handshake is now covered by the Sec-Fetch-Site check
+  (same-site / cross-site handshakes refused — closes the sibling-host half of BUGS #26); console
+  HTML sends `Content-Security-Policy: frame-ancestors 'self'` plus a frame-bust script (cross-origin
+  framing refused; the one same-origin case — the embedded chat's footer link — pops to the top
+  window; first step on BUGS #29); the admin
+  site strips a client-supplied `X-Forwarded-Prefix`. **Residual, recorded for the operator's
+  acceptance:** one address = one browser origin, so script running on the chat page can reach the
+  console with the operator's session (design doc §"Residual risk").
 - 2026-08-26 **Unified Pending-Approvals inbox (M1 task 3, TP-2 amendment).** One admin-surface page,
   `GET /admin/approvals` (operator guard; linked as **Approvals** in the harness chrome), lists every
   approval waiting in Peta's queue across ALL sessions/identities as a REFERENCE line — identity,

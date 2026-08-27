@@ -12,6 +12,7 @@
 import type { FastifyInstance } from "fastify";
 import { readPendingApprovals, type ApprovalsListFilter, type ApprovalsReader } from "../../approvals/projection.js";
 import { renderApprovalsInbox } from "../approvals-inbox.js";
+import { requestBase } from "../base-path.js";
 
 /** The narrow Peta surface these routes proxy (matches PetaAdminClient). */
 export interface ApprovalsBackend {
@@ -67,17 +68,18 @@ const RESOLVED_STATUSES: ReadonlySet<string> = new Set(["approved", "rejected", 
 const isResolved = (status: string | undefined): boolean => status !== undefined && RESOLVED_STATUSES.has(status.toLowerCase());
 
 export function registerApprovalsInbox(app: FastifyInstance, deps: ApprovalsInboxDeps): void {
-  app.get("/admin/approvals", async (_req, reply) => {
+  app.get("/admin/approvals", async (req, reply) => {
     const nowMs = (deps.now ?? Date.now)();
+    const base = requestBase(req);
     reply.type("text/html; charset=utf-8").header("Cache-Control", "no-store");
     if (!deps.approvals) {
       reply.code(503);
-      return renderApprovalsInbox({ state: "unavailable", approvals: [], hiddenCount: 0, unidentifiedCount: 0, more: false, nowMs });
+      return renderApprovalsInbox({ state: "unavailable", approvals: [], hiddenCount: 0, unidentifiedCount: 0, more: false, nowMs, base });
     }
     const res = await readPendingApprovals(deps.approvals, deps.timeoutMs ?? DEFAULT_INBOX_TIMEOUT_MS);
     if (res.state === "failed") {
       reply.code(502);
-      return renderApprovalsInbox({ state: "failed", approvals: [], hiddenCount: 0, unidentifiedCount: 0, more: false, message: res.message, nowMs });
+      return renderApprovalsInbox({ state: "failed", approvals: [], hiddenCount: 0, unidentifiedCount: 0, more: false, message: res.message, nowMs, base });
     }
     // An item with no reference id cannot be pointed at or resolved — counted, never shown as a row.
     const identified = res.approvals.filter((a) => a.id !== undefined && a.id !== "");
@@ -88,7 +90,8 @@ export function registerApprovalsInbox(app: FastifyInstance, deps: ApprovalsInbo
       hiddenCount: identified.length - pending.length,
       unidentifiedCount: res.approvals.length - identified.length,
       more: res.more,
-      nowMs
+      nowMs,
+      base
     });
   });
 }

@@ -22,6 +22,8 @@ import { renderTerminalTab, type TerminalTabModel } from "../terminal-tab.js";
 import type { DevMachine } from "../../registry/types.js";
 import { resolveConnectableMachine, TerminalError } from "../../devmachine/terminal-gateway.js";
 import type { TmuxListResult, TmuxLister } from "../../devmachine/tmux.js";
+import { requestBase } from "../base-path.js";
+import { HARNESS_THEME_CSS, THEME_ASSET_PATH } from "../theme.js";
 
 export type { TmuxLister } from "../../devmachine/tmux.js";
 
@@ -37,7 +39,7 @@ const XTERM_CSS = readFileSync(nodeRequire.resolve("@xterm/xterm/css/xterm.css")
 const XTERM_FIT_JS = readFileSync(nodeRequire.resolve("@xterm/addon-fit/lib/addon-fit.js"), "utf8");
 
 /** Public asset paths (added to the app's guard exemption set). */
-export const HARNESS_ASSET_PATHS: readonly string[] = ["/assets/xterm.js", "/assets/xterm.css", "/assets/xterm-addon-fit.js"];
+export const HARNESS_ASSET_PATHS: readonly string[] = ["/assets/xterm.js", "/assets/xterm.css", "/assets/xterm-addon-fit.js", THEME_ASSET_PATH];
 
 export interface HarnessRoutesDeps {
   readonly registry: {
@@ -48,6 +50,8 @@ export interface HarnessRoutesDeps {
   readonly loginEnabled: boolean;
   /** Omit on a server with no SSH custody wired — the tmux route then answers 503 `unavailable`. */
   readonly tmux?: TmuxLister;
+  /** The chat page's address for the Chat tab on the root mount (cross-site → a link, never an iframe). */
+  readonly chatUrl?: string;
 }
 
 export function registerHarnessRoutes(app: FastifyInstance, deps: HarnessRoutesDeps): void {
@@ -61,10 +65,14 @@ export function registerHarnessRoutes(app: FastifyInstance, deps: HarnessRoutesD
   app.get("/assets/xterm-addon-fit.js", async (_req, reply) => {
     reply.type("application/javascript").send(XTERM_FIT_JS);
   });
+  // Shared LibreChat-matched stylesheet + tokens (ruling 2026-08-27). Public like the xterm assets.
+  app.get(THEME_ASSET_PATH, async (_req, reply) => {
+    reply.type("text/css").send(HARNESS_THEME_CSS);
+  });
 
   // ---- Harness frame (guarded) ----
-  app.get("/harness", async (_req, reply) => {
-    reply.type("text/html").send(renderHarnessFrame({ devMachines: deps.registry.listDevMachines(), loginEnabled: deps.loginEnabled }));
+  app.get("/harness", async (req, reply) => {
+    reply.type("text/html").send(renderHarnessFrame({ devMachines: deps.registry.listDevMachines(), loginEnabled: deps.loginEnabled, base: requestBase(req), ...(deps.chatUrl !== undefined ? { chatUrl: deps.chatUrl } : {}) }));
   });
 
   // ---- Live tmux session list for a machine (guarded; JSON; labeled states) ----
@@ -101,9 +109,10 @@ export function registerHarnessRoutes(app: FastifyInstance, deps: HarnessRoutesD
   app.get<{ Params: { logicalName: string } }>("/harness/terminal/:logicalName", async (req, reply) => {
     const machine = deps.registry.getDevMachineByLogicalName(req.params.logicalName);
     const hasMachines = deps.registry.listDevMachines().length > 0;
+    const base = requestBase(req);
     const model: TerminalTabModel = machine
-      ? { logicalName: machine.logicalName, user: machine.user, host: machine.host, port: machine.port, hasMachines }
-      : { hasMachines };
+      ? { logicalName: machine.logicalName, user: machine.user, host: machine.host, port: machine.port, hasMachines, base }
+      : { hasMachines, base };
     reply.type("text/html").send(renderTerminalTab(model));
   });
 }

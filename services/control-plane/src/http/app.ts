@@ -27,6 +27,7 @@ import { operatorGuard, registerAuthRoutes, AUTH_PUBLIC_PATHS } from "./auth/ope
 import { USER_GUIDE_HTML, USER_GUIDE_PATH } from "./user-guide.js";
 import { isKeycardPath, keycardGuard } from "./auth/keycard-guard.js";
 import { registerKeycardAdminRoutes, registerKeycardDoor } from "./routes/keycard.js";
+import { requestBase, withBase } from "./base-path.js";
 import type { KeycardService } from "../keycard/service.js";
 import type { Session } from "../session/types.js";
 
@@ -82,6 +83,8 @@ export interface AppOptions {
   readonly approvalsTimeoutMs?: number;
   /** Clock for rendered ages on the Pending-Approvals inbox (tests). */
   readonly now?: () => number;
+  /** The chat page's address (`PANTHEON_CHAT_URL`): the admin-site Chat tab links there. Omit → text only. */
+  readonly chatUrl?: string;
 }
 
 /**
@@ -237,6 +240,13 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   // echoes a (validated) name, so browsers must never content-sniff (audit 2026-08-25).
   app.addHook("onSend", async (_req, reply) => {
     reply.header("X-Content-Type-Options", "nosniff");
+    // Console pages are never meant to be framed (terminals are built in-page; the harness frames the
+    // CHAT page, not the other way round). frame-ancestors wins over Caddy's site-level X-Frame-Options:
+    // 'self' refuses every cross-origin ancestor (LibreChat artifacts run cross-origin); the one
+    // same-origin case — the embedded chat page navigating itself to the console — is busted to the
+    // top window by the page's own FRAME_BUST_JS (audit 2026-08-27 A/F5 + B/F-A; BUGS #29 step 1).
+    const contentType = String(reply.getHeader("content-type") ?? "");
+    if (contentType.startsWith("text/html")) reply.header("Content-Security-Policy", "frame-ancestors 'self'");
   });
 
   // Admin-tier guard on every ADMIN route (fail-closed). Public, identity-gated routes
@@ -252,7 +262,10 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     // browser itself marks cross-site or same-site is refused before any guard runs. Same-origin
     // form posts and non-browser API clients (no header) pass. Topology-safe, unlike Origin==Host
     // (the household edge proxy rewrites Host).
-    if (req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS") {
+    // The terminal WebSocket handshake is a GET that carries the Lax cookie from any sibling host
+    // (audit 2026-08-27 F3 / BUGS #26): treat an `Upgrade: websocket` request as state-changing.
+    const isUpgrade = String(req.headers.upgrade ?? "").toLowerCase() === "websocket";
+    if (isUpgrade || (req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS")) {
       const site = req.headers["sec-fetch-site"];
       if (site === "cross-site" || site === "same-site") {
         reply.code(403).send({ error: "cross_origin_rejected" });
@@ -279,7 +292,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
       // an API caller → sanitized status code only (never the token or raw exception text, §8/TM-008).
       const wantsHtml = req.method === "GET" && (req.headers.accept ?? "").includes("text/html");
       if (wantsHtml && loginEnabled) {
-        reply.redirect("/login");
+        reply.redirect(withBase(requestBase(req), "/login"));
         return;
       }
       reply.code(result.status).send({ error: result.reason });
@@ -310,7 +323,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
 
   app.post("/api/backends", async (req, reply) => {
     const created = registry.createBackend(configFormBody(req.body, req.headers["content-type"]) as never);
-    if (isUrlencodedForm(req)) { reply.redirect("/admin/config", 303); return; }
+    if (isUrlencodedForm(req)) { reply.redirect(withBase(requestBase(req), "/admin/config"), 303); return; }
     reply.code(201);
     return created;
   });
@@ -329,7 +342,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
 
   app.post("/api/service-endpoints", async (req, reply) => {
     const created = registry.createServiceEndpoint(configFormBody(req.body, req.headers["content-type"]) as never);
-    if (isUrlencodedForm(req)) { reply.redirect("/admin/config", 303); return; }
+    if (isUrlencodedForm(req)) { reply.redirect(withBase(requestBase(req), "/admin/config"), 303); return; }
     reply.code(201);
     return created;
   });
@@ -350,7 +363,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     const created = registry.createDevMachine(
       devMachineFormBody(req.body, req.headers["content-type"]) as never
     );
-    if (isUrlencodedForm(req)) { reply.redirect("/admin/config", 303); return; }
+    if (isUrlencodedForm(req)) { reply.redirect(withBase(requestBase(req), "/admin/config"), 303); return; }
     reply.code(201);
     return created;
   });
@@ -369,7 +382,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
 
   app.post("/api/mcp-servers", async (req, reply) => {
     const res = await mcp.register(req.body as never);
-    if (isUrlencodedForm(req)) { reply.redirect("/admin/config", 303); return; }
+    if (isUrlencodedForm(req)) { reply.redirect(withBase(requestBase(req), "/admin/config"), 303); return; }
     reply.code(201);
     return res;
   });
@@ -385,8 +398,8 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   // got raw JSON ("Route GET:/ not found") after clicking a link (BUGS #15). The gap was
   // invisible while logged out, because the auth hook redirects to /login before routing ever
   // happens. Not in PUBLIC_PATHS: logged-out callers keep getting /login (browser) or 401 (API).
-  app.get("/", async (_req, reply) => {
-    reply.redirect("/harness");
+  app.get("/", async (req, reply) => {
+    reply.redirect(withBase(requestBase(req), "/harness"));
   });
 
   app.get(USER_GUIDE_PATH, async (_req, reply) => {
@@ -394,7 +407,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   });
 
   // ---- Harness UI (frame + xterm.js terminal tabs + public xterm assets) — ADR-0005 §9 C.1/C.6 ----
-  registerHarnessRoutes(app, { registry, loginEnabled, ...(opts.tmux ? { tmux: opts.tmux } : {}) });
+  registerHarnessRoutes(app, { registry, loginEnabled, ...(opts.tmux ? { tmux: opts.tmux } : {}), ...(opts.chatUrl !== undefined ? { chatUrl: opts.chatUrl } : {}) });
 
   // ---- Session keycards (M1 task 2): admin mint/list/revoke (guarded above) + the keycard door ----
   if (opts.keycards) {
@@ -430,7 +443,8 @@ export function buildApp(opts: AppOptions): FastifyInstance {
       mcpServers,
       ...(opts.keycards ? { keycards: opts.keycards.list(), keycardStats: opts.keycards.stats() } : {}),
       ...(error !== undefined ? { error } : {}),
-      ...(notice !== undefined ? { notice } : {})
+      ...(notice !== undefined ? { notice } : {}),
+      base: requestBase(req)
     });
     reply.type("text/html").send(html);
   });

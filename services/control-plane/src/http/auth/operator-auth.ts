@@ -7,6 +7,8 @@
  */
 
 import { createHash, timingSafeEqual } from "node:crypto";
+import { requestBase, withBase } from "../base-path.js";
+import { pageHead } from "../theme.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { AdminGuard } from "../app.js";
 import { SessionStore } from "./session.js";
@@ -32,8 +34,15 @@ export function parseSessionCookie(cookieHeader: string | undefined): string | u
   return undefined;
 }
 
-function setCookie(reply: FastifyReply, value: string, maxAgeSec: number, secure: boolean): void {
-  const attrs = [`${SESSION_COOKIE}=${value}`, "HttpOnly", "SameSite=Lax", "Path=/", `Max-Age=${maxAgeSec}`];
+/**
+ * Cookie scope = the mount (audit 2026-08-27 F2): under the chat address the console lives at
+ * `/harness`, so the cookie is scoped there and never rides on LibreChat's own `/`, `/api/*`
+ * requests — the chat backend must not receive an admin-tier session id. Root mount → `/`.
+ */
+const cookiePath = (base: string): string => (base === "" ? "/" : base);
+
+function setCookie(reply: FastifyReply, value: string, maxAgeSec: number, secure: boolean, path: string): void {
+  const attrs = [`${SESSION_COOKIE}=${value}`, "HttpOnly", "SameSite=Lax", `Path=${path}`, `Max-Age=${maxAgeSec}`];
   if (secure) attrs.push("Secure");
   reply.header("set-cookie", attrs.join("; "));
 }
@@ -61,15 +70,16 @@ export function operatorGuard(adminToken: string, sessions?: SessionStore): Admi
   };
 }
 
-function renderLoginPage(error = false): string {
+function renderLoginPage(error = false, base = ""): string {
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-base="${base.replace(/"/g, "&quot;")}">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Pantheon Harness — Login</title>
-<style>body{font-family:system-ui,sans-serif;max-width:24rem;margin:4rem auto;padding:0 1rem}label{display:block;margin:.5rem 0}input{width:100%;padding:.4rem}</style></head>
+${pageHead(base)}
+<style>body{max-width:24rem;margin:4rem auto;padding:0 1rem}label{display:block;margin:.5rem 0}input{width:100%;box-sizing:border-box}</style></head>
 <body>
 <h1>Pantheon Harness</h1>
-${error ? `<p role="alert"><strong>Incorrect password.</strong></p>` : ""}
-<form method="post" action="/login">
+${error ? `<p role="alert" class="banner"><strong>[!] Incorrect password.</strong></p>` : ""}
+<form method="post" action="${withBase(base, "/login")}">
   <label>Operator password <input type="password" name="password" autocomplete="current-password" autofocus required></label>
   <button type="submit">Log in</button>
 </form>
@@ -89,25 +99,26 @@ export interface AuthRoutesOptions {
 export function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesOptions): void {
   const ttl = opts.sessionTtlSec ?? 12 * 60 * 60;
 
-  app.get("/login", async (_req, reply) => {
-    reply.type("text/html").send(renderLoginPage(false));
+  app.get("/login", async (req, reply) => {
+    reply.type("text/html").send(renderLoginPage(false, requestBase(req)));
   });
 
   app.post("/login", async (req, reply) => {
     const password = (req.body as { password?: unknown } | undefined)?.password;
     if (typeof password !== "string" || !timingSafeEqualStr(password, opts.operatorPassword)) {
-      reply.code(401).type("text/html").send(renderLoginPage(true));
+      reply.code(401).type("text/html").send(renderLoginPage(true, requestBase(req)));
       return;
     }
     const id = opts.sessions.create();
-    setCookie(reply, id, ttl, opts.secureCookies ?? false);
-    reply.redirect("/harness");
+    setCookie(reply, id, ttl, opts.secureCookies ?? false, cookiePath(requestBase(req)));
+    reply.redirect(withBase(requestBase(req), "/harness"));
   });
 
   app.post("/logout", async (req, reply) => {
     const sid = parseSessionCookie(req.headers.cookie);
     if (sid) opts.sessions.destroy(sid);
-    setCookie(reply, "", 0, opts.secureCookies ?? false);
-    reply.redirect("/login");
+    // Cleared with the SAME Path it was set with, or the browser keeps the cookie.
+    setCookie(reply, "", 0, opts.secureCookies ?? false, cookiePath(requestBase(req)));
+    reply.redirect(withBase(requestBase(req), "/login"));
   });
 }

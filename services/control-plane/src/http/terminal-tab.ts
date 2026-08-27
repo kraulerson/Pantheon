@@ -8,6 +8,9 @@
  * speaks the JSON frame protocol to the server-side broker (TM-020/#14b).
  */
 
+import { withBase } from "./base-path.js";
+import { pageHead, XTERM_THEME_JS } from "./theme.js";
+
 export interface TerminalTabModel {
   readonly logicalName?: string;
   readonly user?: string;
@@ -15,8 +18,10 @@ export interface TerminalTabModel {
   readonly port?: number;
   /** Whether any dev machines are configured (drives the two Empty messages). */
   readonly hasMachines: boolean;
-  /** WebSocket path override; defaults to `/terminal/<logicalName>`. */
+  /** WebSocket path override; defaults to `<base>/terminal/<logicalName>`. */
   readonly wsPath?: string;
+  /** Mount prefix for this request (`/harness` on the chat site, `""` on the admin site). */
+  readonly base?: string;
 }
 
 /** Escape the five HTML-significant characters — fail-closed against markup injection. */
@@ -34,42 +39,45 @@ function jsString(value: unknown): string {
   return JSON.stringify(String(value)).replace(/</g, "\\u003c");
 }
 
-function emptyTab(hasMachines: boolean): string {
+function emptyTab(hasMachines: boolean, base: string): string {
   const msg = hasMachines
     ? `No dev machine selected — choose one in New Session.`
     : `No dev machines configured (add one in Configuration).`;
   const target = hasMachines ? "New Session" : "Configuration";
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Terminal</title></head>
+  return `<!DOCTYPE html><html lang="en" data-base="${esc(base)}"><head><meta charset="utf-8"><title>Terminal</title>
+${pageHead(base)}
+</head>
 <body>
 <section aria-labelledby="h-term"><h2 id="h-term">Claude CLI Terminal</h2>
 <p class="empty-state" data-state="empty"><span class="glyph" aria-hidden="true">[ ]</span> ${esc(msg)}</p>
-<p><a href="${hasMachines ? "/harness" : "/admin/config"}" data-goto="${esc(target)}">${esc(target)}</a></p>
+<p><a href="${withBase(base, hasMachines ? "/harness" : "/admin/config")}" data-goto="${esc(target)}">${esc(target)}</a></p>
 </section>
 </body></html>`;
 }
 
 export function renderTerminalTab(model: TerminalTabModel): string {
-  if (!model.logicalName) return emptyTab(model.hasMachines);
+  const base = model.base ?? "";
+  if (!model.logicalName) return emptyTab(model.hasMachines, base);
 
   const logicalName = model.logicalName;
-  const wsPath = model.wsPath ?? `/terminal/${encodeURIComponent(logicalName)}`;
+  const wsPath = model.wsPath ?? withBase(base, `/terminal/${encodeURIComponent(logicalName)}`);
   const conn = `${esc(model.user ?? "")}@${esc(model.host ?? "")}:${esc(model.port ?? 22)}`;
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-base="${esc(base)}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Claude CLI — ${esc(logicalName)}</title>
-<link rel="stylesheet" href="/assets/xterm.css">
+${pageHead(base)}
+<link rel="stylesheet" href="${withBase(base, "/assets/xterm.css")}">
 <style>
-  body { font-family: system-ui, sans-serif; margin: 0; background: #111; color: #eee; display: flex; flex-direction: column; height: 100vh; }
-  header { padding: .4rem .8rem; border-bottom: 1px solid #444; }
+  body { margin: 0; display: flex; flex-direction: column; height: 100vh; }
+  header { padding: .4rem .8rem; }
   #terminal { flex: 1; min-height: 0; }
   .status { display: inline-block; padding: .15rem .5rem; }
   .glyph { font-family: monospace; }
   [hidden] { display: none; }
-  .banner-error { border: 2px solid #fff; padding: .4rem; }
 </style>
 </head>
 <body>
@@ -86,8 +94,8 @@ export function renderTerminalTab(model: TerminalTabModel): string {
   <span id="state-error" class="status banner-error" data-state="error" role="alert" hidden><span class="glyph">[!]</span> <span id="error-msg">Terminal error</span></span>
 </header>
 <div id="terminal" role="application" aria-label="Claude CLI terminal for ${esc(logicalName)}"></div>
-<script src="/assets/xterm.js"></script>
-<script src="/assets/xterm-addon-fit.js"></script>
+<script src="${withBase(base, "/assets/xterm.js")}"></script>
+<script src="${withBase(base, "/assets/xterm-addon-fit.js")}"></script>
 <script>
 (function () {
   var WS_PATH = ${jsString(wsPath)};
@@ -99,7 +107,7 @@ export function renderTerminalTab(model: TerminalTabModel): string {
     });
     if (s === "error" && msg) { var m = document.getElementById("error-msg"); if (m) m.textContent = msg; }
   }
-  var term = new window.Terminal({ convertEol: true });
+  var term = new window.Terminal({ convertEol: true, fontFamily: '"Roboto Mono", Menlo, Consolas, monospace', theme: ${XTERM_THEME_JS} });
   // Fit the grid to the page (operator report 2026-08-27: the 80×24 default filled ~60% of the width and never grew).
   var fit = new window.FitAddon.FitAddon();
   term.loadAddon(fit);

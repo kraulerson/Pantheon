@@ -24,6 +24,8 @@
  */
 
 import type { DevMachine } from "../registry/types.js";
+import { withBase } from "./base-path.js";
+import { pageHead, XTERM_THEME_JS } from "./theme.js";
 
 export interface HarnessFrameModel {
   readonly devMachines: readonly DevMachine[];
@@ -31,6 +33,8 @@ export interface HarnessFrameModel {
   readonly chatUrl?: string;
   /** When true, render the Log out control (POST /logout exists only when a passphrase is set). */
   readonly loginEnabled?: boolean;
+  /** Mount prefix for this request (`/harness` on the chat site, `""` on the admin site). */
+  readonly base?: string;
 }
 
 function esc(value: unknown): string {
@@ -49,6 +53,9 @@ const TMUX_NAME_PATTERN = "[A-Za-z0-9_][A-Za-z0-9_-]{0,63}";
 export const HARNESS_CLIENT_JS = `
 (function () {
   var doc = document;
+  // Mount prefix + chat address, rendered on <html> by the server (design 2026-08-27).
+  var BASE = doc.documentElement.getAttribute('data-base') || '';
+  var CHAT_URL = doc.documentElement.getAttribute('data-chat-url') || '';
   var tabbar = doc.querySelector('[data-tabbar]');
   var panels = doc.querySelector('[data-panels]');
   var welcome = doc.querySelector('[data-welcome]');
@@ -60,7 +67,7 @@ export const HARNESS_CLIENT_JS = `
 
   function wsUrl(name, tmux) {
     var proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
-    var url = proto + location.host + '/terminal/' + encodeURIComponent(name);
+    var url = proto + location.host + BASE + '/terminal/' + encodeURIComponent(name);
     if (tmux) {
       url += '?tmux=' + encodeURIComponent(tmux.session);
       if (tmux.create) url += '&create=1';
@@ -123,7 +130,7 @@ export const HARNESS_CLIENT_JS = `
     var host = doc.createElement('div'); host.className = 'term-host'; t.panel.appendChild(host);
     var term; var fit;
     try {
-      term = new window.Terminal({ convertEol: true });
+      term = new window.Terminal({ convertEol: true, fontFamily: '"Roboto Mono", Menlo, Consolas, monospace', theme: ${XTERM_THEME_JS} });
       fit = new window.FitAddon.FitAddon();
       term.loadAddon(fit);
       term.open(host);
@@ -166,9 +173,23 @@ export const HARNESS_CLIENT_JS = `
   }
   function openChatTab(label) {
     var t = addTab(label || 'Chat', 'chat');
-    var p = doc.createElement('p');
-    p.textContent = 'Chat backend not wired yet — use a Claude CLI terminal for now.';
-    t.panel.appendChild(p);
+    if (BASE) {
+      // Served under the chat address: the chat page is same-origin, so it can live in a tab here
+      // (the chat site answers X-Frame-Options: SAMEORIGIN — a cross-site embed would be refused
+      // and its sign-in cookie blocked as third-party).
+      var f = doc.createElement('iframe');
+      f.setAttribute('src', '/'); f.setAttribute('title', 'Chat'); f.className = 'chat-host';
+      t.panel.appendChild(f);
+    } else {
+      var p = doc.createElement('p');
+      p.textContent = 'Chat lives on the chat address; it appears as a tab here when the harness is opened from that address.';
+      if (CHAT_URL) {
+        p.appendChild(doc.createTextNode(' '));
+        var a = doc.createElement('a'); a.href = CHAT_URL; a.textContent = 'Open chat'; a.target = '_blank'; a.rel = 'noopener';
+        p.appendChild(a);
+      }
+      t.panel.appendChild(p);
+    }
     return t;
   }
 
@@ -248,7 +269,7 @@ export const HARNESS_CLIENT_JS = `
     if (ctl) opts.signal = ctl.signal;
     var p;
     try {
-      p = fetch('/harness/tmux/' + encodeURIComponent(machine), opts);
+      p = fetch(BASE + '/harness/tmux/' + encodeURIComponent(machine), opts);
     } catch (e) {
       clearTimeout(timer);
       set('error', '[!] ' + machine + ': tmux list request failed'); done(); return;
@@ -350,11 +371,11 @@ function machineLaunch(m: DevMachine): string {
   );
 }
 
-function shortcuts(machines: readonly DevMachine[]): string {
+function shortcuts(machines: readonly DevMachine[], base: string): string {
   const ready = machines.filter((m) => m.provisioned && m.enabled);
   const notReady = machines.filter((m) => !(m.provisioned && m.enabled));
   if (machines.length === 0) {
-    return `<p class="empty-state" data-state="empty">No dev machines configured. Add one in <a href="/admin/config">Configuration</a>.</p>`;
+    return `<p class="empty-state" data-state="empty">No dev machines configured. Add one in <a href="${withBase(base, "/admin/config")}">Configuration</a>.</p>`;
   }
   const readyHtml = ready.map(machineLaunch).join(" ");
   const notReadyHtml = notReady
@@ -370,34 +391,35 @@ function shortcuts(machines: readonly DevMachine[]): string {
 
 export function renderHarnessFrame(model: HarnessFrameModel): string {
   const ready = model.devMachines.filter((m) => m.provisioned && m.enabled);
+  const base = model.base ?? "";
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-base="${esc(base)}"${model.chatUrl !== undefined ? ` data-chat-url="${esc(model.chatUrl)}"` : ""}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pantheon Harness</title>
-<link rel="stylesheet" href="/assets/xterm.css">
+${pageHead(base)}
+<link rel="stylesheet" href="${withBase(base, "/assets/xterm.css")}">
 <style>
-  body { font-family: system-ui, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }
-  header { padding: .4rem .8rem; border-bottom: 1px solid #888; display: flex; gap: 1rem; align-items: center; }
-  nav.launch-bar { padding: .3rem .5rem; border-bottom: 1px solid #ccc; }
+  body { margin: 0; display: flex; flex-direction: column; height: 100vh; }
+  header { padding: .4rem .8rem; display: flex; gap: 1rem; align-items: center; }
+  nav.launch-bar { padding: .3rem .5rem; }
   .machine-launch { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; padding: .15rem 0; }
   .tmux-list { font-family: monospace; }
   .tmux-list button { font-family: monospace; }
   .tmux-new { display: inline-flex; gap: .3rem; align-items: center; }
   .tmux-new input { width: 11em; }
-  nav.tabs { display: flex; gap: .25rem; padding: .25rem .5rem; border-bottom: 1px solid #ccc; overflow-x: auto; }
-  nav.tabs [role="tab"] { padding: .25rem .6rem; }
-  nav.tabs [role="tab"][aria-selected="true"] { font-weight: 700; text-decoration: underline; }
+  nav.tabs { display: flex; gap: .25rem; padding: .25rem .5rem 0; overflow-x: auto; }
+  nav.tabs [role="tab"] { padding: .3rem .7rem; }
   [data-close] { margin-left: .4rem; cursor: pointer; }
   main { flex: 1; min-height: 0; overflow: hidden; position: relative; }
   [data-tab-panel] { position: absolute; inset: 0; padding: .25rem; display: flex; flex-direction: column; }
   [data-tab-panel][hidden] { display: none; }
   .term-host { flex: 1; min-height: 0; }
+  .chat-host { flex: 1; min-height: 0; width: 100%; border: 0; }
   .term-status { font-family: monospace; padding: .2rem .4rem; }
   .glyph, .term-status { font-family: monospace; }
-  dialog { border: 1px solid #888; border-radius: 6px; }
-  .muted { color: #666; font-size: .9em; }
+  .muted { font-size: .9em; }
   form { margin: 0; }
 </style>
 </head>
@@ -407,17 +429,17 @@ export function renderHarnessFrame(model: HarnessFrameModel): string {
   <!-- Configuration lives in the page chrome, NOT inside the empty-state message: it used to
        appear only when the registry was empty, so registering the first machine removed the
        operator's only route back to the page that provisions it (BUGS #16). -->
-  <a href="/admin/config" data-nav="config">Configuration</a>
-  <a href="/admin/approvals" data-nav="approvals">Approvals</a>
-  <a href="/help" data-nav="help">Help</a>
-  ${model.loginEnabled ? `<form method="post" action="/logout" class="logout" style="display:inline;margin-left:auto"><button type="submit">Log out</button></form>` : ""}
+  <a href="${withBase(base, "/admin/config")}" data-nav="config">Configuration</a>
+  <a href="${withBase(base, "/admin/approvals")}" data-nav="approvals">Approvals</a>
+  <a href="${withBase(base, "/help")}" data-nav="help">Help</a>
+  ${model.loginEnabled ? `<form method="post" action="${withBase(base, "/logout")}" class="logout" style="display:inline;margin-left:auto"><button type="submit">Log out</button></form>` : ""}
 </header>
 
 <!-- Persistent launch bar (BUGS #22): the per-machine terminal shortcuts live HERE, in the page
      chrome, NOT inside the welcome section — switchTo() hides the welcome section when a tab opens,
      which used to hide the shortcuts too and blocked opening a second terminal. The live tmux
      session buttons (M1 task 1) live here for the same reason. -->
-<nav class="launch-bar" aria-label="Open a terminal">${shortcuts(model.devMachines)}</nav>
+<nav class="launch-bar" aria-label="Open a terminal">${shortcuts(model.devMachines, base)}</nav>
 
 <!-- Tab bar: terminal/chat tabs are added here at runtime -->
 <nav class="tabs" data-tabbar role="tablist" aria-label="Open sessions"></nav>
@@ -452,9 +474,8 @@ export function renderHarnessFrame(model: HarnessFrameModel): string {
   </form>
 </dialog>
 
-${model.chatUrl !== undefined ? `<!-- chat: ${esc(model.chatUrl)} -->` : ""}
-<script src="/assets/xterm.js"></script>
-<script src="/assets/xterm-addon-fit.js"></script>
+<script src="${withBase(base, "/assets/xterm.js")}"></script>
+<script src="${withBase(base, "/assets/xterm-addon-fit.js")}"></script>
 <script>${HARNESS_CLIENT_JS}</script>
 </body>
 </html>`;

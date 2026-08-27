@@ -59,32 +59,41 @@ Last updated 2026-08-19.</p>
   </ol>
 </nav>
 
-<h2 id="what">1. What the harness is, and the two addresses</h2>
+<h2 id="what">1. What the harness is, and the addresses</h2>
 
-<p>The Pantheon Harness is one machine running several pieces that work together. You reach it at
-two web addresses, both of which exist <strong>only inside your home network</strong> — nothing is
-published to the internet, and an outside computer asking for these names gets no answer at all.</p>
+<p>The Pantheon Harness is one machine running several pieces that work together. Everything you
+use day to day lives under <strong>one web address</strong>, which exists <strong>only inside your
+home network</strong> — nothing is published to the internet, and an outside computer asking for
+this name gets no answer at all.</p>
 
 <table>
   <tr><th>Address</th><th>What it is</th><th>Who it is for</th></tr>
   <tr>
     <td><code>https://pantheon.ferrumcorde.com</code></td>
-    <td>The <strong>chat page</strong> (LibreChat). Conversations, accounts, history.</td>
+    <td>The <strong>chat page</strong> (LibreChat). Conversations, accounts, history. Under the chat
+        box, <strong>Terminals</strong> opens the harness and <strong>Configuration</strong> opens
+        setup — both on this same address.</td>
     <td>Day-to-day use.</td>
   </tr>
   <tr>
+    <td><code>https://pantheon.ferrumcorde.com/harness/</code></td>
+    <td>The <strong>harness</strong>: your registered machines, their live tmux sessions, terminal
+        tabs, a Chat tab, and the Approvals inbox. It is drawn in the chat page's own colours and
+        follows its light/dark setting, so the two feel like one place.</td>
+    <td>Development sessions.</td>
+  </tr>
+  <tr>
     <td><code>https://pantheon-admin.ferrumcorde.com</code></td>
-    <td>The <strong>admin console</strong> (the control-plane): the harness page, the Configuration
-        page, and terminals.</td>
-    <td>Setting things up and connecting to machines.</td>
+    <td>The same console on its own address (the older door). Everything still works there, and
+        the keycard door that Claude-CLI sessions call (<a href="#keycards">§5</a>) answers on both
+        addresses.</td>
+    <td>Scripts and keycards; a fallback if the chat page is down.</td>
   </tr>
 </table>
 
-<div class="todo"><strong>Two addresses is temporary.</strong> The design (ADR-0005) has ONE entry
-point — the harness — hosting both chat tabs and terminal tabs. Until skeleton step 8 merges them,
-the working surface answers on the <code>pantheon-admin</code> name, which reads backwards: your
-development sessions are not an admin function. Ruled 2026-08-19; tracked as a charter acceptance
-box.</div>
+<p>Ruled 2026-08-27: the harness moved under the chat address so development sessions stop living
+behind a door labelled "admin" (the 2026-08-19 "one front door" item, terminal half). Registering
+machines and minting keycards stay on the Configuration page.</p>
 
 <p>Both are also reachable as <code>pantheon.lan</code> and <code>admin.pantheon.lan</code> if you
 have those names set up locally. Everything runs on one virtual machine — VM 1093
@@ -108,7 +117,7 @@ service itself, so the passphrase never appears in a log or in your shell histor
 
 <p>Standard LibreChat. Two things here are ours:</p>
 <ul>
-  <li><strong>Switch to Admin</strong> — the link under the message box; opens the admin console.</li>
+  <li><strong>Terminals</strong> and <strong>Configuration</strong> — the links under the message box; they open the harness and the setup page on this same address.</li>
   <li><strong>Help &amp; FAQ</strong> — in your profile menu; opens this guide.</li>
 </ul>
 
@@ -151,13 +160,18 @@ planned with the chat plane.)</p>
 
 <h2 id="harness">4. The harness page</h2>
 
-<p>Signing into the console lands you on <code>/harness</code>. Its header holds three things:</p>
+<p>From the chat page, press <strong>Terminals</strong> under the chat box (or open
+<code>https://pantheon.ferrumcorde.com/harness/</code>); signing into the console directly lands you
+on the same page. Its header holds these things:</p>
 
 <table>
   <tr><th>Control</th><th>What it does</th></tr>
   <tr><td><strong>+ New Session</strong></td>
-      <td>Opens a popup for choosing an AI system and identity. <em>Not wired to a model yet</em>
-          — the useful path today is a terminal shortcut (below).</td></tr>
+      <td>Opens a popup for choosing an AI system and identity. Choosing <em>Claude CLI</em> opens
+          a terminal tab; choosing a chat identity opens a <strong>Chat</strong> tab that shows the
+          chat page inside the harness (only when the harness was opened from the chat address —
+          from the admin address it offers a link instead, because a browser will not sign you in
+          inside a page from a different address).</td></tr>
   <tr><td><strong>Configuration</strong></td>
       <td>Opens the Configuration page, where everything is registered and set up.</td></tr>
   <tr><td><strong>Help</strong></td><td>Opens this guide.</td></tr>
@@ -517,7 +531,7 @@ restart the piece it belongs to.</p>
   <tr><td><code>ALLOW_REGISTRATION</code></td>
       <td>Whether anyone can create a chat account. Kept <code>false</code>; switched on briefly
           only when an account is being created.</td></tr>
-  <tr><td><code>CUSTOM_FOOTER</code></td><td>The line under the chat box — currently the "Switch to Admin" link.</td></tr>
+  <tr><td><code>CUSTOM_FOOTER</code></td><td>The line under the chat box — the "Terminals" and "Configuration" links (relative, so they stay on this address).</td></tr>
   <tr><td><code>HELP_AND_FAQ_URL</code></td><td>Where the profile menu's Help &amp; FAQ goes — this guide.</td></tr>
   <tr><td><code>REFRESH_TOKEN_EXPIRY</code></td><td>How long the chat page keeps you signed in, in milliseconds. Set to 30 days (<code>2592000000</code>) on 2026-08-26; LibreChat's own default is 7 days.</td></tr>
   <tr><td><code>DB_*</code>, <code>JWT_SECRET</code>, <code>CREDS_*</code>, <code>MEILI_MASTER_KEY</code></td>
@@ -537,11 +551,10 @@ restart the piece it belongs to.</p>
   <tr><th>Missing</th><th>What that means for you</th><th>Delivered by</th></tr>
   <tr><td>An AI model connected to the chat page</td>
       <td>Messages in the chat page get no reply.</td><td>Step 8</td></tr>
-  <tr><td>One front door</td>
-      <td>Work happens on <code>pantheon-admin.ferrumcorde.com</code> while chat lives on
-          <code>pantheon.ferrumcorde.com</code>, so you bounce between two addresses. Ruled
-          temporary on 2026-08-19: the harness becomes the single entry point, with chat
-          sessions and terminal sessions both started there.</td>
+  <tr><td>One front door — chat half</td>
+      <td>Terminals already live under the chat address (done 2026-08-27). Starting a <em>chat</em>
+          session from inside the harness still waits for the chat plane (the Chat tab shows the
+          chat page, but the New Session dialog cannot yet start a persona conversation).</td>
       <td>Step 8</td></tr>
   <tr><td>Peta set up with an owner and identities</td>
       <td>Tool permissions and the MCP Servers section do nothing yet.</td><td>Step 2</td></tr>

@@ -14,6 +14,7 @@
  */
 
 import type { FastifyInstance } from "fastify";
+import { requestBase, withBase } from "../base-path.js";
 import { provisionAndRecord } from "../../devmachine/provision-and-record.js";
 import { EnrollmentError, type EnrollmentResult } from "../../devmachine/enrollment.js";
 import type { SshTarget } from "../../devmachine/provisioning.js";
@@ -60,7 +61,7 @@ export function registerEnrollmentRoute(app: FastifyInstance, deps: EnrollmentRo
         // page — the same dead end as BUGS #15. JSON callers get the record back.
         const isFormPost = (req.headers["content-type"] ?? "").includes("application/x-www-form-urlencoded");
         if (isFormPost) {
-          reply.redirect("/admin/config", 303);
+          reply.redirect(withBase(requestBase(req), "/admin/config"), 303);
           return;
         }
         reply.send(updated);

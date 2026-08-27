@@ -8,6 +8,8 @@
  */
 
 import type { Backend, DevMachine, ServiceEndpoint } from "../registry/types.js";
+import { withBase } from "./base-path.js";
+import { pageHead } from "./theme.js";
 import { KEYCARD_SCOPES, keycardStatus, type Keycard, type KeycardStats } from "../keycard/types.js";
 
 export interface ConfigPageModel {
@@ -26,6 +28,8 @@ export interface ConfigPageModel {
   readonly error?: string;
   /** Render a success confirmation (icon + label) when set. */
   readonly notice?: string;
+  /** Mount prefix for this request (`/harness` on the chat site, `""` on the admin site). */
+  readonly base?: string;
 }
 
 /** Escape the five HTML-significant characters — fail-closed against markup injection. */
@@ -71,7 +75,7 @@ function banner(model: ConfigPageModel): string {
   return out;
 }
 
-function backendsSection(backends: readonly Backend[]): string {
+function backendsSection(backends: readonly Backend[], base: string): string {
   const rows =
     backends.length === 0
       ? `<p class="empty-state" data-state="empty">No backends configured yet. Use “Add Backend” to register one.</p>`
@@ -89,7 +93,7 @@ function backendsSection(backends: readonly Backend[]): string {
           .join("")}</tbody></table>`;
 
   return `<section aria-labelledby="h-backends"><h2 id="h-backends">AI Backends</h2>${rows}
-  <form method="post" action="/api/backends" data-form="add-backend">
+  <form method="post" action="${withBase(base, `/api/backends`)}" data-form="add-backend">
     <label>Display Name <input name="displayName" required></label>
     <label>Kind
       <select name="kind">
@@ -105,7 +109,7 @@ function backendsSection(backends: readonly Backend[]): string {
   </form></section>`;
 }
 
-function mcpSection(servers: readonly unknown[]): string {
+function mcpSection(servers: readonly unknown[], base: string): string {
   const rows =
     servers.length === 0
       ? `<p class="empty-state" data-state="empty">No MCP servers registered. Register one to make it reachable behind Peta.</p>`
@@ -120,7 +124,7 @@ function mcpSection(servers: readonly unknown[]): string {
           .join("")}</ul>`;
 
   return `<section aria-labelledby="h-mcp"><h2 id="h-mcp">MCP Servers</h2>${rows}
-  <form method="post" action="/api/mcp-servers" data-form="add-mcp">
+  <form method="post" action="${withBase(base, `/api/mcp-servers`)}" data-form="add-mcp">
     <label>Server ID <input name="serverId" required></label>
     <label>Server Name <input name="serverName" required></label>
     <label>Endpoint (host:port) <input name="endpoint" placeholder="10.100.23.90:9000" required></label>
@@ -128,7 +132,7 @@ function mcpSection(servers: readonly unknown[]): string {
   </form></section>`;
 }
 
-function serviceEndpointsSection(endpoints: readonly ServiceEndpoint[]): string {
+function serviceEndpointsSection(endpoints: readonly ServiceEndpoint[], base: string): string {
   const rows =
     endpoints.length === 0
       ? `<p class="empty-state" data-state="empty">No service endpoints configured.</p>`
@@ -146,7 +150,7 @@ function serviceEndpointsSection(endpoints: readonly ServiceEndpoint[]): string 
           .join("")}</tbody></table>`;
 
   return `<section aria-labelledby="h-endpoints"><h2 id="h-endpoints">Control-plane Service Endpoints</h2>${rows}
-  <form method="post" action="/api/service-endpoints" data-form="add-endpoint">
+  <form method="post" action="${withBase(base, `/api/service-endpoints`)}" data-form="add-endpoint">
     <label>Display Name <input name="displayName" required></label>
     <label>Key
       <select name="key">
@@ -180,9 +184,9 @@ function serviceEndpointsSection(endpoints: readonly ServiceEndpoint[]): string 
  * by the browser later, and the server uses it for that single connection without storing or
  * logging it (see `devmachine/enrollment.ts`). Shown only while a machine is unprovisioned.
  */
-function provisionForm(m: DevMachine): string {
+function provisionForm(m: DevMachine, base: string): string {
   if (m.provisioned) return "";
-  return ` <form method="post" action="/api/dev-machines/${esc(m.id)}/provision" data-form="provision-devmachine">
+  return ` <form method="post" action="${withBase(base, `/api/dev-machines/${esc(m.id)}/provision`)}" data-form="provision-devmachine">
       <label>Machine password <input type="password" name="password" autocomplete="off" required
         aria-describedby="provision-note-${esc(m.id)}"></label>
       <button type="submit">Provision</button>
@@ -191,7 +195,7 @@ function provisionForm(m: DevMachine): string {
     </form>`;
 }
 
-function devMachinesSection(machines: readonly DevMachine[]): string {
+function devMachinesSection(machines: readonly DevMachine[], base: string): string {
   const rows =
     machines.length === 0
       ? `<p class="empty-state" data-state="empty">No dev machines configured. Add one to use it as a Claude-CLI SSH terminal target.</p>`
@@ -206,12 +210,12 @@ function devMachinesSection(machines: readonly DevMachine[]): string {
                 m.id
               )}">Edit</button> <button type="button" data-action="remove-devmachine" data-id="${esc(
                 m.id
-              )}">Remove</button>${provisionForm(m)}</td></tr>`
+              )}">Remove</button>${provisionForm(m, base)}</td></tr>`
           )
           .join("")}</tbody></table>`;
 
   return `<section aria-labelledby="h-devmachines"><h2 id="h-devmachines">Dev Machines (Claude CLI)</h2>${rows}
-  <form method="post" action="/api/dev-machines" data-form="add-devmachine">
+  <form method="post" action="${withBase(base, `/api/dev-machines`)}" data-form="add-devmachine">
     <label>Logical Name <input name="logicalName" placeholder="mac-studio" required></label>
     <label>Host (IP/hostname) <input name="host" placeholder="192.168.1.192" required></label>
     <label>Port <input name="port" type="number" value="22" min="1" max="65535"></label>
@@ -238,7 +242,7 @@ function keycardPill(c: Keycard, nowIso: string): string {
   return `<span class="status" data-status="${st}" role="img" aria-label="${label}"><span class="glyph">${glyph}</span> ${label}</span>`;
 }
 
-function keycardsSection(cards: readonly Keycard[], nowIso: string, stats: KeycardStats | undefined): string {
+function keycardsSection(cards: readonly Keycard[], nowIso: string, stats: KeycardStats | undefined, base: string): string {
   const rows =
     cards.length === 0
       ? `<p class="empty-state" data-state="empty">No session keycards minted. Mint one below to give a Claude-CLI session read-only access to the harness API.</p>`
@@ -249,7 +253,7 @@ function keycardsSection(cards: readonly Keycard[], nowIso: string, stats: Keyca
                 c.createdAt
               )}</td><td>${esc(c.expiresAt)}</td><td>${esc(c.lastUsedAt ?? "never")}</td><td>${esc(c.useCount)} uses / ${esc(c.denyCount)} denied</td><td>${
                 c.revokedAt === null
-                  ? `<form action="/api/keycards/${esc(c.id)}/revoke" method="post" data-form="revoke-keycard" data-confirm="${esc(
+                  ? `<form action="${withBase(base, `/api/keycards/${esc(c.id)}/revoke`)}" method="post" data-form="revoke-keycard" data-confirm="${esc(
                       `Revoke the keycard for ${c.principal}? The holder is refused on its very next request. This cannot be undone.`
                     )}" style="display:inline"><button type="submit" aria-label="${esc(`Revoke keycard for ${c.principal}, created ${c.createdAt}`)}">Revoke</button></form>`
                   : `<span class="muted">revoked ${esc(c.revokedAt)}</span>`
@@ -266,7 +270,7 @@ function keycardsSection(cards: readonly Keycard[], nowIso: string, stats: Keyca
   <p class="muted">A keycard lets a Claude-CLI session READ from the harness (sessions, pending approvals as references, usage) — never write, never manage. The card is shown once when minted; the harness keeps only its fingerprint.</p>
   ${rows}
   ${statsLine}
-  <form action="/api/keycards" method="post" data-form="mint-keycard">
+  <form action="${withBase(base, `/api/keycards`)}" method="post" data-form="mint-keycard">
     <h3>Mint a keycard</h3>
     <label>Principal (who holds it) <input name="principal" pattern="[A-Za-z0-9_][A-Za-z0-9._-]{0,63}" maxlength="64" placeholder="cli-mac-mini" required></label>
     <fieldset><legend>Scopes (read-only; deny-by-default) — tick at least one</legend>${scopeBoxes}</fieldset>
@@ -278,6 +282,7 @@ function keycardsSection(cards: readonly Keycard[], nowIso: string, stats: Keyca
 export const CONFIG_CLIENT_JS = `
 (function () {
   var doc = document;
+  var BASE = doc.documentElement.getAttribute('data-base') || '';
   // Keycard revoke is permanent: ask first, with the card named (audit 2026-08-25).
   Array.prototype.forEach.call(doc.querySelectorAll('[data-form="revoke-keycard"]'), function (f) {
     f.addEventListener('submit', function (e) {
@@ -319,7 +324,7 @@ export const CONFIG_CLIENT_JS = `
       else if (n === 'port') patch[n] = Number(el.value);
       else patch[n] = el.value;
     });
-    fetch(ROUTES[kind] + '/' + encodeURIComponent(id), {
+    fetch(BASE + ROUTES[kind] + '/' + encodeURIComponent(id), {
       method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch)
     }).then(function (r) {
       if (r.ok) { location.reload(); return; }
@@ -329,7 +334,7 @@ export const CONFIG_CLIENT_JS = `
   function onRemove(btn, kind) {
     var id = btn.getAttribute('data-id');
     if (!window.confirm('Remove this ' + kind + '? This cannot be undone.')) return;
-    fetch(ROUTES[kind] + '/' + encodeURIComponent(id), { method: 'DELETE', credentials: 'same-origin' })
+    fetch(BASE + ROUTES[kind] + '/' + encodeURIComponent(id), { method: 'DELETE', credentials: 'same-origin' })
       .then(function (r) { if (r.ok) location.reload(); else window.alert('Remove failed (' + r.status + ').'); })
       .catch(function () { window.alert('Remove failed (network).'); });
   }
@@ -346,20 +351,17 @@ export const CONFIG_CLIENT_JS = `
 `;
 
 export function renderConfigPage(model: ConfigPageModel): string {
+  const base = model.base ?? "";
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-base="${esc(base)}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pantheon Harness — Configuration</title>
+${pageHead(base)}
 <style>
-  body { font-family: system-ui, sans-serif; margin: 1.5rem; }
-  section { border: 1px solid #888; border-radius: 6px; padding: 1rem; margin-bottom: 1.25rem; }
-  table { border-collapse: collapse; width: 100%; }
-  th, td { border: 1px solid #aaa; padding: 0.35rem 0.5rem; text-align: left; }
-  .status .glyph { font-family: monospace; }
-  .banner { border: 2px solid #333; padding: 0.6rem; margin-bottom: 1rem; border-radius: 4px; }
-  .empty-state { font-style: italic; }
+  body { margin: 1.5rem; }
+  section { margin-bottom: 1.25rem; }
   label { display: inline-block; margin-right: 1rem; }
   form { margin-top: 0.75rem; }
   .edit-form label { margin-right: .5rem; }
@@ -367,13 +369,13 @@ export function renderConfigPage(model: ConfigPageModel): string {
 </head>
 <body>
 <h1>Pantheon Harness — Configuration / Service Registry</h1>
-<p><a href="/harness">&larr; Harness</a> &middot; <a href="/help">Help — user guide</a></p>
+<p><a href="${withBase(base, "/harness")}">&larr; Harness</a> &middot; <a href="${withBase(base, "/help")}">Help — user guide</a></p>
 ${banner(model)}
-${backendsSection(model.backends)}
-${mcpSection(model.mcpServers)}
-${serviceEndpointsSection(model.serviceEndpoints)}
-${devMachinesSection(model.devMachines ?? [])}
-${model.keycards !== undefined ? keycardsSection(model.keycards, model.now ?? new Date().toISOString(), model.keycardStats) : ""}
+${backendsSection(model.backends, base)}
+${mcpSection(model.mcpServers, base)}
+${serviceEndpointsSection(model.serviceEndpoints, base)}
+${devMachinesSection(model.devMachines ?? [], base)}
+${model.keycards !== undefined ? keycardsSection(model.keycards, model.now ?? new Date().toISOString(), model.keycardStats, base) : ""}
 <script>${CONFIG_CLIENT_JS}</script>
 </body>
 </html>`;

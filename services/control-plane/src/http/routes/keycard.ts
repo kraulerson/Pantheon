@@ -27,6 +27,8 @@ import { KeycardService, KeycardValidationError } from "../../keycard/service.js
 import { readApprovalReferences, type ApprovalsReader } from "../../approvals/projection.js";
 import { KEYCARD_PREFIX } from "../auth/keycard-guard.js";
 import { escapeHtml as esc } from "../config-page.js";
+import { requestBase, withBase } from "../base-path.js";
+import { pageHead } from "../theme.js";
 
 export interface KeycardDoorDeps {
   readonly keycards: KeycardService;
@@ -162,12 +164,13 @@ export class MintedTokenSlots {
   }
 }
 
-function pageShell(title: string, body: string): string {
+function pageShell(title: string, body: string, base: string): string {
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-base="${esc(base)}">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)} — Pantheon Harness</title>
-<style>body{font-family:system-ui,sans-serif;max-width:44rem;margin:3rem auto;padding:0 1rem}code{font-family:monospace;word-break:break-all}
-.token{display:block;padding:.6rem;border:1px solid #888;border-radius:6px;margin:.6rem 0}.warn{border:1px solid #888;padding:.6rem;border-radius:6px}</style></head>
+${pageHead(base)}
+<style>body{max-width:44rem;margin:3rem auto;padding:0 1rem}code{word-break:break-all}
+.token{display:block;padding:.6rem;border:1px solid var(--border-heavy);border-radius:var(--radius);margin:.6rem 0;background:var(--surface-secondary)}.warn{padding:.6rem;border-radius:var(--radius)}</style></head>
 <body>
 ${body}
 </body>
@@ -175,7 +178,7 @@ ${body}
 }
 
 /** The one-time token page. `no-store` so no cache ever holds the token. */
-export function renderKeycardMinted(card: Keycard, token: string): string {
+export function renderKeycardMinted(card: Keycard, token: string, base = ""): string {
   return pageShell(
     "Keycard minted",
     `<h1>Keycard minted</h1>
@@ -183,19 +186,21 @@ export function renderKeycardMinted(card: Keycard, token: string): string {
 <p class="warn" role="alert"><strong>[!] Copy the keycard now. It will not be shown again.</strong> The harness keeps only a fingerprint of it; reloading this page will not show it a second time.</p>
 <code class="token" data-keycard-token>${esc(token)}</code>
 <p>Give it to the CLI session as an environment variable (for example <code>PANTHEON_KEYCARD</code>) and send it as
-<code>Authorization: Bearer &lt;keycard&gt;</code> to <code>/keycard/v1/whoami</code>, <code>/keycard/v1/sessions</code>,
-<code>/keycard/v1/approvals</code> or <code>/keycard/v1/usage</code>. It opens nothing else. Revoke it from the Configuration page at any time.</p>
-<p><a href="/admin/config?notice=keycard_minted">Back to Configuration</a></p>`
+<code>Authorization: Bearer &lt;keycard&gt;</code> to <code>${withBase(base, "/keycard/v1/whoami")}</code>, <code>${withBase(base, "/keycard/v1/sessions")}</code>,
+<code>${withBase(base, "/keycard/v1/approvals")}</code> or <code>${withBase(base, "/keycard/v1/usage")}</code>. It opens nothing else. Revoke it from the Configuration page at any time.</p>
+<p><a href="${withBase(base, "/admin/config?notice=keycard_minted")}">Back to Configuration</a></p>`,
+    base
   );
 }
 
-export function renderKeycardCollected(): string {
+export function renderKeycardCollected(base = ""): string {
   return pageShell(
     "Keycard already collected",
     `<h1>Keycard already collected</h1>
 <p role="status"><strong>[i] This keycard has already been collected, or the link expired.</strong> A keycard is shown exactly once and is never stored in the clear.</p>
 <p>If you did not copy it, revoke that card on the Configuration page and mint a new one.</p>
-<p><a href="/admin/config">Back to Configuration</a></p>`
+<p><a href="${withBase(base, "/admin/config")}">Back to Configuration</a></p>`,
+    base
   );
 }
 
@@ -214,7 +219,7 @@ export function registerKeycardAdminRoutes(app: FastifyInstance, deps: KeycardAd
       if (err instanceof KeycardValidationError) {
         if (form) {
           const code = err.field === "principal" ? "keycard_principal" : err.field === "scopes" ? "keycard_scopes" : "keycard_ttl";
-          reply.redirect(`/admin/config?error=${code}`, 303);
+          reply.redirect(withBase(requestBase(req), `/admin/config?error=${code}`), 303);
           return;
         }
         reply.code(400);
@@ -224,7 +229,7 @@ export function registerKeycardAdminRoutes(app: FastifyInstance, deps: KeycardAd
     }
     if (form) {
       const nonce = slots.put(minted.card, minted.token);
-      reply.header("cache-control", "no-store").redirect(`/admin/keycards/minted?slot=${nonce}`, 303);
+      reply.header("cache-control", "no-store").redirect(withBase(requestBase(req), `/admin/keycards/minted?slot=${nonce}`), 303);
       return;
     }
     reply.code(201).header("cache-control", "no-store");
@@ -237,23 +242,23 @@ export function registerKeycardAdminRoutes(app: FastifyInstance, deps: KeycardAd
     reply.header("cache-control", "no-store").type("text/html; charset=utf-8");
     if (!hit) {
       reply.code(410);
-      return renderKeycardCollected();
+      return renderKeycardCollected(requestBase(req));
     }
-    return renderKeycardMinted(hit.card, hit.token);
+    return renderKeycardMinted(hit.card, hit.token, requestBase(req));
   });
 
   app.post<{ Params: { id: string } }>("/api/keycards/:id/revoke", async (req, reply) => {
     const form = isUrlencodedForm(req);
     if (!keycards.revoke(req.params.id)) {
       if (form) {
-        reply.redirect("/admin/config?error=keycard_not_found", 303);
+        reply.redirect(withBase(requestBase(req), "/admin/config?error=keycard_not_found"), 303);
         return;
       }
       reply.code(404);
       return { error: "not_found" };
     }
     if (form) {
-      reply.redirect("/admin/config?notice=keycard_revoked", 303);
+      reply.redirect(withBase(requestBase(req), "/admin/config?notice=keycard_revoked"), 303);
       return;
     }
     reply.code(204);
