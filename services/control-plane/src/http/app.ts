@@ -20,7 +20,7 @@ import { renderConfigPage } from "./config-page.js";
 import type { Preprocessor } from "../preprocessor/index.js";
 import { registerChatCompletionsRoute } from "./routes/chat-completions.js";
 import { registerInspectorRoute } from "./routes/inspector.js";
-import { registerApprovalsRoutes, type ApprovalsBackend } from "./routes/approvals.js";
+import { registerApprovalsRoutes, registerApprovalsInbox, type ApprovalsBackend } from "./routes/approvals.js";
 import { registerHarnessRoutes, HARNESS_ASSET_PATHS, type TmuxLister } from "./routes/harness.js";
 import { SessionStore } from "./auth/session.js";
 import { operatorGuard, registerAuthRoutes, AUTH_PUBLIC_PATHS } from "./auth/operator-auth.js";
@@ -80,6 +80,8 @@ export interface AppOptions {
   readonly sessionLedger?: { list(): Session[] };
   /** Upstream budget for the keycard approvals read (default 10 s; tests shorten it). */
   readonly approvalsTimeoutMs?: number;
+  /** Clock for rendered ages on the Pending-Approvals inbox (tests). */
+  readonly now?: () => number;
 }
 
 /**
@@ -447,6 +449,15 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   if (opts.peta) {
     registerApprovalsRoutes(app, opts.peta);
   }
+
+  // ---- Pending-Approvals inbox (M1 task 3, TP-2). Admin-guarded page; always mounted (503 without Peta). ----
+  const inboxPeta = opts.peta;
+  registerApprovalsInbox(app, {
+    // A READER only — the decide verb is structurally out of the page's reach.
+    ...(inboxPeta ? { approvals: { listApprovals: (filter) => inboxPeta.listApprovals(filter) } } : {}),
+    ...(opts.approvalsTimeoutMs !== undefined ? { timeoutMs: opts.approvalsTimeoutMs } : {}),
+    ...(opts.now ? { now: opts.now } : {})
+  });
 
   return app;
 }

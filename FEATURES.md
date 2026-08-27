@@ -231,3 +231,43 @@ at any scope, rate cap, admin mint/list/revoke, one-time token page); render
 audit entries arrive with the M2 step-04 audit work (counters only for now); no automatic rotation
 (mint new + revoke old); the door rides the admin service behind the same internal-DNS Caddy
 entrance (design's internal-network bind not applied — CLI sessions live on LAN dev machines).
+
+---
+
+## Feature 10: Unified Pending-Approvals Inbox (every session, reference-only)
+
+**Phase Built:** 2 — M1 (terminal plane), task 3 (TP-2 amendment)
+**Status:** Complete (read-only; resolution arrives with M2 C.3)
+**Summary:** One admin-surface page, `GET /admin/approvals` (linked as **Approvals** in the harness
+chrome), that lists every approval waiting in Peta's durable queue across ALL sessions and identities.
+Each row is a reference only (D8): identity, tool, target, age in words, status, ref — never
+arguments, diff or payload. The read asks Peta for `PENDING` items only and walks its pages (bounded:
+one timeout for the whole walk, 10 pages, 200 items, duplicates dropped, a no-progress page ends the
+walk) — never just the first unfiltered page; hostile text is escaped and display-spoofing characters
+(bidi/zero-width/control) stripped; fields are capped at 256 chars; a "more than shown" note is raised
+when the walk stopped early or Peta reports another page. Only Peta's resolved vocabulary
+(`approved | rejected | expired`, any case) is hidden — and counted; an unknown or missing status is
+shown as-is (fail-visible); items with no reference id are counted, never shown as rows. Every outcome is a labelled state: `ok`, `empty`
+("No pending approvals — nothing is waiting on you"), `unavailable` (503, Peta not wired), `failed`
+(502 — did not answer / did not answer in time / unexpected shape; upstream text never echoed). The
+page holds a `listApprovals`-only reader, so the decide verb is structurally unreachable from it; the
+page says in words that approve/reject buttons arrive with M2. The reference-only projection is now a
+single shared module used by both this page and the keycard door.
+**Key Interfaces:** `src/approvals/projection.ts` (`ApprovalsReader`, `ApprovalReference`,
+`ApprovalsListFilter`, `projectApprovalReference`, `approvalsArray`, `hasMoreApprovals`,
+`readApprovalReferences` (door), `readPendingApprovals` (inbox), `MAX_APPROVALS`, `MAX_FIELD_CHARS`,
+`MAX_PENDING_PAGES`), `src/peta/client.ts` (`listApprovals(filter?)`), `src/http/approvals-inbox.ts` (`renderApprovalsInbox`,
+`formatAge`), `src/http/routes/approvals.ts` (`registerApprovalsInbox`, `GET /admin/approvals`),
+`src/http/app.ts` (`AppOptions.now`; always mounted, reader-only wiring), `src/http/harness-frame.ts`
+(nav link), `src/http/routes/keycard.ts` (door reads through the shared module).
+**Related ADRs:** capability-gap ruling TP-2 (APPROVAL_LOG 2026-08-20); build plan
+`docs/handoffs/2026-08-20-M1-build-plan.md` §3; D8; ADR-0008 (door contract unchanged).
+**Test Coverage:** `approvals-projection.test.ts` (closed allow-list, caps, Peta 1.2.x shape, hasMore,
+bounded/labelled read); `approvals-inbox.test.ts` (guard, aggregation across identities, D8 canary,
+ages, empty state, hidden-count, more/cap, escaping, 503/502 labels with no upstream echo, no
+decide affordance, nav link); `keycard-routes.test.ts` unchanged and green (door regression).
+**Known Limitations:** read-only — opening a row to approve/reject waits for the M2 approval surface
+(C.3); no auto-refresh (Reload link); Peta's pagination is not walked (first page + "more" note);
+"pending" = not in Peta's resolved vocabulary (an unknown or missing status is shown, fail-visible);
+the Peta client still has no byte cap / fetch abort (BUGS #35 — the timeout stops waiting, not the
+transfer).

@@ -236,6 +236,37 @@ pressing Refresh repeatedly does not pester the machine) — press <strong>Refre
 after starting or ending sessions elsewhere; after <strong>+ tmux session</strong> it re-reads itself
 a few seconds later.</p>
 
+<h3 id="approvals">Pending approvals</h3>
+
+<p>The <strong>Approvals</strong> link at the top of the harness page opens one list of everything
+that is waiting for your decision — from every session and every identity at once. Each line shows
+<em>who asked</em> (the identity), <em>which tool</em>, <em>which target</em> (for example the Gitea
+server), <em>how long ago</em>, its status and a short reference code. The list deliberately shows
+<strong>no request contents</strong> — not the text to be written, not the file, not the diff — so it
+can never leak anything and can never be tricked into running anything.</p>
+
+<p>What the page can say:</p>
+<table>
+  <tr><th>You see</th><th>It means</th></tr>
+  <tr><td>A table of lines</td><td>Those requests are waiting. Already-decided ones are not listed; a
+      note underneath says how many were left out.</td></tr>
+  <tr><td><em>No pending approvals — nothing is waiting on you.</em></td><td>The queue is empty. This is
+      the normal state.</td></tr>
+  <tr><td><em>More approvals are waiting than this page shows</em></td><td>The page asks Peta only
+      for waiting items and reads up to ten pages (200 lines at most); press <strong>Reload</strong>
+      after some have been decided.</td></tr>
+  <tr><td><em>N items already resolved not shown</em> / <em>N items without a reference id not shown</em></td>
+      <td>Peta also returned things that are not waiting, or that cannot be pointed at. They are
+      counted so nothing is hidden silently, but not listed.</td></tr>
+  <tr><td><em>[!] the approval gate (Peta) is not configured on this server</em></td><td>The harness
+      was started without its Peta connection — see the Settings reference.</td></tr>
+  <tr><td><em>[!] Could not read the approval queue …</em></td><td>Peta did not answer, or answered
+      slowly or oddly. Nothing is lost; press <strong>Reload</strong>, and check Peta if it persists.</td></tr>
+</table>
+
+<p><strong>Deciding</strong> is not on this page yet: the approve / reject buttons arrive with the
+M2 approval surface. Until then the page is a read-only inbox.</p>
+
 <h2 id="config">5. The Configuration page — every field</h2>
 
 <p>Reached from <strong>Configuration</strong> in the harness header, or directly at
@@ -488,6 +519,7 @@ restart the piece it belongs to.</p>
           only when an account is being created.</td></tr>
   <tr><td><code>CUSTOM_FOOTER</code></td><td>The line under the chat box — currently the "Switch to Admin" link.</td></tr>
   <tr><td><code>HELP_AND_FAQ_URL</code></td><td>Where the profile menu's Help &amp; FAQ goes — this guide.</td></tr>
+  <tr><td><code>REFRESH_TOKEN_EXPIRY</code></td><td>How long the chat page keeps you signed in, in milliseconds. Set to 30 days (<code>2592000000</code>) on 2026-08-26; LibreChat's own default is 7 days.</td></tr>
   <tr><td><code>DB_*</code>, <code>JWT_SECRET</code>, <code>CREDS_*</code>, <code>MEILI_MASTER_KEY</code></td>
       <td>Passwords and keys the containers use internally. Generated at install; no reason to touch them.</td></tr>
   <tr><td><code>BACKEND_PORT</code>, <code>DB_PORT</code></td><td>Ports used on the machine itself, not exposed to the network.</td></tr>
@@ -522,6 +554,9 @@ restart the piece it belongs to.</p>
   <tr><td>Streaming replies</td><td>Replies would arrive all at once rather than as they are written.</td><td>Step 5</td></tr>
   <tr><td>Session binding and the busy queue</td>
       <td>Nothing yet stops two sessions using one brain at the same time.</td><td>Step 7</td></tr>
+  <tr><td>Approve / reject buttons on the Approvals page</td>
+      <td>The inbox shows what is waiting on you (added 2026-08-26) but cannot decide it yet.</td>
+      <td>M2 approval surface (C.3)</td></tr>
   <tr><td>Checking a machine is really itself</td>
       <td>The harness does not yet verify a machine's identity before connecting (bug #17).</td>
       <td>Bug fix, pending</td></tr>

@@ -389,6 +389,7 @@ export function renderHarnessFrame(model: HarnessFrameModel): string {
        appear only when the registry was empty, so registering the first machine removed the
        operator's only route back to the page that provisions it (BUGS #16). -->
   <a href="/admin/config" data-nav="config">Configuration</a>
+  <a href="/admin/approvals" data-nav="approvals">Approvals</a>
   <a href="/help" data-nav="help">Help</a>
   ${model.loginEnabled ? `<form method="post" action="/logout" class="logout" style="display:inline;margin-left:auto"><button type="submit">Log out</button></form>` : ""}
 </header>

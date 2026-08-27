@@ -7,6 +7,7 @@
  */
 
 /** Peta ADMIN_API action codes (subset used by the control-plane). */
+import type { ApprovalsListFilter } from "../approvals/projection.js";
 export const PetaAction = {
   CREATE_USER: 1010,
   UPDATE_USER_PERMISSIONS: 1002,
@@ -141,8 +142,9 @@ export class PetaAdminClient implements PetaUserAdmin {
     return this.call(PetaAction.GET_SERVERS_STATUS, {});
   }
 
-  listApprovals(): Promise<PetaResponse> {
-    return this.call(PetaAction.LIST_APPROVALS, {});
+  /** Filter is Peta's own vocabulary (e.g. `{ status: "PENDING", page }`); omit for the first unfiltered page. */
+  listApprovals(filter: ApprovalsListFilter = {}): Promise<PetaResponse> {
+    return this.call(PetaAction.LIST_APPROVALS, { ...filter });
   }
 
   decideApproval(approvalId: string, decision: "approved" | "rejected"): Promise<PetaResponse> {

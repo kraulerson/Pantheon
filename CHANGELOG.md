@@ -41,6 +41,27 @@ for handoff clarity. Categories are ordered by impact severity.
   Homepage-tile navigation to `/login`); recorded as a residual.
 
 ### Added
+- 2026-08-26 **Unified Pending-Approvals inbox (M1 task 3, TP-2 amendment).** One admin-surface page,
+  `GET /admin/approvals` (operator guard; linked as **Approvals** in the harness chrome), lists every
+  approval waiting in Peta's queue across ALL sessions/identities as a REFERENCE line — identity,
+  tool, target, age in words, status, ref — never arguments, diff or payload (D8). Every outcome is
+  a labelled state (CC1/CC2): `ok`, `empty` ("No pending approvals"), `unavailable` (503, Peta not
+  wired), `failed` (502 — did not answer / did not answer in time / unexpected shape; upstream text
+  never echoed). The read asks Peta for `PENDING` items only and walks its pages under one timeout
+  (10 pages / 200 items / dedupe / no-progress stop) — audit finding: a first-unfiltered-page read
+  would miss waiting items once history accumulates. Only Peta's resolved vocabulary
+  (`approved | rejected | expired`, any case) is hidden and counted; unknown/missing statuses are
+  shown (fail-visible — the lowercase-only `pending` match the audit caught would have hidden every
+  live `PENDING` item); items without a reference id are counted, never listed; "more than shown" is
+  flagged when the walk stopped early or Peta reports another page; bidi / zero-width / control
+  characters are stripped from every projected field. Read-only until the M2 approval
+  surface (C.3) — the page says so in words; the decide verb is structurally out of its reach (it
+  holds a `listApprovals`-only reader). The reference-only projection now lives in ONE shared module,
+  `src/approvals/projection.ts` (`projectApprovalReference`, `approvalsArray`, `hasMoreApprovals`,
+  `readApprovalReferences`), and the keycard door `GET /keycard/v1/approvals` reads through it —
+  contract unchanged (same JSON shape, codes, bounds). Interface doc:
+  `docs/api and interfaces/approvals-inbox.md`; audit:
+  `docs/security-audits/pending-approvals-inbox-security-audit.md`.
 - 2026-08-25 **Scoped session keycard (M1 task 2, TP-3; ADR-0008).** A Claude-CLI session can now
   hold a narrow read-only credential that opens exactly one door — `GET /keycard/v1/{whoami,usage,
   approvals,sessions}` — with a closed scope enum (`usage:read | approvals:read | sessions:read`; no

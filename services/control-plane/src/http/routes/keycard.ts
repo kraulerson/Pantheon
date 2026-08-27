@@ -24,12 +24,9 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Session } from "../../session/types.js";
 import type { Keycard, KeycardScope } from "../../keycard/types.js";
 import { KeycardService, KeycardValidationError } from "../../keycard/service.js";
-import type { ApprovalsBackend } from "./approvals.js";
+import { readApprovalReferences, type ApprovalsReader } from "../../approvals/projection.js";
 import { KEYCARD_PREFIX } from "../auth/keycard-guard.js";
 import { escapeHtml as esc } from "../config-page.js";
-
-/** The door may ONLY list approvals — the decide verb is structurally out of reach (confused-deputy fix). */
-export type ApprovalsReader = Pick<ApprovalsBackend, "listApprovals">;
 
 export interface KeycardDoorDeps {
   readonly keycards: KeycardService;
@@ -41,8 +38,6 @@ export interface KeycardDoorDeps {
   readonly sessionLedger?: { list(): Session[] };
 }
 
-const MAX_APPROVALS = 200;
-const MAX_FIELD_CHARS = 256;
 const DEFAULT_APPROVALS_TIMEOUT_MS = 10_000;
 
 /** Per-route scope check. The guard already authenticated; this is authorization (exact scope). */
@@ -57,77 +52,6 @@ function requireScope(keycards: KeycardService, scope: KeycardScope) {
       reply.code(403).send({ error: "insufficient_scope", required: scope });
     }
   };
-}
-
-/** Reference-only projection of an approval (D8): a closed allow-list of fields, nothing else passes. */
-export interface ApprovalReference {
-  readonly id?: string;
-  readonly tool?: string;
-  readonly server?: string;
-  readonly status?: string;
-  readonly createdAt?: string;
-  readonly requester?: string;
-}
-
-const pickString = (o: Record<string, unknown>, ...keys: string[]): string | undefined => {
-  for (const k of keys) {
-    const v = o[k];
-    if (typeof v === "string") return v.slice(0, MAX_FIELD_CHARS);
-  }
-  return undefined;
-};
-
-export function projectApprovalReference(raw: unknown): ApprovalReference {
-  if (typeof raw !== "object" || raw === null) return {};
-  const o = raw as Record<string, unknown>;
-  const out: Record<string, string> = {};
-  const set = (k: keyof ApprovalReference, v: string | undefined): void => {
-    if (v !== undefined) out[k] = v;
-  };
-  set("id", pickString(o, "approvalId", "requestId", "id"));
-  set("tool", pickString(o, "tool", "toolName"));
-  set("server", pickString(o, "serverId", "serverName", "server"));
-  set("status", pickString(o, "status", "state"));
-  set("createdAt", pickString(o, "createdAt", "requestedAt", "timestamp"));
-  set("requester", pickString(o, "userId", "requester", "identity"));
-  return out;
-}
-
-const LIST_KEYS = ["requests", "approvals", "items", "pending"] as const;
-
-/**
- * Find the approvals array in Peta's response without trusting its shape. Peta 1.2.x answers
- * `LIST_APPROVALS` as `{ success, data: { requests: [...], page, pageSize, hasMore } }` (seen live
- * 2026-08-25); older/other shapes put the list at the top level. Two levels, closed key list.
- */
-function approvalsArray(res: unknown): unknown[] | undefined {
-  if (Array.isArray(res)) return res;
-  if (typeof res !== "object" || res === null) return undefined;
-  const o = res as Record<string, unknown>;
-  for (const k of LIST_KEYS) if (Array.isArray(o[k])) return o[k] as unknown[];
-  const data = o["data"];
-  if (Array.isArray(data)) return data;
-  if (typeof data === "object" && data !== null) {
-    const d = data as Record<string, unknown>;
-    for (const k of LIST_KEYS) if (Array.isArray(d[k])) return d[k] as unknown[];
-  }
-  return undefined;
-}
-
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("timeout")), ms);
-    p.then(
-      (v) => {
-        clearTimeout(timer);
-        resolve(v);
-      },
-      (e: unknown) => {
-        clearTimeout(timer);
-        reject(e instanceof Error ? e : new Error("upstream failed"));
-      }
-    );
-  });
 }
 
 export function registerKeycardDoor(app: FastifyInstance, deps: KeycardDoorDeps): void {
@@ -154,21 +78,12 @@ export function registerKeycardDoor(app: FastifyInstance, deps: KeycardDoorDeps)
       reply.code(503);
       return { state: "unavailable", message: "the approval gate (Peta) is not configured on this server" };
     }
-    let res: unknown;
-    try {
-      res = await withTimeout(deps.approvals.listApprovals(), approvalsTimeoutMs);
-    } catch (err) {
+    const res = await readApprovalReferences(deps.approvals, approvalsTimeoutMs);
+    if (res.state === "failed") {
       reply.code(502);
-      const timedOut = err instanceof Error && err.message === "timeout";
-      return { state: "failed", message: timedOut ? "the approval gate did not answer in time" : "the approval gate did not answer" };
+      return { state: "failed", message: res.message };
     }
-    const items = approvalsArray(res);
-    if (!items) {
-      reply.code(502);
-      return { state: "failed", message: "unexpected approvals response shape" };
-    }
-    const truncated = items.length > MAX_APPROVALS;
-    return { approvals: items.slice(0, MAX_APPROVALS).map(projectApprovalReference), truncated };
+    return { approvals: res.approvals, truncated: res.truncated };
   });
 
   app.get(p("sessions"), { preHandler: requireScope(keycards, "sessions:read") }, async (_req, reply) => {
