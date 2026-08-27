@@ -74,3 +74,17 @@ describe("renderTerminalTab", () => {
     expect(html).toContain("&lt;script&gt;");
   });
 });
+
+
+describe("renderTerminalTab — fills the window (fit addon) — operator report 2026-08-27", () => {
+  it("loads the fit addon from our origin and fits on open, on ready, and on resize", () => {
+    const html = renderTerminalTab(machineModel);
+    expect(html).toContain('<script src="/assets/xterm-addon-fit.js"></script>');
+    expect(html).toMatch(/new window\.FitAddon\.FitAddon\(\)/);
+    expect(html).toMatch(/loadAddon\(/);
+    expect(html).toMatch(/ResizeObserver/);
+    expect(html).toMatch(/addEventListener\("resize"/);
+    // the fitted size is sent when the broker says ready
+    expect(html).toMatch(/t: "r", c: term\.cols, r: term\.rows/);
+  });
+});

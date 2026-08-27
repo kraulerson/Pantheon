@@ -251,6 +251,11 @@ describe("Harness UI routes (frame + terminal tab + public assets)", () => {
     expect(js.headers["content-type"]).toMatch(/javascript/);
     const css = await app.inject({ method: "GET", url: "/assets/xterm.css" });
     expect(css.statusCode).toBe(200);
+    // The fit addon ships from our origin too (no CDN), public like xterm.js, so a tab can size its grid.
+    const fit = await app.inject({ method: "GET", url: "/assets/xterm-addon-fit.js" });
+    expect(fit.statusCode).toBe(200);
+    expect(fit.headers["content-type"]).toMatch(/javascript/);
+    expect(fit.body).toContain("FitAddon");
   });
 });
 

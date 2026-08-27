@@ -19,6 +19,17 @@ for handoff clarity. Categories are ordered by impact severity.
 
 ## [Unreleased]
 
+### Fixed
+- 2026-08-27 **Terminal tabs fill the tab and follow the browser size** (BUGS #39, operator report).
+  The grid sat at xterm's 80×24 default — text stopped ~60% across and never grew vertically —
+  because nothing ever asked xterm to fit its container (the resize frame chain to the remote PTY
+  was wired but never fired). Now `@xterm/addon-fit` (0.11.0, exact pin, served from our origin as
+  `/assets/xterm-addon-fit.js`, public like xterm.js) fits on open, on the broker's `ready` (with an
+  explicit `{t:"r", c, r}` because the first fit precedes the socket), when a tab becomes active,
+  on host `ResizeObserver` and on window resize; hidden tabs are never fitted (they measure 0×0);
+  a missing addon fails closed and labelled. Both the in-app tab shell and the standalone
+  `/harness/terminal/:name` page. +6 behaviour tests (jsdom shell), +1 render, +1 asset route.
+
 ### Security
 - 2026-08-25 **tmux-aware launcher — audit remediation** (three parallel Phase 2.4 audits: input
   validation / injection, threat model / authz / secrets, client-side / CC1 —

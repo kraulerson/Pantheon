@@ -32,9 +32,12 @@ const nodeRequire = createRequire(import.meta.url);
 // Read once at startup. xterm ships a UMD bundle + css we serve from our own origin (offline-safe).
 const XTERM_JS = readFileSync(nodeRequire.resolve("@xterm/xterm/lib/xterm.js"), "utf8");
 const XTERM_CSS = readFileSync(nodeRequire.resolve("@xterm/xterm/css/xterm.css"), "utf8");
+// Fit addon (UMD, global `FitAddon`): sizes the terminal grid to its container — without it xterm
+// stays at its 80×24 default however big the tab is (operator report 2026-08-27).
+const XTERM_FIT_JS = readFileSync(nodeRequire.resolve("@xterm/addon-fit/lib/addon-fit.js"), "utf8");
 
 /** Public asset paths (added to the app's guard exemption set). */
-export const HARNESS_ASSET_PATHS: readonly string[] = ["/assets/xterm.js", "/assets/xterm.css"];
+export const HARNESS_ASSET_PATHS: readonly string[] = ["/assets/xterm.js", "/assets/xterm.css", "/assets/xterm-addon-fit.js"];
 
 export interface HarnessRoutesDeps {
   readonly registry: {
@@ -54,6 +57,9 @@ export function registerHarnessRoutes(app: FastifyInstance, deps: HarnessRoutesD
   });
   app.get("/assets/xterm.css", async (_req, reply) => {
     reply.type("text/css").send(XTERM_CSS);
+  });
+  app.get("/assets/xterm-addon-fit.js", async (_req, reply) => {
+    reply.type("application/javascript").send(XTERM_FIT_JS);
   });
 
   // ---- Harness frame (guarded) ----

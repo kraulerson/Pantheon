@@ -63,9 +63,9 @@ export function renderTerminalTab(model: TerminalTabModel): string {
 <title>Claude CLI — ${esc(logicalName)}</title>
 <link rel="stylesheet" href="/assets/xterm.css">
 <style>
-  body { font-family: system-ui, sans-serif; margin: 0; background: #111; color: #eee; }
+  body { font-family: system-ui, sans-serif; margin: 0; background: #111; color: #eee; display: flex; flex-direction: column; height: 100vh; }
   header { padding: .4rem .8rem; border-bottom: 1px solid #444; }
-  #terminal { height: calc(100vh - 6rem); }
+  #terminal { flex: 1; min-height: 0; }
   .status { display: inline-block; padding: .15rem .5rem; }
   .glyph { font-family: monospace; }
   [hidden] { display: none; }
@@ -87,6 +87,7 @@ export function renderTerminalTab(model: TerminalTabModel): string {
 </header>
 <div id="terminal" role="application" aria-label="Claude CLI terminal for ${esc(logicalName)}"></div>
 <script src="/assets/xterm.js"></script>
+<script src="/assets/xterm-addon-fit.js"></script>
 <script>
 (function () {
   var WS_PATH = ${jsString(wsPath)};
@@ -99,13 +100,25 @@ export function renderTerminalTab(model: TerminalTabModel): string {
     if (s === "error" && msg) { var m = document.getElementById("error-msg"); if (m) m.textContent = msg; }
   }
   var term = new window.Terminal({ convertEol: true });
-  term.open(document.getElementById("terminal"));
+  // Fit the grid to the page (operator report 2026-08-27: the 80×24 default filled ~60% of the width and never grew).
+  var fit = new window.FitAddon.FitAddon();
+  term.loadAddon(fit);
+  var host = document.getElementById("terminal");
+  term.open(host);
+  fit.fit();
+  if (window.ResizeObserver) new window.ResizeObserver(function () { fit.fit(); }).observe(host);
+  window.addEventListener("resize", function () { fit.fit(); });
   var url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + WS_PATH;
   var ws = new WebSocket(url);
   setState("loading");
   ws.onmessage = function (ev) {
     var f; try { f = JSON.parse(ev.data); } catch (e) { return; }
-    if (f.t === "ready") setState("connected");
+    if (f.t === "ready") {
+      setState("connected");
+      fit.fit();
+      // The first fit ran before the socket was open — tell the PTY the size explicitly now.
+      if (ws.readyState === 1) ws.send(JSON.stringify({ t: "r", c: term.cols, r: term.rows }));
+    }
     else if (f.t === "o") term.write(f.d);
     else if (f.t === "x") setState("disconnected");
     else if (f.t === "e") setState("error", f.m);

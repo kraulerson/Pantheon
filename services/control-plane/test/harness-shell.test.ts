@@ -46,16 +46,50 @@ class FakeTerm {
   written: string[] = [];
   disposed = false;
   dataCb?: (d: string) => void;
-  open(): void {}
+  resizeCb?: (s: { cols: number; rows: number }) => void;
+  host?: Element;
+  cols = 80;
+  rows = 24;
+  open(el: Element): void {
+    this.host = el;
+  }
+  loadAddon(a: { activate(t: FakeTerm): void }): void {
+    a.activate(this);
+  }
+  resize(cols: number, rows: number): void {
+    this.cols = cols;
+    this.rows = rows;
+    this.resizeCb?.({ cols, rows });
+  }
   write(s: string): void {
     this.written.push(s);
   }
   onData(cb: (d: string) => void): void {
     this.dataCb = cb;
   }
-  onResize(): void {}
+  onResize(cb: (s: { cols: number; rows: number }) => void): void {
+    this.resizeCb = cb;
+  }
   dispose(): void {
     this.disposed = true;
+  }
+}
+
+/** Stands in for @xterm/addon-fit: every fit() records whether the terminal's panel was visible and resizes to 200×50. */
+class FakeFitAddon {
+  static instances: FakeFitAddon[] = [];
+  term?: FakeTerm;
+  fits: Array<{ visible: boolean }> = [];
+  constructor() {
+    FakeFitAddon.instances.push(this);
+  }
+  activate(t: FakeTerm): void {
+    this.term = t;
+  }
+  fit(): void {
+    const panel = this.term?.host?.closest("[data-tab-panel]") as HTMLElement | null;
+    this.fits.push({ visible: !!panel && !panel.hidden });
+    this.term?.resize(200, 50);
   }
 }
 
@@ -67,6 +101,7 @@ function boot(model: Parameters<typeof renderHarnessFrame>[0]): void {
   document.body.innerHTML = bodyOf(renderHarnessFrame(model)); // <script> set via innerHTML stays inert
   (window as unknown as { WebSocket: unknown }).WebSocket = FakeWS;
   (window as unknown as { Terminal: unknown }).Terminal = FakeTerm;
+  (window as unknown as { FitAddon: unknown }).FitAddon = { FitAddon: FakeFitAddon };
   // Execute the client against the DOM (the same code the page ships inline).
   window.eval(HARNESS_CLIENT_JS);
 }
@@ -74,6 +109,7 @@ function boot(model: Parameters<typeof renderHarnessFrame>[0]): void {
 describe("tabbed harness shell (behavior)", () => {
   beforeEach(() => {
     FakeWS.instances = [];
+    FakeFitAddon.instances = [];
     document.body.innerHTML = "";
   });
 
@@ -430,5 +466,70 @@ describe("tab close ends the session (BUGS #33)", () => {
     expect(ws.sent).toContain(JSON.stringify({ t: "c" }));
     expect(ws.closed).toBe(true);
     expect(document.querySelectorAll("[data-tab]").length).toBe(0);
+  });
+});
+
+
+describe("terminal tabs fill the tab (fit addon) — operator report 2026-08-27", () => {
+  beforeEach(() => {
+    FakeWS.instances = [];
+    FakeFitAddon.instances = [];
+    document.body.innerHTML = "";
+  });
+  const open = (name: string): void => {
+    (document.querySelector(`[data-open-terminal="${name}"]`) as HTMLElement).click();
+  };
+
+  it("fits the terminal to its host when a tab opens — never the 80×24 default", () => {
+    boot({ devMachines: [machine({ logicalName: "linux-box" })] });
+    open("linux-box");
+    expect(FakeFitAddon.instances).toHaveLength(1);
+    const fit = FakeFitAddon.instances[0];
+    expect(fit.fits.length).toBeGreaterThanOrEqual(1);
+    expect(fit.term?.cols).toBe(200);
+    expect(fit.term?.rows).toBe(50);
+    expect(fit.fits.every((f) => f.visible)).toBe(true);
+  });
+
+  it("tells the remote PTY the fitted size once the broker is ready (not only on later changes)", () => {
+    boot({ devMachines: [machine({ logicalName: "linux-box" })] });
+    open("linux-box");
+    const ws = FakeWS.instances[0];
+    ws.emit({ t: "ready", id: "abc" });
+    expect(ws.sent).toContain(JSON.stringify({ t: "r", c: 200, r: 50 }));
+  });
+
+  it("re-fits a tab when it becomes the active one (a hidden panel cannot be measured) and never fits hidden ones", () => {
+    boot({ devMachines: [machine({ id: "a", logicalName: "box-a" }), machine({ id: "b", logicalName: "box-b" })] });
+    open("box-a");
+    open("box-b");
+    const [fitA, fitB] = FakeFitAddon.instances;
+    const before = fitA.fits.length;
+    (document.querySelectorAll("[data-tab]")[0] as HTMLElement).click(); // back to box-a
+    expect(fitA.fits.length).toBeGreaterThan(before);
+    expect(fitA.fits.every((f) => f.visible)).toBe(true);
+    expect(fitB.fits.every((f) => f.visible)).toBe(true);
+  });
+
+  it("re-fits the active tab when the browser window is resized", () => {
+    boot({ devMachines: [machine({ id: "a", logicalName: "box-a" }), machine({ id: "b", logicalName: "box-b" })] });
+    open("box-a");
+    open("box-b");
+    const [fitA, fitB] = FakeFitAddon.instances;
+    const a0 = fitA.fits.length;
+    const b0 = fitB.fits.length;
+    window.dispatchEvent(new window.Event("resize"));
+    expect(fitB.fits.length).toBe(b0 + 1);
+    expect(fitA.fits.length).toBe(a0); // hidden — untouched
+  });
+
+  it("fails closed and labelled when the fit addon did not load (same rule as the engine): no socket", () => {
+    boot({ devMachines: [machine({ logicalName: "linux-box" })] });
+    (window as unknown as { FitAddon: unknown }).FitAddon = undefined;
+    open("linux-box");
+    expect(FakeWS.instances).toHaveLength(0);
+    const status = document.querySelector(".term-status") as HTMLElement;
+    expect(status.getAttribute("data-state")).toBe("error");
+    expect(status.textContent).toMatch(/failed to load/);
   });
 });

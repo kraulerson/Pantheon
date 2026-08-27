@@ -74,9 +74,12 @@ export const HARNESS_CLIENT_JS = `
     });
     active = id;
     if (welcome) welcome.hidden = (id !== null);
+    // A panel that was hidden measured 0×0 — size its terminal now that it is visible.
+    if (id !== null && tabs[id] && tabs[id].fit) tabs[id].fit();
   }
   function closeTab(id) {
     var t = tabs[id]; if (!t) return;
+    if (t.ro) t.ro.disconnect();
     // Explicit close ENDS the session server-side (BUGS #33): a closed tmux tab must not leave a
     // ghost tmux client attached on the machine. A dropped socket (no frame) only detaches.
     try { if (t.ws && t.ws.readyState === 1) t.ws.send(JSON.stringify({ t: 'c' })); } catch (e) {}
@@ -118,9 +121,11 @@ export const HARNESS_CLIENT_JS = `
     status.setAttribute('role', 'status'); status.textContent = '[~] Connecting to ' + label + '…';
     t.panel.appendChild(status);
     var host = doc.createElement('div'); host.className = 'term-host'; t.panel.appendChild(host);
-    var term;
+    var term; var fit;
     try {
       term = new window.Terminal({ convertEol: true });
+      fit = new window.FitAddon.FitAddon();
+      term.loadAddon(fit);
       term.open(host);
     } catch (e) {
       // Fail closed AND labeled: no engine → no socket, and the tab says why.
@@ -129,10 +134,20 @@ export const HARNESS_CLIENT_JS = `
       return t;
     }
     t.term = term;
+    // Size the grid to the host (operator report 2026-08-27: xterm's 80×24 default filled ~60% of the
+    // width and never grew). Only while visible — a hidden panel measures 0×0 and would shrink the PTY.
+    t.fit = function () { if (!t.panel.hidden) fit.fit(); };
+    t.fit();
+    if (window.ResizeObserver) { t.ro = new window.ResizeObserver(function () { t.fit(); }); t.ro.observe(host); }
     var ws = new WebSocket(wsUrl(name, tmux)); t.ws = ws;
     ws.onmessage = function (ev) {
       var f; try { f = JSON.parse(ev.data); } catch (e) { return; }
-      if (f.t === 'ready') { status.setAttribute('data-state', 'connected'); status.textContent = '[✓] connected to ' + label; }
+      if (f.t === 'ready') {
+        status.setAttribute('data-state', 'connected'); status.textContent = '[✓] connected to ' + label;
+        // The first fit ran before the socket was open, so tell the PTY the size explicitly now.
+        t.fit();
+        if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'r', c: term.cols, r: term.rows }));
+      }
       else if (f.t === 'o') { term.write(f.d); }
       else if (f.t === 'x') { status.setAttribute('data-state', 'disconnected'); status.textContent = '[x] disconnected — close tab to dismiss'; }
       else if (f.t === 'e') { status.setAttribute('data-state', 'error'); status.textContent = '[!] ' + f.m; }
@@ -156,6 +171,10 @@ export const HARNESS_CLIENT_JS = `
     t.panel.appendChild(p);
     return t;
   }
+
+  window.addEventListener('resize', function () {
+    if (active !== null && tabs[active] && tabs[active].fit) tabs[active].fit();
+  });
 
   // ---- live tmux session lists (one slot per ready machine) ----
   var tmuxLoads = {}; // machine → { gen, inflight }
@@ -435,6 +454,7 @@ export function renderHarnessFrame(model: HarnessFrameModel): string {
 
 ${model.chatUrl !== undefined ? `<!-- chat: ${esc(model.chatUrl)} -->` : ""}
 <script src="/assets/xterm.js"></script>
+<script src="/assets/xterm-addon-fit.js"></script>
 <script>${HARNESS_CLIENT_JS}</script>
 </body>
 </html>`;
