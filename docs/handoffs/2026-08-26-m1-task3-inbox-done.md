@@ -81,3 +81,30 @@ changes, `restart` after yaml-only changes. The VM has no `jq` — use `node -e`
    two hostnames; C: wait for step 8). The household Caddy/DNS are intake-owned (outside this repo)
    → needs Karl's explicit go for that cross-project step. If he actually meant the new Approvals
    page's `/admin/…` path, that is a one-line route move (`/harness/approvals`) + nav — ask, don't guess.
+
+## Added 2026-08-27 (late) — harness under the chat address BUILT, deployed to the admin address, chat-address switch PENDING KARL
+
+- **Feature `harness-under-chat-address` DONE** (`7dc2c93`; suite 617 pass / 5 skips; +29 tests; two
+  audits → 13 fixes in-loop; audit `docs/security-audits/harness-under-chat-address-security-audit.md`;
+  design `docs/2026-08-27-harness-under-chat-address-design.md`; FEATURES 11; BUGS #40/#41 new,
+  #26/#29 extended). **Gate 2/2 — UAT-4 must run before any next feature** (template still to be
+  generated: include a REAL pending approval for the inbox, the terminal fit, the theme, and — once
+  switched on — the chat-address flow).
+- **Deployed to VM 1093 = the admin address only**: pages themed (LibreChat tokens, OS light/dark),
+  `frame-ancestors 'self'` + frame-bust, WS Sec-Fetch-Site check (verified 403 same-site / 101
+  same-origin through the VM Caddy and the household edge — probe over HTTP/1.1; an HTTP/2 probe
+  drops `Upgrade` and is meaningless), `PANTHEON_CHAT_URL` set in the VM `.env.local`.
+- **NOT switched on yet (needs Karl's acceptance of the one-origin residual — see the audit's
+  "Residual #1" and the design doc):** the Caddy split and the LibreChat footer/help links. The new
+  `deploy/Caddyfile` is already ON DISK on the VM (git pull) but Caddy has not been reloaded — **a
+  `docker compose restart caddy` for any other reason would apply it.** Go-live steps once ruled:
+  (1) on the VM `deploy/.env`: `CUSTOM_FOOTER=[Terminals](/harness/) | [Configuration](/harness/admin/config)`
+  and `HELP_AND_FAQ_URL=https://pantheon.ferrumcorde.com/harness/help`; (2) `cd deploy && docker
+  compose exec caddy caddy reload --config /etc/caddy/Caddyfile` (closes live terminal sockets);
+  (3) `docker compose up -d librechat`; (4) verify `https://pantheon.ferrumcorde.com/harness/` →
+  302 → `/harness/harness` 200 with `data-base="/harness"`, `/harness/login` is OURS and `/login` is
+  LibreChat's, `/harness/assets/harness.css` 200, cookie `Path=/harness` after login, a terminal tab
+  attaches through the chat address, the Chat tab embeds the chat page, the footer links appear
+  after sign-in, and `curl -H 'X-Forwarded-Prefix: /evil' https://pantheon-admin…/harness` renders
+  `data-base=""`; (5) APPROVAL_LOG row for the accepted residual.
+- Next after that: UAT-4 template + Karl's session; then M1 task 4 (session waker + guardrails).
