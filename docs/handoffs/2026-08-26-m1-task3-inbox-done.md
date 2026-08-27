@@ -63,3 +63,21 @@ changes, `restart` after yaml-only changes. The VM has no `jq` — use `node -e`
 > reply with a plain-English TL;DR; decisions to Karl as plain-English cards with pros/cons + a
 > recommendation; never write outside this repo without his express permission; retrieve Qdrant
 > dev-memory before starting.
+
+## Added 2026-08-27 — operator corrections
+
+1. **BUGS #39 FIXED (`d809a95`, deployed + asset-verified live):** terminal tabs never filled the
+   tab — xterm sat at its 80×24 default because nothing ever fitted it (the `{t:"r"}` → `setWindow`
+   chain existed but never fired). `@xterm/addon-fit` 0.11.0 (exact pin) now ships from our origin
+   (`/assets/xterm-addon-fit.js`, public); fit on open / broker `ready` (explicit size frame) / tab
+   switch / host `ResizeObserver` / window resize; hidden tabs never fitted; missing addon fails
+   closed and labelled. Both the tab shell and the standalone terminal page. **Visual confirmation
+   still owed by Karl** (Chrome extension was not connected to the session): hard-reload the
+   harness, open a CLI tab, resize the window.
+2. **OPEN — Karl: "the sessions should be in the main pantheon harness, not under admin".** Read as
+   the 2026-08-19 "one front door" item brought forward (CLI sessions on `pantheon-admin.*` behind a
+   door labelled admin; he chose then to wait for M2 step 8). Decision card sent 2026-08-27 with
+   options (A: add `harness.ferrumcorde.com` for the frame now via the intake platform; B: swap the
+   two hostnames; C: wait for step 8). The household Caddy/DNS are intake-owned (outside this repo)
+   → needs Karl's explicit go for that cross-project step. If he actually meant the new Approvals
+   page's `/admin/…` path, that is a one-line route move (`/harness/approvals`) + nav — ask, don't guess.
