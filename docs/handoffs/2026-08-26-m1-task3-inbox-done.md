@@ -108,3 +108,18 @@ changes, `restart` after yaml-only changes. The VM has no `jq` — use `node -e`
   after sign-in, and `curl -H 'X-Forwarded-Prefix: /evil' https://pantheon-admin…/harness` renders
   `data-base=""`; (5) APPROVAL_LOG row for the accepted residual.
 - Next after that: UAT-4 template + Karl's session; then M1 task 4 (session waker + guardrails).
+
+## Added 2026-08-27 (final) — SWITCHED ON: the harness lives under the chat address
+
+Karl ACCEPTED the one-origin residual (APPROVAL_LOG 2026-08-27, commit `0f60b92`). Live and verified
+through the household edge: `pantheon.ferrumcorde.com/harness` → 308 → `/harness/` → 302 →
+`/harness/harness` (200, `frame-ancestors 'self'`, `data-base="/harness"`, 0 bare links);
+`/harness/login` = console login, `/login` = LibreChat; `/harness/assets/harness.css` 200;
+approvals/config/help 200; keycard door 401 on both addresses; WebSocket via the chat address:
+same-origin **101**, same-site **403**; admin address unchanged and now strips a forged prefix.
+`deploy/.env` on the VM: `CUSTOM_FOOTER=[Terminals](/harness/) | [Configuration](/harness/admin/config)`,
+`HELP_AND_FAQ_URL=https://pantheon.ferrumcorde.com/harness/help` (backup `.env.bak-2026-08-27`);
+LibreChat recreated. **Gotcha fixed in README:** `caddy reload` read the OLD bind-mounted Caddyfile
+inode after `git pull` — `docker compose up -d --force-recreate caddy` is the step. Karl's browser
+checks still owed: footer links after sign-in, themed harness, terminal tab through the chat address,
+Chat tab, light/dark following. Next: UAT-4 template (gate 2/2) → Karl's session → M1 task 4.
