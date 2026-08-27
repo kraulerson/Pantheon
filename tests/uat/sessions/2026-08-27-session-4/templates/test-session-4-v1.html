@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Pantheon Harness — UAT Session 4</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #0f0f17; color: #cdd6f4; line-height: 1.5; padding: 24px; max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 1.6rem; margin-bottom: 4px; }
+  .meta { color: #a6adc8; font-size: 0.9rem; margin-bottom: 24px; }
+  .progress-bar { background: #1e1e2e; border-radius: 8px; height: 8px; margin-bottom: 24px; overflow: hidden; }
+  .progress-fill { background: #a6e3a1; height: 100%; width: 0%; transition: width 0.3s; }
+  .progress-text { text-align: center; color: #a6adc8; font-size: 0.85rem; margin-bottom: 24px; }
+  h2 { font-size: 1.2rem; color: #89b4fa; margin: 32px 0 16px; padding-bottom: 8px; border-bottom: 1px solid #313244; }
+  .fixture-ref { background: #11111b; border: 1px solid #313244; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 0.85rem; color: #a6adc8; }
+  .fixture-ref strong { color: #cdd6f4; }
+  .fixture-ref code { background: #313244; padding: 2px 6px; border-radius: 3px; color: #f9e2af; }
+  .scenario { background: #1e1e2e; border-radius: 8px; margin-bottom: 12px; overflow: hidden; border-left: 4px solid #45475a; transition: border-color 0.2s; }
+  .scenario.pass { border-left-color: #a6e3a1; }
+  .scenario.fail { border-left-color: #f38ba8; }
+  .scenario-header { padding: 12px 16px; display: flex; align-items: center; gap: 12px; }
+  .scenario-num { background: #313244; color: #a6adc8; font-size: 0.8rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; min-width: 28px; text-align: center; }
+  .scenario-title { flex: 1; font-weight: 500; }
+  .btn-group { display: flex; gap: 4px; }
+  .btn { padding: 6px 14px; border: 1px solid #45475a; border-radius: 4px; background: transparent; color: #cdd6f4; cursor: pointer; font-size: 0.85rem; transition: all 0.15s; }
+  .btn:hover { background: #313244; }
+  .btn.pass-btn.active { background: #a6e3a1; color: #1e1e2e; border-color: #a6e3a1; font-weight: 600; }
+  .btn.fail-btn.active { background: #f38ba8; color: #1e1e2e; border-color: #f38ba8; font-weight: 600; }
+  .btn.skip-btn.active { background: #f9e2af; color: #1e1e2e; border-color: #f9e2af; font-weight: 600; }
+  .scenario-details { padding: 0 16px 8px 16px; display: none; }
+  .scenario-details.open { display: block; }
+  .steps { background: #11111b; padding: 10px 14px; border-radius: 4px; font-size: 0.85rem; color: #a6adc8; margin-bottom: 8px; }
+  .steps strong { color: #cdd6f4; }
+  .scenario-notes { padding: 4px 16px 12px 16px; }
+  .notes-input { width: 100%; background: #11111b; border: 1px solid #45475a; color: #cdd6f4; padding: 8px 12px; border-radius: 4px; font-size: 0.85rem; font-family: inherit; resize: vertical; min-height: 36px; }
+  .notes-input:focus { outline: none; border-color: #89b4fa; }
+  .toggle-details { background: none; border: none; color: #6c7086; cursor: pointer; font-size: 0.75rem; padding: 4px 8px; }
+  .toggle-details:hover { color: #89b4fa; }
+  .bugs-section { margin-top: 40px; }
+  .bug-entry { background: #1e1e2e; border-radius: 8px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #f38ba8; }
+  .bug-row { display: flex; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+  .bug-field { flex: 1; min-width: 200px; }
+  .bug-field label { display: block; color: #a6adc8; font-size: 0.8rem; margin-bottom: 4px; }
+  .bug-field input, .bug-field select, .bug-field textarea { width: 100%; background: #11111b; border: 1px solid #45475a; color: #cdd6f4; padding: 8px 12px; border-radius: 4px; font-size: 0.85rem; font-family: inherit; }
+  .bug-field textarea { resize: vertical; min-height: 60px; }
+  .bug-field input:focus, .bug-field select:focus, .bug-field textarea:focus { outline: none; border-color: #89b4fa; }
+  .bug-field select { appearance: auto; }
+  .add-bug-btn { background: #313244; border: 1px dashed #45475a; color: #a6adc8; padding: 10px; border-radius: 8px; width: 100%; cursor: pointer; font-size: 0.85rem; margin-bottom: 12px; }
+  .add-bug-btn:hover { border-color: #f38ba8; color: #f38ba8; }
+  .remove-bug { background: none; border: none; color: #f38ba8; cursor: pointer; font-size: 0.8rem; float: right; }
+  .overall-notes { margin-top: 32px; }
+  .overall-notes textarea { width: 100%; background: #11111b; border: 1px solid #45475a; color: #cdd6f4; padding: 12px; border-radius: 8px; font-size: 0.9rem; font-family: inherit; resize: vertical; min-height: 100px; }
+  .overall-notes textarea:focus { outline: none; border-color: #89b4fa; }
+  .export-section { margin-top: 32px; text-align: center; padding: 24px; }
+  .export-btn { background: #89b4fa; color: #1e1e2e; border: none; padding: 12px 32px; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; }
+  .export-btn:hover { background: #74c7ec; }
+  .export-btn:active { transform: scale(0.98); }
+  .copy-msg { color: #a6e3a1; margin-top: 8px; font-size: 0.85rem; display: none; }
+</style>
+</head>
+<body>
+
+
+<h1>Pantheon Harness — UAT Session 4</h1>
+
+
+<div class="meta">Date: 2026-08-27 | Features: Harness under the chat address + theme, Pending-Approvals inbox, Fixes &amp; regressions | Tester: <input id="tester-name" type="text" placeholder="Your name" style="background:#1e1e2e;border:1px solid #45475a;color:#cdd6f4;padding:4px 8px;border-radius:4px;font-size:0.85rem;width:140px;"></div>
+
+
+<div class="fixture-ref">
+<strong>Before you start — read this once.</strong><br><br>
+<strong>What you are testing:</strong> the harness now lives <strong>under the chat address</strong> —
+<code>https://pantheon.ferrumcorde.com/harness/</code>, reached from the <strong>Terminals</strong> link under the chat box — drawn in the chat page's colours,
+with a <strong>Chat tab</strong> inside the harness; the <strong>Approvals</strong> inbox (one list of every request waiting on you, references only);
+and the fix that makes a terminal <strong>fill its tab</strong>. The older address <code>https://pantheon-admin.ferrumcorde.com</code> still works and is checked too.<br><br>
+<strong>You need:</strong> your chat-page login, the console passphrase, your Mac mini with its usual tmux sessions running (leave them as they are), and the Terminal app on the Mac for a few copy-paste <code>curl</code> commands. Your Mac login password is NOT needed.<br><br>
+<strong>One check needs Alden-1:</strong> a request that is genuinely waiting for your approval (for example asking Alden-1, through its usual channel, to create a small new file in one of its Gitea repositories — a write its capability gateway holds). If you cannot arrange that today, press <strong>Skip</strong> on those two checks and say so in the note — the inbox has never yet seen a real request, so this is the check that matters most.<br><br>
+<strong>Throwaway things this session creates:</strong> a keycard called <code>uat-card-4</code> (you revoke it near the end). No tmux session is created.<br><br>
+<strong>Copy-paste note:</strong> where a command says <code>PASTE_YOUR_pk1_CODE_HERE</code>, replace that with the keycard code you copied from the one-time page (keep the quotes).<br><br>
+<strong>Do not</strong> kill or rename your existing tmux sessions and do not re-provision Mac-Mini.<br><br>
+<strong>How to use this page:</strong> each scenario shows its Steps and Expected result right below the title. Do the steps, then click <strong>Pass</strong>, <strong>Fail</strong>, or <strong>Skip</strong>, and add a note if anything looked odd. When finished, press <strong>Copy Results to Clipboard</strong> and send the text to the session.
+</div>
+
+<div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+<div class="progress-text" id="progress-text">0 / 0 completed</div>
+
+
+<h2>Feature 11: The harness under the chat address (+ theme, Chat tab)</h2>
+<div id="feature11"></div>
+
+<h2>Feature 10: Pending-Approvals inbox</h2>
+<div id="feature10"></div>
+
+<h2>Fixes &amp; Regressions</h2>
+<div id="feature3"></div>
+
+<div class="bugs-section">
+  <h2>Bugs Found</h2>
+  <div id="bugs-list"></div>
+  <button class="add-bug-btn" onclick="addBug()">+ Add Bug</button>
+</div>
+
+<div class="overall-notes">
+  <h2>Overall Notes</h2>
+  <textarea id="overall-notes" placeholder="Free-form observations, UX concerns, suggestions, things that felt wrong even if they technically worked..."></textarea>
+</div>
+
+<div class="export-section">
+  <button class="export-btn" onclick="exportResults()">Copy Results to Clipboard</button>
+  <div class="copy-msg" id="copy-msg">Copied! Paste into terminal or save to submissions folder.</div>
+</div>
+
+<script>
+// Each element MUST be an object with ALL of the following fields.
+// Do not omit any field. Do not add fields not listed here.
+// Do not modify any code outside the placeholder tokens (the ALL_CAPS
+// identifiers wrapped in double underscores, like the SCENARIOS_JSON one above).
+//
+// SCHEMA:
+// [
+//   {
+//     "id": number,        // Sequential integer starting at 1, unique across all features
+//     "title": string,     // Short imperative description, e.g., "Repair fills holes on open mesh"
+//     "steps": string,     // Numbered steps separated by \\n, e.g., "1. Open file\\n2. Click Analyze"
+//     "expected": string   // What should happen if the feature works correctly
+//   }
+// ]
+//
+// QUALITY CHECKLIST — every scenario MUST meet these before emission.
+// A scenario that fails any item is NOT READY for the tester; rewrite it.
+//
+// [ ] `steps` opens with a starting-state restatement. Use the same phrase
+//     project-wide, e.g., "You are in the project root with <runtime> active
+//     (see 'Before you start')." Without this, chained scenarios drift.
+// [ ] `steps` numbers every command. No "run the command from scenario N",
+//     no "see above", no "as before". Each scenario is self-contained.
+// [ ] `steps` commands are fully copy-pasteable. No placeholders, no
+//     "<project-path>", no shell pseudo-code, no `...` ellipses in the
+//     actual command lines.
+// [ ] `steps` prefers deterministic commands over ones whose output format
+//     varies across tool versions.
+// [ ] `expected` has a CONCRETE pass/fail anchor. At least ONE of:
+//       - an exact text string the tester can grep for;
+//       - an exit code the tester can read (the scenario should emit it:
+//         `echo "exit=$?"`);
+//       - a line count (`| wc -l`);
+//       - a deterministic single-value assertion.
+//     Prose like "works", "succeeds", "passes", "no errors" is NOT a
+//     concrete anchor. If you cannot write a concrete anchor, the
+//     scenario is not ready.
+// [ ] `expected` is ≥60 characters. Shorter is almost certainly
+//     underspecified.
+// [ ] If the scenario MUTATES repo/filesystem/env state, include numbered
+//     cleanup steps at the end AND a verification step (e.g.,
+//       git diff --exit-code <file> && echo RESTORED
+//     ). Informal parentheticals like "(restore)" are not acceptable.
+// [ ] If the scenario has an EXTERNAL dependency (Docker, a running
+//     service, network endpoint), include a probe step whose output tells
+//     the tester to proceed or Skip. Example:
+//       docker info >/dev/null 2>&1 && echo DOCKER_OK || echo SKIP_DOCKER_UNAVAILABLE
+//
+// ANTI-PATTERNS — do not emit scenarios matching these. The linter at
+// scripts/lint-uat-scenarios.sh will refuse any scenario whose:
+//   - `steps` does not open with a state-restatement keyword
+//     ("You are", "cd ", "Setup:", "Before starting", "Preconditions:");
+//   - `expected` contains only "works" / "succeeds" / "passes" /
+//     "no errors" / "builds successfully" / "completes" as its pass/fail
+//     description;
+//   - `steps` contains "command from scenario", "see above", "as before",
+//     "like scenario", "as in scenario";
+//   - `expected` is <60 characters;
+//   - `id` duplicates another scenario's id.
+//
+// BEFORE SAVING: run scripts/lint-uat-scenarios.sh on the populated file.
+// Must exit 0 before the UAT template is handed to a tester.
+//
+// EXAMPLE (do not copy verbatim — write scenarios specific to the features under test):
+// [
+//   {
+//     "id": 1,
+//     "feature": 7,
+//     "title": "Repair disabled after clean analysis on a simple cube",
+//     "steps": "You are in the app with the Mesh Repair panel open.\\n\\n1. Open examples/cube.stl via File > Open.\\n2. Click Analyze (keyboard: A).\\n3. Read the Repair button's disabled attribute via devtools OR confirm it appears greyed out.",
+//     "expected": "Analyze completes within 2 seconds and reports:\\n  Holes: 0\\n  Degenerate faces: 0\\nThe Repair button has the disabled attribute and is visually greyed out.\\n\\nPASS if both counts are 0 AND Repair is disabled. FAIL if either count is non-zero or Repair is enabled."
+//   }
+// ]
+const scenarios = [
+  {
+    "id": 1,
+    "feature": 11,
+    "title": "The chat page's footer offers Terminals and Configuration",
+    "steps": "You are signed in at https://pantheon.ferrumcorde.com (the chat page), on a desktop browser.\n1. Look directly under the message box at the bottom of the page.",
+    "expected": "The footer line reads 'Terminals | Configuration' (two links). The old 'Switch to Admin' link is gone. Nothing else on the chat page changed."
+  },
+  {
+    "id": 2,
+    "feature": 11,
+    "title": "Terminals opens the harness under the SAME address",
+    "steps": "You are signed in on the chat page.\n1. Click 'Terminals' in the footer.\n2. If a page titled 'Pantheon Harness' asks for the Operator password, type the console passphrase and press Log in.\n3. Look at the browser's address bar.",
+    "expected": "You land on the harness page (header 'Pantheon Harness', the launch bar with your machines, the tab bar). The address bar shows https://pantheon.ferrumcorde.com/harness/harness — it starts with https://pantheon.ferrumcorde.com/harness/ and never switches to the pantheon-admin address. If you were asked to log in, that login page was at https://pantheon.ferrumcorde.com/harness/login."
+  },
+  {
+    "id": 3,
+    "feature": 11,
+    "title": "The harness wears the chat page's colours",
+    "steps": "You are on the harness page reached from the chat page.\n1. Compare it with the chat page in another browser tab: background, text colour, buttons, the header strip.",
+    "expected": "The harness uses the same dark (or light) surfaces and the same typeface family as the chat page — it feels like part of the same application, not a plain white page with default browser buttons. Every state you can see is still labelled with words and a bracket glyph such as [✓] or [~]; nothing relies on colour alone."
+  },
+  {
+    "id": 4,
+    "feature": 11,
+    "title": "The harness follows the chat page's Light/Dark setting",
+    "steps": "You are on the harness page (reached from the chat page) and the chat page is open in a second browser tab.\n1. On the chat page open Settings (your profile menu) → General → Theme and choose the opposite of what you have now (Light if you are on Dark, or the reverse).\n2. Switch to the harness browser tab and, if it did not change by itself within a second, reload it.\n3. Put the chat theme back to your preference.",
+    "expected": "The harness changes to the same theme as the chat page (light surfaces with dark text, or dark surfaces with light text). The terminal area itself stays dark in both themes on purpose. Setting the theme back restores the harness too."
+  },
+  {
+    "id": 5,
+    "feature": 11,
+    "title": "A tmux session attaches through the chat address",
+    "steps": "You are on the harness page under the chat address and the tmux list for Mac-Mini has loaded.\n1. Click one of the 'Mac-Mini · <session>' buttons for a session that is NOT open in any of your own Terminal windows.\n2. Wait for '[✓] connected'.\n3. Type: echo through-chat-address  and press Enter.",
+    "expected": "A tab labelled 'Mac-Mini · <session>' opens with status '[✓] connected to Mac-Mini · <session>', the terminal shows the tmux status bar for that session, and the words through-chat-address are printed inside it. The address bar still starts with https://pantheon.ferrumcorde.com/harness/ — the terminal works from the chat address."
+  },
+  {
+    "id": 6,
+    "feature": 11,
+    "title": "Chat opens as a tab INSIDE the harness",
+    "steps": "You are on the harness page under the chat address.\n1. Press '+ New Session' in the header.\n2. Choose 'Alden-1 (chat)' as the AI system and press Start.",
+    "expected": "A new tab appears in the tab bar and its panel shows the chat page itself (your conversations list, the message box) embedded inside the harness — not a text placeholder, not a blank panel, not a login loop. You can switch between this Chat tab and any terminal tab."
+  },
+  {
+    "id": 7,
+    "feature": 11,
+    "title": "A footer link clicked inside the embedded chat takes the whole window to the harness",
+    "steps": "You are in the harness with a Chat tab open showing the embedded chat page.\n1. Inside that embedded chat page, scroll to its footer and click 'Terminals'.",
+    "expected": "The whole browser window navigates to the harness page (https://pantheon.ferrumcorde.com/harness/…) — you do NOT get a harness nested inside the chat tab, and you do NOT get a blank or blocked panel. (The Chat tab you had is gone because the page reloaded; that is expected.)"
+  },
+  {
+    "id": 8,
+    "feature": 11,
+    "title": "Configuration from the chat page is the setup page, on the same address",
+    "steps": "You are signed in on the chat page.\n1. Click 'Configuration' in the footer.",
+    "expected": "The Configuration page opens at https://pantheon.ferrumcorde.com/harness/admin/config, drawn in the chat page's colours, with its usual sections (AI Backends, MCP Servers, Service Endpoints, Dev Machines, Session Keycards). Registering machines still happens here — there is no way to register a machine from the harness page itself."
+  },
+  {
+    "id": 9,
+    "feature": 11,
+    "title": "Help opens the guide on the same address, from both places",
+    "steps": "You are signed in on the chat page.\n1. Open your profile menu and click 'Help & FAQ'.\n2. Go back to the harness page and click 'Help' in its header.",
+    "expected": "Both open the Pantheon Harness user guide at https://pantheon.ferrumcorde.com/harness/help. Its first section is titled 'What the harness is, and the addresses' and describes the Terminals and Configuration links; it no longer says the harness lives behind the admin address."
+  },
+  {
+    "id": 10,
+    "feature": 11,
+    "title": "Logging out of the harness does not log you out of chat",
+    "steps": "You are signed in on both the harness (under the chat address) and the chat page, each in its own browser tab.\n1. On the harness page press 'Log out'.\n2. Switch to the chat page's tab and send yourself a short message or open a conversation.",
+    "expected": "The harness tab shows the console login page at https://pantheon.ferrumcorde.com/harness/login. The chat page keeps working without asking you to sign in again — the two sign-ins are separate. Signing back into the harness works with the console passphrase."
+  },
+  {
+    "id": 11,
+    "feature": 11,
+    "title": "The old admin address still works and offers chat as a link, not an embed",
+    "steps": "You are signed in at https://pantheon-admin.ferrumcorde.com/harness (the older address).\n1. Look at the page: header, launch bar, tabs.\n2. Press '+ New Session', choose 'Alden-1 (chat)', press Start.",
+    "expected": "The harness works exactly as before on this address (same launch bar and tmux buttons, now in the chat page's colours). The Chat tab here does NOT embed the chat page: it shows a sentence saying chat lives on the chat address, with an 'Open chat' link that opens https://pantheon.ferrumcorde.com/ in a new browser tab."
+  },
+  {
+    "id": 12,
+    "feature": 11,
+    "title": "Approvals and Configuration show the same data on both addresses",
+    "steps": "You are signed in on both addresses.\n1. Open https://pantheon.ferrumcorde.com/harness/admin/approvals and https://pantheon-admin.ferrumcorde.com/admin/approvals.\n2. Open https://pantheon.ferrumcorde.com/harness/admin/config and https://pantheon-admin.ferrumcorde.com/admin/config.",
+    "expected": "Each pair shows the same content (the same approvals state, the same registered machines and keycards). Only the address differs; the links on each page stay on their own address (hover a link on the chat-address page — it points inside https://pantheon.ferrumcorde.com/harness/…)."
+  },
+  {
+    "id": 13,
+    "feature": 10,
+    "title": "The Approvals inbox has a labelled empty state",
+    "steps": "You are on the harness page (either address) and no request is waiting for your decision.\n1. Click 'Approvals' in the header.",
+    "expected": "A page titled 'Pantheon Harness — Pending Approvals' opens. Under the explanation it says, in words, 'No pending approvals — nothing is waiting on you.' — not an empty table and not a blank area. A line near the bottom says approve / reject buttons arrive with the M2 approval surface, and there are no Approve or Reject buttons anywhere."
+  },
+  {
+    "id": 14,
+    "feature": 10,
+    "title": "A real pending request appears as a reference line",
+    "steps": "You are able to ask Alden-1 to do something that needs your approval (for example: ask it, through its usual channel, to create a small new file in one of its Gitea repositories — a write its capability gateway holds for approval).\n1. Ask Alden-1 for such a change and wait until it reports the request is waiting for approval.\n2. Open the Approvals inbox and press 'Reload'.",
+    "expected": "A table appears with one row: Identity (alden-1 or its account id), Tool (the write tool, for example gitea_file_write), Target (for example gitea), Age in words ('just now' or 'N min ago'), Status PENDING, and a short Ref code. The page shows NO file name, NO file contents and NO diff anywhere — only those reference fields. If you cannot trigger such a request today, press Skip and say so in the note."
+  },
+  {
+    "id": 15,
+    "feature": 10,
+    "title": "Deciding elsewhere makes the row disappear",
+    "steps": "You are looking at the inbox with one real pending request showing.\n1. Approve or reject it where you normally do (Alden's approval flow).\n2. Back in the inbox press 'Reload'.",
+    "expected": "The row is gone and the page is back to 'No pending approvals — nothing is waiting on you.' The inbox never offered a button to decide — it only reflected the decision you made elsewhere. If you had to Skip the previous scenario, Skip this one too."
+  },
+  {
+    "id": 16,
+    "feature": 10,
+    "title": "A keycard sees the same reference-only view",
+    "steps": "You are signed in on the Configuration page and have the Mac's Terminal open.\n1. In Session Keycards, mint a card with principal  uat-card-4  and ONLY the scope approvals:read ticked; copy the pk1_ code from the one-time page.\n2. In Terminal run (replace the placeholder, keep the quotes):\ncurl -s -H \"Authorization: Bearer PASTE_YOUR_pk1_CODE_HERE\" https://pantheon-admin.ferrumcorde.com/keycard/v1/approvals\n3. Run the same command against https://pantheon.ferrumcorde.com/harness/keycard/v1/approvals",
+    "expected": "Both commands print one JSON line of the form {\"approvals\":[…],\"truncated\":false}. Each entry (if any) has only id, tool, server, status, createdAt and requester — never arguments, diff or content. Both addresses answer the same. (Keep uat-card-4 for the revoke check later.)"
+  },
+  {
+    "id": 17,
+    "feature": 3,
+    "title": "The terminal fills the whole tab (fix for bug #39)",
+    "steps": "You are attached to a tmux session in a harness tab (either address), browser window wide.\n1. Look at where the text stops on the right and at the bottom.\n2. Type: tput cols; tput lines  and press Enter, note the two numbers.\n3. Make the browser window noticeably narrower, wait a second, run the same command again.",
+    "expected": "Text reaches the right edge and the bottom of the tab area — no empty band at the bottom, no column of unused space on the right. The two numbers change when the window is resized (columns drop when narrower), proving the shell was told the new size. Switching to another tab and back keeps the terminal filled."
+  },
+  {
+    "id": 18,
+    "feature": 3,
+    "title": "The bare admin address still lands on the harness (regression #15)",
+    "steps": "You are signed in on the older address.\n1. Type exactly  https://pantheon-admin.ferrumcorde.com  in the address bar and press Enter.",
+    "expected": "You land on the harness page (the address becomes …/harness), not on raw text such as 'Route GET:/ not found' and not on a blank page."
+  },
+  {
+    "id": 19,
+    "feature": 3,
+    "title": "A keycard is still refused on every page and revoke still works",
+    "steps": "You are holding uat-card-4 from earlier and have the Terminal open.\n1. Run: curl -s -o /dev/null -w \"%{http_code}\\n\" -H \"Authorization: Bearer PASTE_YOUR_pk1_CODE_HERE\" https://pantheon.ferrumcorde.com/harness/admin/approvals\n2. On the Configuration page (either address) press Revoke next to uat-card-4 and confirm.\n3. Re-run the keycard command from the earlier keycard scenario against https://pantheon-admin.ferrumcorde.com/keycard/v1/approvals",
+    "expected": "Step 1 prints 403 — a keycard cannot open a page on either address. After revoking, step 3 prints a JSON error with keycard_revoked (not the approvals list), and the Configuration page lists uat-card-4 as revoked with its counters unchanged from before the revoke."
+  },
+  {
+    "id": 20,
+    "feature": 3,
+    "title": "Existing tmux sessions on the Mac are untouched",
+    "steps": "You are done with the scenarios above.\n1. On the Mac, in Terminal, run: tmux ls",
+    "expected": "Every tmux session you had before this test is still listed with the same names. Any session you attached to from the harness is no longer marked (attached) unless one of your own Terminal windows is inside it. No session named after this test was left behind (this session created none)."
+  }
+];
+
+function renderScenarios() {
+  scenarios.forEach(s => {
+    const container = document.getElementById('feature' + s.feature);
+    if (!container) return;
+    container.innerHTML += '<div class="scenario" id="scenario-' + s.id + '">' +
+      '<div class="scenario-header">' +
+        '<span class="scenario-num">' + s.id + '</span>' +
+        '<span class="scenario-title">' + s.title + '</span>' +
+        '<button class="toggle-details" onclick="toggleDetails(' + s.id + ')">details</button>' +
+        '<div class="btn-group">' +
+          '<button class="btn pass-btn" onclick="setResult(' + s.id + ',\'pass\',this)">Pass</button>' +
+          '<button class="btn fail-btn" onclick="setResult(' + s.id + ',\'fail\',this)">Fail</button>' +
+          '<button class="btn skip-btn" onclick="setResult(' + s.id + ',\'skip\',this)">Skip</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="scenario-details open" id="details-' + s.id + '">' +
+        '<div class="steps"><strong>Steps:</strong><br>' + s.steps.replace(/\n/g,'<br>') + '</div>' +
+        '<div class="steps"><strong>Expected:</strong><br>' + s.expected + '</div>' +
+      '</div>' +
+      '<div class="scenario-notes">' +
+        '<textarea class="notes-input" id="notes-' + s.id + '" placeholder="Notes — observations, issues, anything worth recording"></textarea>' +
+      '</div>' +
+    '</div>';
+  });
+}
+
+const results = {};
+
+function setResult(id, result, btn) {
+  results[id] = result;
+  const sc = document.getElementById('scenario-' + id);
+  sc.className = 'scenario ' + (result === 'skip' ? '' : result);
+  sc.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  updateProgress();
+}
+
+function toggleDetails(id) {
+  document.getElementById('details-' + id).classList.toggle('open');
+}
+
+function updateProgress() {
+  const done = Object.keys(results).length;
+  const pct = (done / scenarios.length * 100).toFixed(0);
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('progress-text').textContent = done + ' / ' + scenarios.length + ' completed';
+}
+
+var bugCount = 0;
+// JS string fragment per feature being tested, concatenated into the select's innerHTML.
+// Example:
+//   '<option>7 - Mesh Repair</option><option>8 - Scale/Rotate/Mirror</option>'
+function addBug() {
+  bugCount++;
+  var n = bugCount;
+  document.getElementById('bugs-list').innerHTML +=
+    '<div class="bug-entry" id="bug-' + n + '">' +
+      '<button class="remove-bug" onclick="document.getElementById(\'bug-' + n + '\').remove()">remove</button>' +
+      '<div class="bug-row">' +
+        '<div class="bug-field"><label>Severity</label><select id="bug-sev-' + n + '">' +
+          '<option>SEV-1 (crash/data loss)</option><option>SEV-2 (broken, workaround exists)</option>' +
+          '<option selected>SEV-3 (minor UX)</option><option>SEV-4 (polish/enhancement)</option>' +
+        '</select></div>' +
+        '<div class="bug-field"><label>Feature</label><select id="bug-feat-' + n + '">' +
+          '<option value="11">Feature 11: Harness under the chat address</option><option value="10">Feature 10: Pending-Approvals inbox</option><option value="3">Fixes &amp; Regressions</option>' +
+        '</select></div>' +
+      '</div>' +
+      '<div class="bug-field"><label>Description</label><input id="bug-desc-' + n + '" placeholder="What went wrong?"></div>' +
+      '<div class="bug-field" style="margin-top:8px"><label>Steps to Reproduce</label><textarea id="bug-steps-' + n + '" placeholder="1. ...\n2. ...\n3. ..."></textarea></div>' +
+      '<div class="bug-field" style="margin-top:8px"><label>Expected vs Actual</label><textarea id="bug-exp-' + n + '" placeholder="Expected: ...\nActual: ..."></textarea></div>' +
+    '</div>';
+}
+
+function exportResults() {
+  var tester = document.getElementById('tester-name').value || 'Unknown';
+  var md = '# ' + document.querySelector('h1').textContent + ' Results\n\n';
+  md += '**Date:** 2026-08-27\n';
+  md += '**Tester:** ' + tester + '\n';
+  md += '**Features:** Harness under the chat address + theme, Pending-Approvals inbox, Fixes & regressions\n\n';
+
+  var pass = 0, fail = 0, skip = 0;
+  for (var k in results) {
+    if (results[k] === 'pass') pass++;
+    else if (results[k] === 'fail') fail++;
+    else if (results[k] === 'skip') skip++;
+  }
+  var untested = scenarios.length - Object.keys(results).length;
+  md += '**Summary:** ' + pass + ' passed, ' + fail + ' failed, ' + skip + ' skipped, ' + untested + ' not tested\n\n---\n\n';
+
+  md += '## Scenarios\n\n';
+  md += '| # | Scenario | Result | Notes |\n';
+  md += '|---|---|---|---|\n';
+  scenarios.forEach(function(s) {
+    var r = results[s.id] || 'not tested';
+    var icon = r === 'pass' ? 'PASS' : r === 'fail' ? 'FAIL' : r === 'skip' ? 'SKIP' : '-';
+    var el = document.getElementById('notes-' + s.id);
+    var notes = el ? el.value.replace(/\|/g, '/').replace(/\n/g, ' ').replace(/`/g, "'").replace(/\[/g, '(').replace(/\]/g, ')').replace(/\*/g, '-') : '';
+    md += '| ' + s.id + ' | ' + s.title + ' | ' + icon + ' | ' + notes + ' |\n';
+  });
+
+  var bugEntries = document.querySelectorAll('.bug-entry');
+  if (bugEntries.length > 0) {
+    md += '\n---\n\n## Bugs Found\n\n';
+    var i = 0;
+    bugEntries.forEach(function(el) {
+      i++;
+      var id = el.id.split('-')[1];
+      var sev = document.getElementById('bug-sev-' + id);
+      var feat = document.getElementById('bug-feat-' + id);
+      var desc = document.getElementById('bug-desc-' + id);
+      var steps = document.getElementById('bug-steps-' + id);
+      var exp = document.getElementById('bug-exp-' + id);
+      md += '### Bug ' + i + '\n';
+      md += '- **Severity:** ' + (sev ? sev.value : '') + '\n';
+      md += '- **Feature:** ' + (feat ? feat.value : '') + '\n';
+      md += '- **Description:** ' + (desc ? desc.value : '') + '\n';
+      md += '- **Steps:** ' + (steps ? steps.value.replace(/\n/g, '; ') : '') + '\n';
+      md += '- **Expected vs Actual:** ' + (exp ? exp.value.replace(/\n/g, '; ') : '') + '\n\n';
+    });
+  }
+
+  var overall = document.getElementById('overall-notes').value;
+  if (overall) {
+    md += '\n---\n\n## Overall Notes\n\n' + overall + '\n';
+  }
+
+  navigator.clipboard.writeText(md).then(function() {
+    var msg = document.getElementById('copy-msg');
+    msg.style.display = 'block';
+    setTimeout(function() { msg.style.display = 'none'; }, 3000);
+  });
+}
+
+renderScenarios();
+</script>
+</body>
+</html>
