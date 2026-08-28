@@ -306,3 +306,28 @@ nav hook; an upstream "custom links" proposal may follow); two sign-ins remain (
 and LibreChat account) until M2; the `/harness` → `/harness/` redirect is Caddy-only (not unit
 tested; verified live); `pantheon-admin.*` keeps `X-Frame-Options: DENY` so the Chat tab there is a
 link, not an embed.
+
+---
+
+## Feature 12: Machines sidebar (collapsible machines → tmux sessions)
+
+**Phase Built:** 2 — M1 (terminal plane), operator request 2026-08-27; built 2026-08-28
+**Status:** Complete
+**Summary:** The harness page's launch bar became a collapsible left sidebar: **Chat** at the top (opens
+the Chat tab), then one group per registered dev machine, each foldable, showing its state in words
+and a glyph. A ready machine's group holds the plain-shell button, its live tmux sessions (click to
+attach), Refresh, and the new-session form (create + attach); a not-ready machine's group says why
+and links to Configuration, where registering still happens. The sidebar and every group remember
+whether you left them open or closed. Terminal tabs and the Chat tab stay in the main area.
+**Key Interfaces:** `src/http/harness-frame.ts` (`sidebar()`, `machineGroup()`, client:
+`[data-sidebar]`, `[data-sidebar-toggle]`, `[data-machine-group]`, `[data-machine-toggle]`,
+`[data-machine-body]`, `[data-open-chat]`; storage keys `pantheon.sidebar`,
+`pantheon.sidebar.machine.<name>`), `src/http/theme.ts` (sidebar styles). No server routes changed.
+**Related ADRs:** ADR-0005 (single entry point, both modalities); BUGS #22 invariant (controls persist
+while a tab is open) now holds via the sidebar.
+**Test Coverage:** `harness-shell.test.ts` (groups per machine and their default states, fold/unfold +
+remembered choice for a group and for the sidebar, Chat entry, sidebar persists with a tab open,
+empty-state inside the sidebar; all earlier attach / refresh / new-session behaviours unchanged),
+`harness-frame.test.ts` (sidebar contains the shortcuts and tmux controls).
+**Known Limitations:** open/closed memory is per browser (localStorage), not per operator account;
+the sidebar has no keyboard shortcut; machine order is registry order.

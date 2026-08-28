@@ -78,6 +78,15 @@ nav.tabs [role="tab"][aria-selected="true"] { background: var(--surface-primary)
 .term-status, .status { color: var(--text-secondary); font-family: var(--font-mono); font-size: .875em; }
 .term-host, #terminal { background: #0d0d0d; }
 .chat-host { flex: 1; min-height: 0; width: 100%; border: 0; background: var(--surface-primary); }
+/* sidebar (harness frame): LibreChat's conversation-list look */
+.sidebar { background: var(--surface-primary-alt); border-right: 1px solid var(--border-light); }
+.side-heading { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-tertiary); margin: .6rem .5rem .2rem; }
+.side-item, .machine-toggle { display: flex; align-items: center; gap: .5rem; width: 100%; text-align: left; background: transparent; border: 1px solid transparent; border-radius: var(--radius); padding: .45rem .6rem; color: var(--text-primary); cursor: pointer; }
+.side-item:hover, .machine-toggle:hover { background: var(--surface-hover); }
+.machine-toggle[aria-expanded="true"] { background: var(--surface-secondary); }
+.machine[data-state="ready"] .machine-toggle .glyph { color: var(--text-primary); }
+.machine-launch .shell-btn { width: 100%; text-align: left; }
+.tmux-sessions button { width: 100%; }
 `;
 
 /** Applies LibreChat's stored choice (or the OS preference) as the \`dark\` class, and keeps following it. */

@@ -97,7 +97,17 @@ function bodyOf(htmlDoc: string): string {
   return htmlDoc.match(/<body[^>]*>([\s\S]*)<\/body>/)?.[1] ?? "";
 }
 
+/** jsdom's storage is not reliable across environments; the sidebar remembers its state here. */
+const memStore = new Map<string, string>();
+function installStorage(): void {
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: { getItem: (k: string) => memStore.get(k) ?? null, setItem: (k: string, v: string) => void memStore.set(k, String(v)), removeItem: (k: string) => void memStore.delete(k), clear: () => memStore.clear() }
+  });
+}
+
 function boot(model: Parameters<typeof renderHarnessFrame>[0]): void {
+  installStorage();
   document.body.innerHTML = bodyOf(renderHarnessFrame(model)); // <script> set via innerHTML stays inert
   (window as unknown as { WebSocket: unknown }).WebSocket = FakeWS;
   (window as unknown as { Terminal: unknown }).Terminal = FakeTerm;
@@ -582,5 +592,137 @@ describe("mount prefix in the client (design 2026-08-27 — harness under the ch
     expect(panel.querySelector("iframe")).toBeNull();
     expect(panel.textContent).toMatch(/chat address/);
     expect((panel.querySelector("a") as HTMLAnchorElement).getAttribute("href")).toBe("https://chat.example.test/");
+  });
+});
+
+describe("machines sidebar (operator request 2026-08-27: 'a collapsible sidebar … each machine and its tmux sessions')", () => {
+  beforeEach(() => {
+    FakeWS.instances = [];
+    FakeFitAddon.instances = [];
+    memStore.clear();
+    document.body.innerHTML = "";
+    (window as unknown as { fetch: unknown }).fetch = vi.fn(() => new Promise(() => {}));
+  });
+  const three = () => [
+    machine({ id: "a", logicalName: "mac-mini" }),
+    machine({ id: "b", logicalName: "unprov", provisioned: false }),
+    machine({ id: "c", logicalName: "off", enabled: false })
+  ];
+
+  it("renders one collapsible group per registered machine — ready ones open with their controls, others closed with the reason and a Configuration link; the old launch bar is gone", () => {
+    boot({ devMachines: three() });
+    expect(document.querySelector("aside[data-sidebar]")).not.toBeNull();
+    expect(document.querySelector("nav.launch-bar")).toBeNull();
+    const ready = document.querySelector('[data-machine-group="mac-mini"]') as HTMLElement;
+    expect(ready.getAttribute("data-state")).toBe("ready");
+    expect((ready.querySelector("[data-machine-toggle]") as HTMLElement).getAttribute("aria-expanded")).toBe("true");
+    const body = ready.querySelector("[data-machine-body]") as HTMLElement;
+    expect(body.hidden).toBe(false);
+    for (const sel of ['[data-open-terminal="mac-mini"]', '[data-tmux-list="mac-mini"]', '[data-tmux-refresh="mac-mini"]', '[data-tmux-new="mac-mini"]']) expect(body.querySelector(sel), sel).not.toBeNull();
+    const unprov = document.querySelector('[data-machine-group="unprov"]') as HTMLElement;
+    expect(unprov.getAttribute("data-state")).toBe("unprovisioned");
+    expect((unprov.querySelector("[data-machine-toggle]") as HTMLElement).getAttribute("aria-expanded")).toBe("false");
+    expect((unprov.querySelector("[data-machine-body]") as HTMLElement).hidden).toBe(true);
+    expect(unprov.textContent).toMatch(/not provisioned/);
+    expect((unprov.querySelector('a[href="/admin/config"]') as HTMLElement)).not.toBeNull();
+    expect(unprov.querySelector("[data-open-terminal]")).toBeNull();
+    const off = document.querySelector('[data-machine-group="off"]') as HTMLElement;
+    expect(off.getAttribute("data-state")).toBe("disabled");
+    expect(off.textContent).toMatch(/disabled/);
+  });
+
+  it("a machine group collapses and expands from its toggle and remembers the choice across reloads", () => {
+    boot({ devMachines: three() });
+    const toggle = document.querySelector('[data-machine-toggle="mac-mini"]') as HTMLElement;
+    const body = () => document.querySelector('[data-machine-group="mac-mini"] [data-machine-body]') as HTMLElement;
+    toggle.click();
+    expect(body().hidden).toBe(true);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(memStore.get("pantheon.sidebar.machine.mac-mini")).toBe("closed");
+    boot({ devMachines: three() }); // reload
+    expect(body().hidden).toBe(true);
+    (document.querySelector('[data-machine-toggle="mac-mini"]') as HTMLElement).click();
+    expect(body().hidden).toBe(false);
+    expect(memStore.get("pantheon.sidebar.machine.mac-mini")).toBe("open");
+  });
+
+  it("the whole sidebar folds away from its header toggle and remembers that too", () => {
+    boot({ devMachines: three() });
+    const aside = () => document.querySelector("aside[data-sidebar]") as HTMLElement;
+    const toggle = document.querySelector("[data-sidebar-toggle]") as HTMLElement;
+    expect(aside().hasAttribute("data-collapsed")).toBe(false);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    toggle.click();
+    expect(aside().hasAttribute("data-collapsed")).toBe(true);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(memStore.get("pantheon.sidebar")).toBe("closed");
+    boot({ devMachines: three() });
+    expect(aside().hasAttribute("data-collapsed")).toBe(true);
+    (document.querySelector("[data-sidebar-toggle]") as HTMLElement).click();
+    expect(aside().hasAttribute("data-collapsed")).toBe(false);
+    expect(memStore.get("pantheon.sidebar")).toBe("open");
+  });
+
+  it("Chat sits at the top of the sidebar and opens the Chat tab", () => {
+    document.documentElement.setAttribute("data-base", "/harness");
+    boot({ devMachines: three() });
+    (document.querySelector("aside[data-sidebar] [data-open-chat]") as HTMLElement).click();
+    expect(document.querySelector('[data-tab-panel][data-kind="chat"] iframe.chat-host')).not.toBeNull();
+    document.documentElement.removeAttribute("data-base");
+  });
+
+  it("the sidebar stays put while a terminal tab is open (BUGS #22 — the controls never disappear)", () => {
+    boot({ devMachines: three() });
+    (document.querySelector('[data-open-terminal="mac-mini"]') as HTMLElement).click();
+    expect(document.querySelectorAll("[data-tab]").length).toBe(1);
+    const aside = document.querySelector("aside[data-sidebar]") as HTMLElement;
+    expect(aside.hidden).toBe(false);
+    expect(aside.hasAttribute("data-collapsed")).toBe(false);
+    expect((document.querySelector("[data-welcome]") as HTMLElement).hidden).toBe(true);
+  });
+
+  it("does not dial a machine whose group is collapsed, and loads it the first time it is unfolded (SSH-dial amplifier, M1 task 1 audit)", async () => {
+    const fetchFn = vi.fn(() => new Promise(() => {}));
+    (window as unknown as { fetch: unknown }).fetch = fetchFn;
+    memStore.set("pantheon.sidebar.machine.mac-mini", "closed");
+    boot({ devMachines: [machine({ id: "a", logicalName: "mac-mini" }), machine({ id: "b", logicalName: "box-b" })] });
+    await vi.waitFor(() => expect(fetchFn).toHaveBeenCalled());
+    const urls = () => fetchFn.mock.calls.map((c) => String(c[0]));
+    expect(urls().some((u) => u.endsWith("/box-b"))).toBe(true);
+    expect(urls().some((u) => u.endsWith("/mac-mini"))).toBe(false);
+    (document.querySelector('[data-machine-toggle="mac-mini"]') as HTMLElement).click();
+    await vi.waitFor(() => expect(urls().some((u) => u.endsWith("/mac-mini"))).toBe(true));
+    const after = fetchFn.mock.calls.length;
+    (document.querySelector('[data-machine-toggle="mac-mini"]') as HTMLElement).click(); // collapse
+    (document.querySelector('[data-machine-toggle="mac-mini"]') as HTMLElement).click(); // unfold again
+    expect(fetchFn.mock.calls.length).toBe(after); // already loaded — no second dial
+  });
+
+  it("a machine name with dots and dashes gets its own group, id and remembered state", () => {
+    boot({ devMachines: [machine({ id: "a", logicalName: "mac.mini-1" })] });
+    const group = document.querySelector('[data-machine-group="mac.mini-1"]') as HTMLElement;
+    expect(group).not.toBeNull();
+    const toggle = group.querySelector("[data-machine-toggle]") as HTMLElement;
+    const body = group.querySelector("[data-machine-body]") as HTMLElement;
+    expect(toggle.getAttribute("aria-controls")).toBe(body.id);
+    toggle.click();
+    expect(memStore.get("pantheon.sidebar.machine.mac.mini-1")).toBe("closed");
+    expect(body.hidden).toBe(true);
+  });
+
+  it("folding the sidebar re-fits the active terminal (the workspace just changed width)", () => {
+    boot({ devMachines: [machine({ id: "a", logicalName: "mac-mini" })] });
+    (document.querySelector('[data-open-terminal="mac-mini"]') as HTMLElement).click();
+    const fit = FakeFitAddon.instances[0];
+    const before = fit.fits.length;
+    (document.querySelector("[data-sidebar-toggle]") as HTMLElement).click();
+    expect(fit.fits.length).toBeGreaterThan(before);
+    expect(fit.fits.every((f) => f.visible)).toBe(true);
+  });
+
+  it("an empty registry shows the labelled empty state inside the sidebar", () => {
+    boot({ devMachines: [] });
+    const aside = document.querySelector("aside[data-sidebar]") as HTMLElement;
+    expect(aside.querySelector('[data-state="empty"]')?.textContent).toMatch(/No dev machines configured/);
   });
 });

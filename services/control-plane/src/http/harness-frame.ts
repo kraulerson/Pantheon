@@ -336,7 +336,52 @@ export const HARNESS_CLIENT_JS = `
       if (slot) setTimeout(function () { loadTmux(slot); }, TMUX_REFRESH_AFTER_CREATE_MS);
     });
   });
-  Array.prototype.forEach.call(doc.querySelectorAll('[data-tmux-list]'), function (s) { loadTmux(s); });
+  // ---- sidebar: fold/unfold the whole thing and each machine; remembered per browser ----
+  function remember(k, v) { try { window.localStorage.setItem(k, v); } catch (e) {} }
+  function recall(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } }
+  var aside = doc.querySelector('[data-sidebar]');
+  var sideToggle = doc.querySelector('[data-sidebar-toggle]');
+  function setSidebar(open) {
+    if (!aside) return;
+    if (open) aside.removeAttribute('data-collapsed'); else aside.setAttribute('data-collapsed', '');
+    if (sideToggle) sideToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (active !== null && tabs[active] && tabs[active].fit) tabs[active].fit(); // the workspace just changed width
+  }
+  if (aside) setSidebar(recall('pantheon.sidebar') !== 'closed');
+  if (sideToggle) sideToggle.addEventListener('click', function () {
+    var open = !!(aside && aside.hasAttribute('data-collapsed'));
+    setSidebar(open); remember('pantheon.sidebar', open ? 'open' : 'closed');
+  });
+  Array.prototype.forEach.call(doc.querySelectorAll('[data-machine-toggle]'), function (t) {
+    var name = t.getAttribute('data-machine-toggle');
+    var group = t.closest ? t.closest('[data-machine-group]') : null;
+    var body = group ? group.querySelector('[data-machine-body]') : null;
+    if (!body) return;
+    var apply = function (open) { body.hidden = !open; t.setAttribute('aria-expanded', open ? 'true' : 'false'); };
+    var stored = recall('pantheon.sidebar.machine.' + name);
+    if (stored === 'open' || stored === 'closed') apply(stored === 'open');
+    t.addEventListener('click', function () {
+      var open = body.hidden;
+      apply(open);
+      remember('pantheon.sidebar.machine.' + name, open ? 'open' : 'closed');
+      // A collapsed group is never dialled (SSH-dial amplifier, M1 task 1 audit); load it the FIRST
+      // time it is unfolded, then leave it to Refresh like any other list.
+      if (open) loadTmuxIfNew(body.querySelector('[data-tmux-list]'));
+    });
+  });
+  var chatBtn = doc.querySelector('[data-open-chat]');
+  if (chatBtn) chatBtn.addEventListener('click', function () { openChatTab('Chat'); });
+
+  function loadTmuxIfNew(slot) {
+    if (!slot) return;
+    var st = tmuxLoads[slot.getAttribute('data-tmux-list')];
+    if (!st || st.gen === 0) loadTmux(slot);
+  }
+  function slotVisible(slot) {
+    var body = slot.closest ? slot.closest('[data-machine-body]') : null;
+    return !body || !body.hidden;
+  }
+  Array.prototype.forEach.call(doc.querySelectorAll('[data-tmux-list]'), function (s) { if (slotVisible(s)) loadTmux(s); });
 
   switchTo(null);
   window.__harness = { openTerminalTab: openTerminalTab, openChatTab: openChatTab, loadTmux: loadTmux,
@@ -348,45 +393,53 @@ function machineOption(m: DevMachine): string {
   return `<option value="${esc(m.logicalName)}">${esc(m.logicalName)} (${esc(m.user)}@${esc(m.host)})</option>`;
 }
 
-/** Launch controls for one READY machine: plain shell + live tmux list + new-tmux-session form. */
-function machineLaunch(m: DevMachine): string {
+type MachineState = "ready" | "unprovisioned" | "disabled";
+const machineState = (m: DevMachine): MachineState => (!m.enabled ? "disabled" : !m.provisioned ? "unprovisioned" : "ready");
+const STATE_GLYPH: Record<MachineState, string> = { ready: "[✓]", unprovisioned: "[ ]", disabled: "[x]" };
+const STATE_TEXT: Record<MachineState, string> = { ready: "ready", unprovisioned: "not provisioned", disabled: "disabled" };
+
+/**
+ * One collapsible sidebar group per registered machine (operator request 2026-08-27). READY machines
+ * open by default with their controls — plain shell, live tmux list, Refresh, new-session form (the
+ * same data-attributes the client wires); not-ready ones start closed with the reason in words and a
+ * Configuration link (registering stays there). The client re-applies the operator's remembered
+ * open/closed choice per machine. Every state is text + glyph (CC1).
+ */
+function machineGroup(m: DevMachine, base: string): string {
   const n = esc(m.logicalName);
-  return (
-    `<div class="machine-launch" data-machine-launch="${n}">` +
-    `<button type="button" data-open-terminal="${n}" data-action="open-terminal">Claude CLI → ${n}</button> ` +
-    // Status text is its own live region; the session buttons render in the sibling container so a
-    // refresh never re-announces the whole list or destroys a focused button inside a live region.
-    `<span class="tmux-list" data-tmux-list="${n}" data-state="loading">` +
-    `<span data-tmux-status role="status" aria-live="polite">[~] listing tmux sessions on ${n}…</span> ` +
-    `<span data-tmux-sessions></span>` +
-    `</span> ` +
-    `<button type="button" data-tmux-refresh="${n}" class="tmux-refresh">Refresh tmux list (${n})</button> ` +
-    // novalidate: native constraint validation would swallow the submit event and show a transient
-    // browser bubble instead of our persistent, labeled [!] text (CC1); the pattern stays as a hint.
-    `<form data-tmux-new="${n}" class="tmux-new" novalidate>` +
-    `<label>New tmux session on ${n} <input name="session" pattern="${TMUX_NAME_PATTERN}" maxlength="64" placeholder="session-name" required></label> ` +
-    `<button type="submit">+ tmux session on ${n}</button> <span data-tmux-new-status role="status"></span>` +
-    `</form>` +
-    `</div>`
-  );
+  const state = machineState(m);
+  const open = state === "ready";
+  const body =
+    state === "ready"
+      ? `<button type="button" data-open-terminal="${n}" data-action="open-terminal" class="shell-btn">Claude CLI → ${n} (new shell)</button>
+    <div class="tmux-list" data-tmux-list="${n}" data-state="loading">
+      <span data-tmux-status role="status" aria-live="polite">[~] listing tmux sessions on ${n}…</span>
+      <div data-tmux-sessions class="tmux-sessions"></div>
+    </div>
+    <button type="button" data-tmux-refresh="${n}" class="tmux-refresh">Refresh tmux list (${n})</button>
+    <form data-tmux-new="${n}" class="tmux-new" novalidate>
+      <label>New tmux session <input name="session" pattern="${TMUX_NAME_PATTERN}" maxlength="64" placeholder="session-name" required></label>
+      <button type="submit">+ tmux session on ${n}</button> <span data-tmux-new-status role="status"></span>
+    </form>`
+      : `<p class="muted"><em>${STATE_TEXT[state]}</em> — set it up in <a href="${withBase(base, "/admin/config")}">Configuration</a>.</p>`;
+  return `<section class="machine" data-machine-group="${n}" data-state="${state}">
+  <button type="button" class="machine-toggle" data-machine-toggle="${n}" aria-expanded="${open ? "true" : "false"}" aria-controls="machine-${n}"><span class="glyph" aria-hidden="true">${STATE_GLYPH[state]}</span> ${n} <span class="muted">${STATE_TEXT[state]}</span></button>
+  <div class="machine-launch" data-machine-body id="machine-${n}"${open ? "" : " hidden"}>
+    ${body}
+  </div>
+</section>`;
 }
 
-function shortcuts(machines: readonly DevMachine[], base: string): string {
-  const ready = machines.filter((m) => m.provisioned && m.enabled);
-  const notReady = machines.filter((m) => !(m.provisioned && m.enabled));
-  if (machines.length === 0) {
-    return `<p class="empty-state" data-state="empty">No dev machines configured. Add one in <a href="${withBase(base, "/admin/config")}">Configuration</a>.</p>`;
-  }
-  const readyHtml = ready.map(machineLaunch).join(" ");
-  const notReadyHtml = notReady
-    .map(
-      (m) =>
-        `<span data-state="unavailable">Claude CLI → ${esc(m.logicalName)} — <em>${esc(
-          m.enabled ? "not provisioned" : "disabled"
-        )}</em></span>`
-    )
-    .join(" ");
-  return `<div class="shortcuts">${readyHtml}${notReadyHtml ? ` <div class="muted">${notReadyHtml}</div>` : ""}</div>`;
+function sidebar(machines: readonly DevMachine[], base: string): string {
+  const groups =
+    machines.length === 0
+      ? `<p class="empty-state" data-state="empty">No dev machines configured. Add one in <a href="${withBase(base, "/admin/config")}">Configuration</a>.</p>`
+      : machines.map((m) => machineGroup(m, base)).join("\n");
+  return `<aside class="sidebar" data-sidebar id="sidebar" aria-label="Chat and machines">
+  <button type="button" class="side-item" data-open-chat><span class="glyph" aria-hidden="true">[💬]</span> Chat</button>
+  <h2 class="side-heading">Machines</h2>
+  ${groups}
+</aside>`;
 }
 
 export function renderHarnessFrame(model: HarnessFrameModel): string {
@@ -403,12 +456,16 @@ ${pageHead(base)}
 <style>
   body { margin: 0; display: flex; flex-direction: column; height: 100vh; }
   header { padding: .4rem .8rem; display: flex; gap: 1rem; align-items: center; }
-  nav.launch-bar { padding: .3rem .5rem; }
-  .machine-launch { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; padding: .15rem 0; }
-  .tmux-list { font-family: monospace; }
-  .tmux-list button { font-family: monospace; }
-  .tmux-new { display: inline-flex; gap: .3rem; align-items: center; }
-  .tmux-new input { width: 11em; }
+  .shell { display: flex; flex: 1; min-height: 0; }
+  .sidebar { width: 17rem; flex: none; overflow: auto; padding: .5rem; display: flex; flex-direction: column; gap: .25rem; }
+  .sidebar[data-collapsed] { display: none; }
+  .workspace { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+  .machine-launch { display: flex; flex-direction: column; gap: .35rem; padding: .25rem .25rem .5rem 1.4rem; }
+  .tmux-list { font-family: monospace; font-size: .85em; }
+  .tmux-sessions { display: flex; flex-direction: column; gap: .2rem; margin-top: .2rem; }
+  .tmux-list button { font-family: monospace; text-align: left; }
+  .tmux-new { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; }
+  .tmux-new input { width: 9em; }
   nav.tabs { display: flex; gap: .25rem; padding: .25rem .5rem 0; overflow-x: auto; }
   nav.tabs [role="tab"] { padding: .3rem .7rem; }
   [data-close] { margin-left: .4rem; cursor: pointer; }
@@ -424,7 +481,7 @@ ${pageHead(base)}
 </style>
 </head>
 <body>
-<header><strong>Pantheon Harness</strong>
+<header><button type="button" data-sidebar-toggle aria-expanded="true" aria-controls="sidebar" title="Show or hide the sidebar">☰</button> <strong>Pantheon Harness</strong>
   <button type="button" data-action="new-session">+ New Session</button>
   <!-- Configuration lives in the page chrome, NOT inside the empty-state message: it used to
        appear only when the registry was empty, so registering the first machine removed the
@@ -439,7 +496,9 @@ ${pageHead(base)}
      chrome, NOT inside the welcome section — switchTo() hides the welcome section when a tab opens,
      which used to hide the shortcuts too and blocked opening a second terminal. The live tmux
      session buttons (M1 task 1) live here for the same reason. -->
-<nav class="launch-bar" aria-label="Open a terminal">${shortcuts(model.devMachines, base)}</nav>
+<div class="shell">
+${sidebar(model.devMachines, base)}
+<div class="workspace">
 
 <!-- Tab bar: terminal/chat tabs are added here at runtime -->
 <nav class="tabs" data-tabbar role="tablist" aria-label="Open sessions"></nav>
@@ -450,6 +509,8 @@ ${pageHead(base)}
     <p>Use <strong>New Session</strong>, or a shortcut in the launch bar above: <strong>Claude CLI → machine</strong> opens a fresh shell; a <strong>machine · session</strong> button attaches to that live tmux session. Sessions open as tabs above; close a tab with its ✕.</p>
   </section>
 </main>
+</div>
+</div>
 
 <!-- New Session: AI SYSTEM × IDENTITY (§9 C.1) + Claude CLI → dev machine (C.6) -->
 <dialog id="new-session" aria-labelledby="h-new">

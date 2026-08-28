@@ -62,6 +62,16 @@ for handoff clarity. Categories are ordered by impact severity.
   Homepage-tile navigation to `/login`); recorded as a residual.
 
 ### Added
+- 2026-08-28 **Machines sidebar** (`machines-sidebar`; operator request 2026-08-27 "a collapsible sidebar
+  that shows each registered dev machine and a list of tmux sessions under it"). The harness's launch
+  bar is replaced by a collapsible left sidebar in LibreChat's conversation-list style: a **Chat** entry
+  (opens the Chat tab), then one collapsible group per registered machine — state in words + glyph
+  (`[✓] ready`, `[ ] not provisioned`, `[x] disabled`); a ready group holds the plain-shell button, the
+  live tmux session list, Refresh and the new-session form (unchanged data-attributes and behaviour);
+  a not-ready group holds the reason and a Configuration link (registering stays there). The sidebar
+  (☰ in the header) and each group remember open/closed per browser (`localStorage`); folding the
+  sidebar re-fits the active terminal. +6 jsdom behaviour tests; two render tests re-pointed from the
+  launch bar to the sidebar (BUGS #22 invariant preserved).
 - 2026-08-27 **The harness under the chat address, in LibreChat's clothes** (`harness-under-chat-address`;
   ruling 2026-08-27, design `docs/2026-08-27-harness-under-chat-address-design.md`; resolves step-08
   item 5 for the terminal plane). The VM's Caddy now serves the console at

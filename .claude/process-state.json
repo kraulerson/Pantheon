@@ -1,9 +1,9 @@
 {
   "build_loop": {
-    "feature": "machines-sidebar",
+    "feature": null,
     "step": 0,
     "steps_completed": [],
-    "started_at": "2026-08-28T15:07:20Z"
+    "started_at": null
   },
   "uat_session": {
     "session_id": 4,

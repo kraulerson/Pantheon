@@ -130,8 +130,9 @@ describe("renderHarnessFrame — launch shortcuts persist while a tab is open (B
     expect(h).toContain("data-open-terminal=");           // present in the page
     expect(welcomeBlock).not.toContain("data-open-terminal="); // but NOT inside the welcome section
   });
-  it("puts the shortcuts in a persistent launch bar", () => {
-    expect(html()).toMatch(/<nav class="launch-bar"[^>]*>[\s\S]*data-open-terminal=/);
+  it("puts the shortcuts in the persistent sidebar (the launch bar became the sidebar, 2026-08-28)", () => {
+    expect(html()).toMatch(/<aside class="sidebar" data-sidebar[^>]*>[\s\S]*data-open-terminal=/);
+    expect(html()).not.toContain('class="launch-bar"');
   });
 });
 
@@ -166,11 +167,12 @@ describe("renderHarnessFrame — tmux-aware launcher (M1 task 1)", () => {
     expect(html).toMatch(/<form[^>]*data-tmux-new="mac-mini"[^>]*>[\s\S]*<input[^>]*name="session"/);
   });
 
-  it("keeps the tmux controls in the persistent launch bar (BUGS #22 invariant)", () => {
+  it("keeps the tmux controls inside the machine's sidebar group (BUGS #22 invariant)", () => {
     const html = renderHarnessFrame({ devMachines: [ready] });
-    const bar = html.slice(html.indexOf('<nav class="launch-bar"'), html.indexOf("</nav>"));
-    expect(bar).toContain('data-tmux-list="mac-mini"');
-    expect(bar).toContain('data-tmux-new="mac-mini"');
+    const aside = html.slice(html.indexOf('<aside class="sidebar"'), html.indexOf("</aside>"));
+    expect(aside).toContain('data-machine-group="mac-mini"');
+    expect(aside).toContain('data-tmux-list="mac-mini"');
+    expect(aside).toContain('data-tmux-new="mac-mini"');
   });
 
   it("escapes the machine name inside the tmux control attributes", () => {
