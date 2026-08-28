@@ -123,3 +123,26 @@ LibreChat recreated. **Gotcha fixed in README:** `caddy reload` read the OLD bin
 inode after `git pull` — `docker compose up -d --force-recreate caddy` is the step. Karl's browser
 checks still owed: footer links after sign-in, themed harness, terminal tab through the chat address,
 Chat tab, light/dark following. Next: UAT-4 template (gate 2/2) → Karl's session → M1 task 4.
+
+## Added 2026-08-28 — UAT-4 closed, BUGS #42 fixed, machines sidebar shipped
+
+- **UAT-4 closed** (16/20 pass): `tests/uat/sessions/2026-08-27-session-4/` (submission + triage).
+  **#14 → BUGS #42 (SEV-2), FIXED (`b169315`, ruling A):** the inbox read only Pantheon's Peta while
+  Alden-1's live ticket sat in **Alden's capability-gateway Peta**. Inbox + keycard door now read a
+  LIST of stores — this host's Peta (label `Pantheon`) plus `PANTHEON_APPROVAL_SOURCES`
+  (`[{label,url,token}]`, env only, malformed → fail loud) — in parallel, each row stamped with its
+  **Source**, a failed store named in a banner while the others still show, empty state naming what
+  was checked. **Open:** the Alden gateway entry itself needs a token from the Alden infra session —
+  prompt ready at `docs/handoffs/2026-08-28-prompt-for-alden-infra-approval-source.md` (Karl gives it
+  to that session; then add the env line on VM 1093 and restart). #16/#19 were not reproducible
+  (308 = `http://`); re-test in UAT-5.
+- **Context health check done** (Bible §§4/5/7/9/11 + a health-check record; `e9c44b2`).
+- **Feature 12 — machines sidebar SHIPPED** (`cd0f4a8`, deployed, live-verified): collapsible left
+  sidebar, Chat entry + one foldable group per machine with its live tmux sessions, Refresh and
+  new-session form; not-ready machines show the reason + Configuration link; sidebar and groups
+  remember open/closed; folding re-fits the terminal. Self-audit (the parallel auditor died on a
+  model limit — recorded) found and fixed the collapsed-group SSH dial. Suite 637/5.
+- **Gate 1/2.** Next feature trips UAT-5 (must include: a real pending approval with the Alden source
+  wired, the keycard commands over **https**, and the sidebar).
+- Next work: **M1 task 4 — session-waker promotion + deterministic guardrails (TP-1/TP-5)** per
+  `docs/handoffs/2026-08-20-M1-build-plan.md` §4.
