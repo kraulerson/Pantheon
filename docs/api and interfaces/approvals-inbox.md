@@ -1,7 +1,8 @@
 # Interface — Pending-Approvals inbox and the shared approvals projection (M1 task 3, TP-2)
 
-One read-only page over Peta's approval queue, plus the ONE module through which every
-reference-only read of that queue passes (D8).
+One read-only page over EVERY approval store the household uses (this host's Peta, labelled
+`Pantheon`, plus each `PANTHEON_APPROVAL_SOURCES` entry — BUGS #42), plus the ONE module through
+which every reference-only read of those queues passes (D8).
 
 ## Page — `GET /admin/approvals` (operator guard: admin bearer or session cookie)
 
@@ -11,10 +12,11 @@ from the harness chrome as **Approvals** (`data-nav="approvals"`).
 
 | Outcome | Code | Markup contract |
 |---|---|---|
-| pending rows | 200 | `<main data-state="ok">` + `<tr data-approval-id="…">` per row: Identity · Tool · Target · Age (`<time datetime>` + words) · Status · Ref |
-| queue empty | 200 | `<main data-state="empty">` + "No pending approvals — nothing is waiting on you." |
-| Peta not wired | 503 | `<main data-state="unavailable">` + "[!] the approval gate (Peta) is not configured on this server" |
-| Peta failed / slow / odd shape | 502 | `<main data-state="failed">` + our own label (below); upstream text is NEVER echoed |
+| pending rows | 200 | `<main data-state="ok" data-sources="A|B">` + `<tr data-approval-id="…">` per row: **Source** · Identity · Tool · Target · Age (`<time datetime>` + words) · Status · Ref |
+| all stores empty | 200 | `<main data-state="empty">` + "No pending approvals — nothing is waiting on you. Checked: A, B." |
+| some store failed | 200 | rows from the stores that answered + one `<p class="banner" data-source-state="failed">[!] <label>: <our label> — its requests are missing from this page.</p>` per failed store |
+| no store configured | 503 | `<main data-state="unavailable">` + "[!] the approval gate (Peta) is not configured on this server" |
+| EVERY store failed / slow / odd shape | 502 | `<main data-state="failed">` + the per-store banners; upstream text is NEVER echoed |
 
 Notes rendered under the table: `<p data-more="true">` when the page walk stopped early (cap, page
 budget, no-progress page) or Peta reports another page; `<p data-hidden-count="N">` when N returned
@@ -41,7 +43,8 @@ injectable via `AppOptions.now` (tests).
 | `approvalsArray(res)` | top-level array; or `requests|approvals|items|pending` at top level; or `data` array; or `data.<same keys>` — else `undefined` |
 | `hasMoreApprovals(res)` | `true` only for a literal boolean `true` at `hasMore` or `data.hasMore` |
 | `readApprovalReferences(reader, timeoutMs)` | ONE unfiltered call (the door); never throws → `{ state:"ok", approvals (≤ MAX_APPROVALS = 200), truncated, more }` or `{ state:"failed", message: ReadFailureLabel }` |
-| `readPendingApprovals(reader, timeoutMs)` | the inbox walk: `{ status:"PENDING", page: 1..MAX_PENDING_PAGES (10) }` until `hasMore` is false, ONE timeout for the whole walk, dedupe by id, stop with `more:true` on cap / page budget / a page adding nothing; any page failing fails the read (never a partial list as complete) |
+| `ApprovalSource` / `readPendingFromSources(sources, timeoutMs)` | every store read IN PARALLEL with the walk below (a hung store costs one timeout for the whole read); each reference stamped with `source`; a failed store reported by label, never thrown |
+| `readPendingApprovals(reader, timeoutMs)` | the per-store walk: `{ status:"PENDING", page: 1..MAX_PENDING_PAGES (10) }` until `hasMore` is false, ONE timeout for the whole walk, dedupe by id, stop with `more:true` on cap / page budget / a page adding nothing; any page failing fails the read (never a partial list as complete) |
 | `ReadFailureLabel` | the ONLY failure texts: `the approval gate did not answer` · `the approval gate did not answer in time` · `unexpected approvals response shape` |
 
 ## Unchanged consumer — keycard door `GET /keycard/v1/approvals`
@@ -49,3 +52,10 @@ injectable via `AppOptions.now` (tests).
 Now reads through `readApprovalReferences`; contract as in `keycard-door.md`: 200
 `{ approvals, truncated }`, 503 `{ state:"unavailable" }` when unwired, 502 `{ state:"failed", message }`
 with the same three labels; bounds 200 / 256 / 10 s.
+
+## Sources — `src/approvals/sources.ts`
+
+`PANTHEON_APPROVAL_SOURCES` (env, JSON `[{ label, url, token }]`): `label` `^[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}$`,
+unique, not `Pantheon` (reserved for this host's Peta); `url` an origin (`http(s)://host[:port]`, the
+client appends `/admin`); `token` that store's Peta admin token (env only). Malformed → the service
+refuses to start with a message that names the entry and never echoes a token.

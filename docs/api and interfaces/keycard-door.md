@@ -11,7 +11,7 @@ the admin bearer is rejected. All routes are `GET`. Every failure is a labeled J
 |---|---|---|---|
 | `GET /keycard/v1/whoami` | none | `{ principal, scopes[], expiresAt }` | never the token or its hash |
 | `GET /keycard/v1/sessions` | `sessions:read` | `{ sessions: [{ id, identityId, backendId, taintFlag, createdAt, closedAt }] }` | metadata only, newest first, ≤ 500 |
-| `GET /keycard/v1/approvals` | `approvals:read` | `{ approvals: [{ id?, tool?, server?, status?, createdAt?, requester? }], truncated }` | reference-only (D8); ≤ 200 items, ≤ 256 chars per field; upstream timeout 10 s |
+| `GET /keycard/v1/approvals` | `approvals:read` | `{ approvals: [{ id?, tool?, server?, status?, createdAt?, requester?, source }], truncated, failed? }` | reference-only (D8); PENDING from EVERY configured store (`source` = store label; `failed` lists stores that did not answer, omitted when all did — BUGS #42); ≤ 200 items per store, ≤ 256 chars per field; one upstream timeout (10 s) for the whole read |
 | `GET /keycard/v1/usage` | `usage:read` | — | `503 { state:"unavailable", message }` until the M2 usage ledger exists |
 
 Failure codes (in order of evaluation): `503 keycard_unavailable` (feature not wired) ·

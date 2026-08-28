@@ -26,6 +26,7 @@ import { SqliteRegistry, seedDefaults } from "./registry/sqlite-repository.js";
 import { RegistryService } from "./registry/service.js";
 import { McpRegistrationService, type PetaServerAdmin } from "./registry/mcp-registration.js";
 import { PetaAdminClient } from "./peta/index.js";
+import { approvalSourcesFrom, type ApprovalSourceConfig } from "./approvals/sources.js";
 
 /** `PANTHEON_CHAT_URL`: only an https origin (optionally a port, trailing slash) is accepted — anything else is ignored loudly. */
 export function chatUrlFrom(raw: string | undefined): string | undefined {
@@ -60,6 +61,8 @@ export interface ServerConfig {
   readonly dbPath: string;
   readonly keyDir: string;
   readonly peta?: { readonly url: string; readonly token: string };
+  /** Extra approval stores (BUGS #42) — `PANTHEON_APPROVAL_SOURCES`. */
+  readonly approvalSources?: readonly ApprovalSourceConfig[];
   /** Operator passphrase for #9 browser login (§7). When set, /login is enabled. */
   readonly operatorPassword?: string;
   /** Add `Secure` to the session cookie (set true behind HTTPS/your reverse proxy). */
@@ -118,6 +121,10 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
     keycards,
     sessionLedger,
     ...(petaClient ? { peta: petaClient } : {}),
+    approvalSources: (cfg.approvalSources ?? []).map((src) => {
+      const client = new PetaAdminClient(src.url, src.token, cfg.fetchFn);
+      return { label: src.label, reader: { listApprovals: (filter?: Parameters<PetaAdminClient["listApprovals"]>[0]) => client.listApprovals(filter) } };
+    }),
     ...(cfg.operatorPassword ? { operatorPassword: cfg.operatorPassword } : {}),
     ...(cfg.secureCookies !== undefined ? { secureCookies: cfg.secureCookies } : {}),
     ...(cfg.chatUrl !== undefined ? { chatUrl: cfg.chatUrl } : {})
@@ -159,6 +166,7 @@ export function configFromEnv(env: Record<string, string | undefined>): ServerCo
     keyHandle: env["PANTHEON_KEY_HANDLE"] ?? "harness",
     ...(env["PANTHEON_SESSION_DB"] ? { sessionDbPath: env["PANTHEON_SESSION_DB"] } : {}),
     ...(peta ? { peta } : {}),
+    approvalSources: approvalSourcesFrom(env["PANTHEON_APPROVAL_SOURCES"]),
     ...(env["PANTHEON_OPERATOR_PASSWORD"] ? { operatorPassword: env["PANTHEON_OPERATOR_PASSWORD"] } : {}),
     ...(env["PANTHEON_SECURE_COOKIES"] === "true" ? { secureCookies: true } : {}),
     ...(chatUrl !== undefined ? { chatUrl } : {})

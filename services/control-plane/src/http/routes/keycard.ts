@@ -24,7 +24,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Session } from "../../session/types.js";
 import type { Keycard, KeycardScope } from "../../keycard/types.js";
 import { KeycardService, KeycardValidationError } from "../../keycard/service.js";
-import { readApprovalReferences, type ApprovalsReader } from "../../approvals/projection.js";
+import { readPendingFromSources, type ApprovalSource } from "../../approvals/projection.js";
 import { KEYCARD_PREFIX } from "../auth/keycard-guard.js";
 import { escapeHtml as esc } from "../config-page.js";
 import { requestBase, withBase } from "../base-path.js";
@@ -32,8 +32,8 @@ import { pageHead } from "../theme.js";
 
 export interface KeycardDoorDeps {
   readonly keycards: KeycardService;
-  /** Peta approvals reader; absent → labeled 503. */
-  readonly approvals?: ApprovalsReader;
+  /** Every approval store to read (readers only — decide is structurally out of reach); empty → labeled 503. */
+  readonly approvalSources?: readonly ApprovalSource[];
   /** Upstream budget for the approvals read (default 10 s). */
   readonly approvalsTimeoutMs?: number;
   /** Session metadata source; absent → labeled 503. */
@@ -76,16 +76,22 @@ export function registerKeycardDoor(app: FastifyInstance, deps: KeycardDoorDeps)
   });
 
   app.get(p("approvals"), { preHandler: requireScope(keycards, "approvals:read") }, async (_req, reply) => {
-    if (!deps.approvals) {
+    const sources = deps.approvalSources ?? [];
+    if (sources.length === 0) {
       reply.code(503);
       return { state: "unavailable", message: "the approval gate (Peta) is not configured on this server" };
     }
-    const res = await readApprovalReferences(deps.approvals, approvalsTimeoutMs);
-    if (res.state === "failed") {
+    const reads = await readPendingFromSources(sources, approvalsTimeoutMs);
+    const ok = reads.flatMap((r) => (r.result.state === "ok" ? [r.result] : []));
+    const failed = reads.flatMap((r) => (r.result.state === "failed" ? [r.label] : []));
+    if (ok.length === 0) {
       reply.code(502);
-      return { state: "failed", message: res.message };
+      const first = reads[0]?.result;
+      return { state: "failed", message: first && first.state === "failed" ? first.message : "the approval gate did not answer" };
     }
-    return { approvals: res.approvals, truncated: res.truncated };
+    // Same shape as before (`approvals`, `truncated`); each reference now carries `source`, and
+    // `failed` names any store that did not answer (omitted when all did) — BUGS #42.
+    return { approvals: ok.flatMap((r) => r.approvals), truncated: ok.some((r) => r.truncated), ...(failed.length > 0 ? { failed } : {}) };
   });
 
   app.get(p("sessions"), { preHandler: requireScope(keycards, "sessions:read") }, async (_req, reply) => {

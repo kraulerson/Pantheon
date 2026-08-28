@@ -10,6 +10,7 @@ import {
   hasMoreApprovals,
   readApprovalReferences,
   readPendingApprovals,
+  readPendingFromSources,
   MAX_APPROVALS,
   MAX_FIELD_CHARS
 } from "../src/approvals/projection.js";
@@ -140,5 +141,41 @@ describe("readPendingApprovals — asks Peta for PENDING only and walks its page
     expect(projectApprovalReference({ createdAt: T / 1000 }).createdAt).toBe("2026-08-26T12:00:00.000Z");
     expect(projectApprovalReference({ createdAt: Number.NaN }).createdAt).toBeUndefined();
     expect(projectApprovalReference({ createdAt: { $date: 1 } }).createdAt).toBeUndefined();
+  });
+});
+
+describe("readPendingFromSources — every approval store the household uses, read in parallel (BUGS #42)", () => {
+  const row = (id: string) => ({ ...RAW, approvalId: id, status: "PENDING" });
+  const page = (ids: string[]) => ({ success: true, data: { requests: ids.map(row), page: 1, pageSize: 100, hasMore: false } });
+
+  it("merges the sources' pending rows, each stamped with its source label", async () => {
+    const out = await readPendingFromSources(
+      [{ label: "Pantheon", reader: { listApprovals: async () => page(["p-1"]) } }, { label: "Alden gateway", reader: { listApprovals: async () => page(["a-1", "a-2"]) } }],
+      1000
+    );
+    expect(out.map((s) => s.label)).toEqual(["Pantheon", "Alden gateway"]);
+    expect(out.every((s) => s.result.state === "ok")).toBe(true);
+    const rows = out.flatMap((s) => (s.result.state === "ok" ? s.result.approvals : []));
+    expect(rows.map((r) => [r.id, r.source])).toEqual([["p-1", "Pantheon"], ["a-1", "Alden gateway"], ["a-2", "Alden gateway"]]);
+  });
+
+  it("a failing or hung source is reported by name while the others still answer — and a hung one costs one timeout, not one per source", async () => {
+    const t0 = Date.now();
+    const out = await readPendingFromSources(
+      [
+        { label: "Pantheon", reader: { listApprovals: async () => page(["p-1"]) } },
+        { label: "hung", reader: { listApprovals: () => new Promise(() => {}) } },
+        { label: "broken", reader: { listApprovals: async () => { throw new Error("boom"); } } }
+      ],
+      60
+    );
+    expect(Date.now() - t0).toBeLessThan(150);
+    expect(out[0]?.result.state).toBe("ok");
+    expect(out[1]?.result).toEqual({ state: "failed", message: "the approval gate did not answer in time" });
+    expect(out[2]?.result).toEqual({ state: "failed", message: "the approval gate did not answer" });
+  });
+
+  it("no sources → an empty read (the caller labels that as unavailable)", async () => {
+    expect(await readPendingFromSources([], 1000)).toEqual([]);
   });
 });

@@ -264,8 +264,13 @@ can never leak anything and can never be tricked into running anything.</p>
   <tr><th>You see</th><th>It means</th></tr>
   <tr><td>A table of lines</td><td>Those requests are waiting. Already-decided ones are not listed; a
       note underneath says how many were left out.</td></tr>
-  <tr><td><em>No pending approvals — nothing is waiting on you.</em></td><td>The queue is empty. This is
-      the normal state.</td></tr>
+  <tr><td><em>No pending approvals — nothing is waiting on you. Checked: …</em></td><td>Every store
+      named after "Checked:" answered and had nothing waiting. The page reads more than one approval
+      store — this harness's own, and any others set up for it (Alden's gateway keeps its own) — and
+      each line says which store it came from.</td></tr>
+  <tr><td><em>[!] &lt;store&gt;: the approval gate did not answer …</em></td><td>One store could not be
+      read; the lines from the others are still shown. Press <strong>Reload</strong>; if it persists,
+      that store (not this page) needs attention.</td></tr>
   <tr><td><em>More approvals are waiting than this page shows</em></td><td>The page asks Peta only
       for waiting items and reads up to ten pages (200 lines at most); press <strong>Reload</strong>
       after some have been decided.</td></tr>

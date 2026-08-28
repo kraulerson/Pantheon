@@ -8,9 +8,17 @@
 import { escapeHtml as esc } from "./config-page.js";
 import { withBase } from "./base-path.js";
 import { pageHead } from "./theme.js";
-import type { ApprovalReference } from "../approvals/projection.js";
+import type { ApprovalReference, ReadFailureLabel } from "../approvals/projection.js";
 
 export type InboxState = "ok" | "empty" | "unavailable" | "failed";
+
+/** One approval store's outcome for this page (BUGS #42). */
+export interface SourceStatus {
+  readonly label: string;
+  readonly state: "ok" | "failed";
+  /** Our own label only — never upstream text. */
+  readonly message?: ReadFailureLabel;
+}
 
 export interface ApprovalsInboxModel {
   readonly state: InboxState;
@@ -24,6 +32,8 @@ export interface ApprovalsInboxModel {
   readonly more: boolean;
   /** Our own label for `failed` / `unavailable` — never upstream text. */
   readonly message?: string;
+  /** Every store that was asked, in order, with its outcome. Empty → `unavailable`. */
+  readonly sources: readonly SourceStatus[];
   readonly nowMs: number;
   /** Mount prefix for this request (`/harness` on the chat site, `""` on the admin site). */
   readonly base?: string;
@@ -49,6 +59,7 @@ function rows(model: ApprovalsInboxModel): string {
   return model.approvals
     .map(
       (a) => `<tr data-approval-id="${esc(a.id ?? "")}">
+  <td>${cell(a.source)}</td>
   <td>${cell(a.requester)}</td><td>${cell(a.tool)}</td><td>${cell(a.server)}</td>
   <td>${a.createdAt ? `<time datetime="${esc(a.createdAt)}">${esc(formatAge(a.createdAt, model.nowMs))}</time>` : esc(formatAge(undefined, model.nowMs))}</td>
   <td>${cell(a.status)}</td><td class="ref">${cell(a.id)}</td>
@@ -62,17 +73,27 @@ function body(model: ApprovalsInboxModel): string {
     case "unavailable":
       return `<p class="banner">[!] ${esc(model.message ?? "the approval gate (Peta) is not configured on this server — nothing to read")}</p>`;
     case "failed":
-      return `<p class="banner">[!] Could not read the approval queue: ${esc(model.message ?? "the approval gate did not answer")}. Reload to try again.</p>`;
+      return `${sourceBanners(model)}<p class="banner">[!] Could not read any approval queue. Reload to try again.</p>`;
     case "empty":
-      return `<p class="empty-state">No pending approvals — nothing is waiting on you.</p>${notes(model)}`;
+      return `${sourceBanners(model)}<p class="empty-state">No pending approvals — nothing is waiting on you. Checked: ${esc(checked(model))}.</p>${notes(model)}`;
     case "ok":
-      return `<table>
-<thead><tr><th scope="col">Identity</th><th scope="col">Tool</th><th scope="col">Target</th><th scope="col">Age</th><th scope="col">Status</th><th scope="col">Ref</th></tr></thead>
+      return `${sourceBanners(model)}<table>
+<thead><tr><th scope="col">Source</th><th scope="col">Identity</th><th scope="col">Tool</th><th scope="col">Target</th><th scope="col">Age</th><th scope="col">Status</th><th scope="col">Ref</th></tr></thead>
 <tbody>
 ${rows(model)}
 </tbody>
 </table>${notes(model)}`;
   }
+}
+
+const checked = (model: ApprovalsInboxModel): string => model.sources.filter((s) => s.state === "ok").map((s) => s.label).join(", ") || "(none)";
+
+/** A store that did not answer is SAID, by name, above whatever the others returned (CC1/CC2). */
+function sourceBanners(model: ApprovalsInboxModel): string {
+  return model.sources
+    .filter((s) => s.state === "failed")
+    .map((s) => `<p class="banner" data-source-state="failed">[!] ${esc(s.label)}: ${esc(s.message ?? "the approval gate did not answer")} — its requests are missing from this page.</p>`)
+    .join("\n");
 }
 
 function notes(model: ApprovalsInboxModel): string {
@@ -100,8 +121,8 @@ ${pageHead(base)}
 <body>
 <h1>Pantheon Harness — Pending Approvals</h1>
 <p><a href="${withBase(base, "/harness")}">&larr; Harness</a> &middot; <a href="${withBase(base, "/admin/config")}">Configuration</a> &middot; <a href="${withBase(base, "/help")}">Help — user guide</a> &middot; <a href="${withBase(base, "/admin/approvals")}">Reload</a></p>
-<p class="muted">Every request Peta reports as waiting for your decision, from every session and identity, as a reference line: who asked, which tool, which target, how long ago. No request contents are shown here.</p>
-<main data-state="${model.state}">
+<p class="muted">Every request the household's approval stores report as waiting for your decision, from every session and identity, as a reference line: which store, who asked, which tool, which target, how long ago. No request contents are shown here.</p>
+<main data-state="${model.state}" data-sources="${esc(model.sources.map((s) => s.label).join("|"))}">
 ${body(model)}
 </main>
 <p class="muted" data-resolution="m2-c3">Approve / reject buttons arrive with the M2 approval surface (C.3). Until then this inbox is read-only.</p>

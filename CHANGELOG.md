@@ -20,6 +20,16 @@ for handoff clarity. Categories are ordered by impact severity.
 ## [Unreleased]
 
 ### Fixed
+- 2026-08-28 **The Approvals inbox and the keycard door now read EVERY approval store the household
+  uses** (BUGS #42, UAT-4 #14). Alden's capability gateway has its own Peta, and that is where the
+  live tickets were; this host's Peta had never held one, so the inbox said "No pending approvals"
+  over a real request. Now: `PANTHEON_APPROVAL_SOURCES` (JSON `[{label,url,token}]`, tokens env-only,
+  malformed → fail loud at startup) adds stores next to this host's Peta ("Pantheon"); all are read in
+  parallel through the same reference-only walk; every row carries its **Source**; a store that does
+  not answer is a labelled banner while the others still show (502 only when every store fails); the
+  empty state names what was checked ("Checked: Pantheon, Alden gateway"). The door's references gain
+  `source` and the body an optional `failed: [labels]`. The Alden gateway source itself is added when
+  the Alden infra side hands over a token (cross-project custody, Karl's ruling A of 2026-08-28).
 - 2026-08-27 **Terminal tabs fill the tab and follow the browser size** (BUGS #39, operator report).
   The grid sat at xterm's 80×24 default — text stopped ~60% across and never grew vertically —
   because nothing ever asked xterm to fit its container (the resize frame chain to the remote PTY

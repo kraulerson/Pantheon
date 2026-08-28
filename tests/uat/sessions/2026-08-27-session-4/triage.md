@@ -25,4 +25,10 @@
   ALL sessions" not met for the household's live identities.
 - #16/#19: no defect confirmed (see above).
 
-## Triage — awaiting Karl's dispositions (card sent 2026-08-28)
+## Triage — Karl's dispositions (2026-08-28)
+- **#42 — Fix Now, option A:** multi-source inbox (`PANTHEON_APPROVAL_SOURCES`), rows labelled by
+  source, empty state names the sources checked, per-source failure labelled; Alden's gateway Peta
+  added as a source once the Alden infra side hands over a token (cross-project — prompt delivered).
+- **#16 / #19 — not reproducible (procedure):** 308 = `http://`; future templates say "must be https";
+  re-test in UAT-5. Tester's #16 output still not provided.
+- #15 — skipped by dependency; re-test in UAT-5.

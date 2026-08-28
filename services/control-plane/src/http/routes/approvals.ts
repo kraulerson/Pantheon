@@ -10,7 +10,8 @@
  */
 
 import type { FastifyInstance } from "fastify";
-import { readPendingApprovals, type ApprovalsListFilter, type ApprovalsReader } from "../../approvals/projection.js";
+import { readPendingFromSources, type ApprovalSource, type ApprovalsListFilter } from "../../approvals/projection.js";
+import type { SourceStatus } from "../approvals-inbox.js";
 import { renderApprovalsInbox } from "../approvals-inbox.js";
 import { requestBase } from "../base-path.js";
 
@@ -51,8 +52,8 @@ export function registerApprovalsRoutes(app: FastifyInstance, peta: ApprovalsBac
 const DEFAULT_INBOX_TIMEOUT_MS = 10_000;
 
 export interface ApprovalsInboxDeps {
-  /** Reader only — the decide verb is structurally out of the page's reach. Absent → labelled 503. */
-  readonly approvals?: ApprovalsReader;
+  /** Every approval store to read (readers only — the decide verb is structurally out of reach). Empty → labelled 503. */
+  readonly sources: readonly ApprovalSource[];
   readonly timeoutMs?: number;
   /** Clock for the rendered ages (tests). */
   readonly now?: () => number;
@@ -72,24 +73,28 @@ export function registerApprovalsInbox(app: FastifyInstance, deps: ApprovalsInbo
     const nowMs = (deps.now ?? Date.now)();
     const base = requestBase(req);
     reply.type("text/html; charset=utf-8").header("Cache-Control", "no-store");
-    if (!deps.approvals) {
+    if (deps.sources.length === 0) {
       reply.code(503);
-      return renderApprovalsInbox({ state: "unavailable", approvals: [], hiddenCount: 0, unidentifiedCount: 0, more: false, nowMs, base });
+      return renderApprovalsInbox({ state: "unavailable", approvals: [], hiddenCount: 0, unidentifiedCount: 0, more: false, sources: [], nowMs, base });
     }
-    const res = await readPendingApprovals(deps.approvals, deps.timeoutMs ?? DEFAULT_INBOX_TIMEOUT_MS);
-    if (res.state === "failed") {
+    const reads = await readPendingFromSources(deps.sources, deps.timeoutMs ?? DEFAULT_INBOX_TIMEOUT_MS);
+    const sources: SourceStatus[] = reads.map((r) => (r.result.state === "ok" ? { label: r.label, state: "ok" } : { label: r.label, state: "failed", message: r.result.message }));
+    const okReads = reads.flatMap((r) => (r.result.state === "ok" ? [r.result] : []));
+    if (okReads.length === 0) {
       reply.code(502);
-      return renderApprovalsInbox({ state: "failed", approvals: [], hiddenCount: 0, unidentifiedCount: 0, more: false, message: res.message, nowMs, base });
+      return renderApprovalsInbox({ state: "failed", approvals: [], hiddenCount: 0, unidentifiedCount: 0, more: false, sources, nowMs, base });
     }
+    const all = okReads.flatMap((r) => r.approvals);
     // An item with no reference id cannot be pointed at or resolved — counted, never shown as a row.
-    const identified = res.approvals.filter((a) => a.id !== undefined && a.id !== "");
+    const identified = all.filter((a) => a.id !== undefined && a.id !== "");
     const pending = identified.filter((a) => !isResolved(a.status));
     return renderApprovalsInbox({
       state: pending.length > 0 ? "ok" : "empty",
       approvals: pending,
       hiddenCount: identified.length - pending.length,
-      unidentifiedCount: res.approvals.length - identified.length,
-      more: res.more,
+      unidentifiedCount: all.length - identified.length,
+      more: okReads.some((r) => r.more),
+      sources,
       nowMs,
       base
     });

@@ -34,7 +34,7 @@ const peta = (requests: unknown[], extra: Record<string, unknown> = {}) => ({ su
 
 interface Made { app: FastifyInstance; listApprovals: ReturnType<typeof vi.fn> }
 
-function makeApp(o: { peta?: false | ((filter?: unknown) => Promise<unknown>); timeoutMs?: number; login?: boolean } = {}): Made {
+function makeApp(o: { peta?: false | ((filter?: unknown) => Promise<unknown>); timeoutMs?: number; login?: boolean; sources?: Array<{ label: string; reader: { listApprovals: (f?: unknown) => Promise<unknown> } }> } = {}): Made {
   const repo = new SqliteRegistry(":memory:");
   seedDefaults(repo);
   const registry = new RegistryService(repo);
@@ -47,7 +47,8 @@ function makeApp(o: { peta?: false | ((filter?: unknown) => Promise<unknown>); t
     now: () => NOW,
     ...(o.peta === false ? {} : { peta: { listApprovals, decideApproval: vi.fn(async () => ({ success: true })) } }),
     ...(o.timeoutMs !== undefined ? { approvalsTimeoutMs: o.timeoutMs } : {}),
-    ...(o.login ? { operatorPassword: "correct horse", sessions: new SessionStore() } : {})
+    ...(o.login ? { operatorPassword: "correct horse", sessions: new SessionStore() } : {}),
+    ...(o.sources ? { approvalSources: o.sources } : {})
   };
   return { app: buildApp(opts), listApprovals };
 }
@@ -283,5 +284,60 @@ describe("harness frame — reaching the inbox", () => {
     const html = renderHarnessFrame({ devMachines: [], loginEnabled: false });
     expect(html).toContain('href="/admin/approvals"');
     expect(html).toContain('data-nav="approvals"');
+  });
+});
+
+describe("GET /admin/approvals — every approval store the household uses (BUGS #42, UAT-4 #14)", () => {
+  const alden = (rows: unknown[], extra: Record<string, unknown> = {}) => ({ listApprovals: async () => peta(rows, extra) });
+  const ALDEN_ROW = { approvalId: "2a2749b3", tool: "gitea_file_write", serverId: "gitea", status: "PENDING", createdAt: minutesAgo(2), userId: "alden-1" };
+
+  it("lists rows from this host's Peta AND every configured source, each labelled with its source", async () => {
+    ({ app } = makeApp({ sources: [{ label: "Alden gateway", reader: alden([ALDEN_ROW]) }] }));
+    const html = (await get(app)).body;
+    expect(html).toContain('data-state="ok"');
+    expect(html).toContain('data-approval-id="ap-1"');
+    expect(html).toContain('data-approval-id="2a2749b3"');
+    expect(html).toMatch(/<th scope="col">Source<\/th>/);
+    expect(html).toMatch(/data-approval-id="2a2749b3">\s*<td>Alden gateway<\/td>/);
+    expect(html).toMatch(/data-approval-id="ap-1">\s*<td>Pantheon<\/td>/);
+    expect(html).toContain('data-sources="Pantheon|Alden gateway"');
+  });
+
+  it("names the stores it checked in the empty state, so 'nothing waiting' is never mistaken for 'nothing anywhere'", async () => {
+    ({ app } = makeApp({ peta: async () => peta([]), sources: [{ label: "Alden gateway", reader: alden([]) }] }));
+    const html = (await get(app)).body;
+    expect(html).toContain('data-state="empty"');
+    expect(html).toMatch(/No pending approvals[^<]*Checked: Pantheon, Alden gateway/);
+  });
+
+  it("a source that does not answer is a labelled banner; the other sources' rows still show (200)", async () => {
+    ({ app } = makeApp({ sources: [{ label: "Alden gateway", reader: { listApprovals: async () => { throw new Error("secret-detail"); } } }] }));
+    const res = await get(app);
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain('data-approval-id="ap-1"');
+    expect(res.body).toMatch(/data-source-state="failed"[^>]*>\[!\] Alden gateway: the approval gate did not answer/);
+    expect(res.body).not.toContain("secret-detail");
+  });
+
+  it("when EVERY source fails the page is a labelled 502; with no source at all it is a labelled 503", async () => {
+    ({ app } = makeApp({ peta: async () => { throw new Error("x"); }, sources: [{ label: "Alden gateway", reader: { listApprovals: () => new Promise(() => {}) } }], timeoutMs: 20 }));
+    let res = await get(app);
+    expect(res.statusCode).toBe(502);
+    expect(res.body).toContain('data-state="failed"');
+    expect(res.body).toMatch(/Pantheon: the approval gate did not answer/);
+    expect(res.body).toMatch(/Alden gateway: the approval gate did not answer in time/);
+    await app.close();
+    ({ app } = makeApp({ peta: false }));
+    res = await get(app);
+    expect(res.statusCode).toBe(503);
+    expect(res.body).toContain('data-state="unavailable"');
+  });
+
+  it("an extra source works even when this host's Peta is not wired (the household's store is the one that matters)", async () => {
+    ({ app } = makeApp({ peta: false, sources: [{ label: "Alden gateway", reader: alden([ALDEN_ROW]) }] }));
+    const res = await get(app);
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain('data-approval-id="2a2749b3"');
+    expect(res.body).toContain('data-sources="Alden gateway"');
   });
 });

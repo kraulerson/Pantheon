@@ -38,7 +38,7 @@ interface Made {
   approvals: { listApprovals: ReturnType<typeof vi.fn>; decideApproval: ReturnType<typeof vi.fn> };
 }
 
-function makeApp(opts: { keycards?: boolean; peta?: boolean; sessions?: boolean; login?: boolean; now?: () => number } = {}): Made {
+function makeApp(opts: { keycards?: boolean; peta?: boolean; sessions?: boolean; login?: boolean; now?: () => number; sources?: Array<{ label: string; reader: { listApprovals: (f?: unknown) => Promise<unknown> } }> } = {}): Made {
   const repo = new SqliteRegistry(":memory:");
   seedDefaults(repo);
   const registry = new RegistryService(repo);
@@ -52,7 +52,8 @@ function makeApp(opts: { keycards?: boolean; peta?: boolean; sessions?: boolean;
     ...(opts.keycards === false ? {} : { keycards }),
     ...(opts.peta === false ? {} : { peta: approvals }),
     ...(opts.sessions === false ? {} : { sessionLedger: { list: () => SESSIONS } }),
-    ...(opts.login ? { operatorPassword: "correct horse", sessions: new SessionStore() } : {})
+    ...(opts.login ? { operatorPassword: "correct horse", sessions: new SessionStore() } : {}),
+    ...(opts.sources ? { approvalSources: opts.sources } : {})
   });
   return { app, keycards, approvals };
 }
@@ -189,7 +190,7 @@ describe("keycard door — routes and scopes", () => {
     const res = await app.inject({ method: "GET", url: "/keycard/v1/approvals", headers: bearer(t) });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
-      approvals: [{ id: "ap-1", tool: "gitea_file_write", server: "gitea", status: "pending", createdAt: "2026-08-25T11:00:00.000Z", requester: "u-alden1" }],
+      approvals: [{ id: "ap-1", tool: "gitea_file_write", server: "gitea", status: "pending", createdAt: "2026-08-25T11:00:00.000Z", requester: "u-alden1", source: "Pantheon" }],
       truncated: false
     });
     expect(res.body).not.toContain("SECRET-CONTENT");
@@ -512,11 +513,28 @@ describe("approvals:read — real Peta response shape (live finding 2026-08-25)"
     const t = keycards.mint({ principal: "a", scopes: ["approvals:read"] }).token;
     const res = await app.inject({ method: "GET", url: "/keycard/v1/approvals", headers: bearer(t) });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ approvals: [{ id: "req-1", tool: "obsidian_write", server: "obsidian", status: "pending", createdAt: "2026-08-25T11:00:00.000Z" }], truncated: false });
+    expect(res.json()).toEqual({ approvals: [{ id: "req-1", tool: "obsidian_write", server: "obsidian", status: "pending", createdAt: "2026-08-25T11:00:00.000Z", source: "Pantheon" }], truncated: false });
     expect(res.body).not.toContain("SECRET-CONTENT");
     // an empty page is a clean empty list, not a shape error
     peta.listApprovals.mockResolvedValueOnce({ success: true, data: { requests: [], page: 1, pageSize: 20, hasMore: false } });
     const empty = await app.inject({ method: "GET", url: "/keycard/v1/approvals", headers: bearer(t) });
     expect(empty.json()).toEqual({ approvals: [], truncated: false });
+  });
+});
+
+describe("keycard door — approvals from every configured store (BUGS #42)", () => {
+  it("lists this host's and the extra sources' pending references with a source label; a failed source is named, never a whole-door 502", async () => {
+    const made = makeApp({ sources: [
+      { label: "Alden gateway", reader: { listApprovals: async () => ({ success: true, data: { requests: [{ approvalId: "2a2749b3", tool: "gitea_file_write", serverId: "gitea", status: "PENDING", userId: "alden-1", arguments: { secret: "NO" } }], hasMore: false } }) } },
+      { label: "broken", reader: { listApprovals: async () => { throw new Error("nope"); } } }
+    ] });
+    app = made.app;
+    const t = mint(made.keycards, ["approvals:read"]);
+    const res = await app.inject({ method: "GET", url: "/keycard/v1/approvals", headers: bearer(t) });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { approvals: Array<{ id: string; source: string }>; truncated: boolean; failed?: string[] };
+    expect(body.approvals.map((a) => [a.id, a.source])).toEqual([["ap-1", "Pantheon"], ["2a2749b3", "Alden gateway"]]);
+    expect(body.failed).toEqual(["broken"]);
+    expect(res.body).not.toContain("NO");
   });
 });

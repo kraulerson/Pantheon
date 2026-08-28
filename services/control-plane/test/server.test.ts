@@ -112,7 +112,7 @@ describe("createServer — Peta approvals backend is wired when PETA_URL/PETA_AD
     const token = minted.json().token as string;
     const door = await app.inject({ method: "GET", url: "/keycard/v1/approvals", headers: { authorization: `Bearer ${token}` } });
     expect(door.statusCode).toBe(200);
-    expect(door.json()).toEqual({ approvals: [{ id: "ap-9", tool: "gitea_file_write", status: "pending" }], truncated: false });
+    expect(door.json()).toEqual({ approvals: [{ id: "ap-9", tool: "gitea_file_write", status: "pending", source: "Pantheon" }], truncated: false });
     expect(door.body).not.toContain("SECRET-CONTENT");
   });
 

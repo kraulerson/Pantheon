@@ -26,6 +26,8 @@ export interface ApprovalReference {
   readonly status?: string;
   readonly createdAt?: string;
   readonly requester?: string;
+  /** Which approval store answered (BUGS #42) — stamped by {@link readPendingFromSources}. */
+  readonly source?: string;
 }
 
 export const MAX_APPROVALS = 200;
@@ -235,4 +237,30 @@ export async function readPendingApprovals(reader: ApprovalsReader, timeoutMs: n
     }
   }
   return { state: "ok", approvals: out, truncated, more };
+}
+
+/** One approval store the inbox / door reads: a label and a reader (this host's Peta, Alden's gateway, …). */
+export interface ApprovalSource {
+  readonly label: string;
+  readonly reader: ApprovalsReader;
+}
+
+export interface SourceRead {
+  readonly label: string;
+  readonly result: ApprovalsReadResult;
+}
+
+/**
+ * Read EVERY store in parallel (BUGS #42): each gets the same bounded PENDING walk, so a hung store
+ * costs one timeout for the whole read, not one per store; each reference is stamped with its
+ * source; a failing store is reported by label while the others still answer. Never throws.
+ */
+export async function readPendingFromSources(sources: readonly ApprovalSource[], timeoutMs: number): Promise<readonly SourceRead[]> {
+  return Promise.all(
+    sources.map(async (src): Promise<SourceRead> => {
+      const result = await readPendingApprovals(src.reader, timeoutMs);
+      if (result.state !== "ok") return { label: src.label, result };
+      return { label: src.label, result: { ...result, approvals: result.approvals.map((a) => ({ ...a, source: src.label })) } };
+    })
+  );
 }

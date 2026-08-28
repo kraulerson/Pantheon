@@ -28,6 +28,8 @@ import { USER_GUIDE_HTML, USER_GUIDE_PATH } from "./user-guide.js";
 import { isKeycardPath, keycardGuard } from "./auth/keycard-guard.js";
 import { registerKeycardAdminRoutes, registerKeycardDoor } from "./routes/keycard.js";
 import { requestBase, withBase } from "./base-path.js";
+import type { ApprovalSource } from "../approvals/projection.js";
+import { LOCAL_SOURCE_LABEL } from "../approvals/sources.js";
 import type { KeycardService } from "../keycard/service.js";
 import type { Session } from "../session/types.js";
 
@@ -85,6 +87,11 @@ export interface AppOptions {
   readonly now?: () => number;
   /** The chat page's address (`PANTHEON_CHAT_URL`): the admin-site Chat tab links there. Omit → text only. */
   readonly chatUrl?: string;
+  /**
+   * EXTRA approval stores (BUGS #42 — e.g. Alden's capability-gateway Peta), read by the inbox and
+   * the keycard door alongside this host's Peta (`peta`, labelled "Pantheon"). Readers only.
+   */
+  readonly approvalSources?: readonly ApprovalSource[];
 }
 
 /**
@@ -409,14 +416,21 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   // ---- Harness UI (frame + xterm.js terminal tabs + public xterm assets) — ADR-0005 §9 C.1/C.6 ----
   registerHarnessRoutes(app, { registry, loginEnabled, ...(opts.tmux ? { tmux: opts.tmux } : {}), ...(opts.chatUrl !== undefined ? { chatUrl: opts.chatUrl } : {}) });
 
+  // ---- Approval stores (BUGS #42): this host's Peta first (READER only — the decide verb is
+  // structurally out of reach of the inbox and the door), then every configured extra source. ----
+  const localPeta = opts.peta;
+  const approvalSources: readonly ApprovalSource[] = [
+    ...(localPeta ? [{ label: LOCAL_SOURCE_LABEL, reader: { listApprovals: (filter?: Parameters<ApprovalsBackend["listApprovals"]>[0]) => localPeta.listApprovals(filter) } }] : []),
+    ...(opts.approvalSources ?? [])
+  ];
+
   // ---- Session keycards (M1 task 2): admin mint/list/revoke (guarded above) + the keycard door ----
   if (opts.keycards) {
     registerKeycardAdminRoutes(app, { keycards: opts.keycards });
-    const peta = opts.peta;
     registerKeycardDoor(app, {
       keycards: opts.keycards,
       // The door gets a READER only — the decide verb is structurally out of its reach.
-      ...(peta ? { approvals: { listApprovals: () => peta.listApprovals() } } : {}),
+      approvalSources: approvalSources,
       ...(opts.approvalsTimeoutMs !== undefined ? { approvalsTimeoutMs: opts.approvalsTimeoutMs } : {}),
       ...(opts.sessionLedger ? { sessionLedger: opts.sessionLedger } : {})
     });
@@ -465,10 +479,8 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   }
 
   // ---- Pending-Approvals inbox (M1 task 3, TP-2). Admin-guarded page; always mounted (503 without Peta). ----
-  const inboxPeta = opts.peta;
   registerApprovalsInbox(app, {
-    // A READER only — the decide verb is structurally out of the page's reach.
-    ...(inboxPeta ? { approvals: { listApprovals: (filter) => inboxPeta.listApprovals(filter) } } : {}),
+    sources: approvalSources,
     ...(opts.approvalsTimeoutMs !== undefined ? { timeoutMs: opts.approvalsTimeoutMs } : {}),
     ...(opts.now ? { now: opts.now } : {})
   });
