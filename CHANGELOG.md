@@ -20,6 +20,11 @@ for handoff clarity. Categories are ordered by impact severity.
 ## [Unreleased]
 
 ### Fixed
+- 2026-08-28 **Every page now says which build it came from, and assets are build-versioned**
+  (BUGS #44, operator report "were the updates deployed?"). `X-Pantheon-Build` rides on every
+  response, the harness header shows a small `build <id>` stamp, and `/assets/*` URLs carry
+  `?b=<build>` so a cached stylesheet can never mask a release (the page itself is already
+  `no-store`). The id is `PANTHEON_BUILD` when a deploy sets it, else the running module's mtime.
 - 2026-08-28 **The sidebar's collapse controls now look like controls, and a stale page can no longer
   hide a release** (BUGS #43, operator report). Every console HTML response carries
   `Cache-Control: no-store` (assets stay cacheable — a heuristically cached page had been able to

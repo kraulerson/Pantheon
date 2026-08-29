@@ -10,6 +10,7 @@
 
 import { withBase } from "./base-path.js";
 import { pageHead, XTERM_THEME_JS } from "./theme.js";
+import { withBuild } from "./build-id.js";
 
 export interface TerminalTabModel {
   readonly logicalName?: string;
@@ -70,7 +71,7 @@ export function renderTerminalTab(model: TerminalTabModel): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Claude CLI — ${esc(logicalName)}</title>
 ${pageHead(base)}
-<link rel="stylesheet" href="${withBase(base, "/assets/xterm.css")}">
+<link rel="stylesheet" href="${withBuild(withBase(base, "/assets/xterm.css"))}">
 <style>
   body { margin: 0; display: flex; flex-direction: column; height: 100vh; }
   header { padding: .4rem .8rem; }
@@ -94,8 +95,8 @@ ${pageHead(base)}
   <span id="state-error" class="status banner-error" data-state="error" role="alert" hidden><span class="glyph">[!]</span> <span id="error-msg">Terminal error</span></span>
 </header>
 <div id="terminal" role="application" aria-label="Claude CLI terminal for ${esc(logicalName)}"></div>
-<script src="${withBase(base, "/assets/xterm.js")}"></script>
-<script src="${withBase(base, "/assets/xterm-addon-fit.js")}"></script>
+<script src="${withBuild(withBase(base, "/assets/xterm.js"))}"></script>
+<script src="${withBuild(withBase(base, "/assets/xterm-addon-fit.js"))}"></script>
 <script>
 (function () {
   var WS_PATH = ${jsString(wsPath)};

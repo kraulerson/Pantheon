@@ -26,6 +26,7 @@
 import type { DevMachine } from "../registry/types.js";
 import { withBase } from "./base-path.js";
 import { pageHead, XTERM_THEME_JS } from "./theme.js";
+import { BUILD_ID, withBuild } from "./build-id.js";
 
 export interface HarnessFrameModel {
   readonly devMachines: readonly DevMachine[];
@@ -475,7 +476,7 @@ export function renderHarnessFrame(model: HarnessFrameModel): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pantheon Harness</title>
 ${pageHead(base)}
-<link rel="stylesheet" href="${withBase(base, "/assets/xterm.css")}">
+<link rel="stylesheet" href="${withBuild(withBase(base, "/assets/xterm.css"))}">
 <style>
   body { margin: 0; display: flex; flex-direction: column; height: 100vh; }
   header { padding: .4rem .8rem; display: flex; gap: 1rem; align-items: center; }
@@ -513,6 +514,7 @@ ${pageHead(base)}
   <a href="${withBase(base, "/admin/approvals")}" data-nav="approvals">Approvals</a>
   <a href="${withBase(base, "/help")}" data-nav="help">Help</a>
   ${model.loginEnabled ? `<form method="post" action="${withBase(base, "/logout")}" class="logout" style="display:inline;margin-left:auto"><button type="submit">Log out</button></form>` : ""}
+  <span class="muted build" data-build="${esc(BUILD_ID)}" title="The build this page came from — quote it if something looks out of date">build ${esc(BUILD_ID)}</span>
 </header>
 
 <!-- Persistent launch bar (BUGS #22): the per-machine terminal shortcuts live HERE, in the page
@@ -558,8 +560,8 @@ ${sidebar(model.devMachines, base)}
   </form>
 </dialog>
 
-<script src="${withBase(base, "/assets/xterm.js")}"></script>
-<script src="${withBase(base, "/assets/xterm-addon-fit.js")}"></script>
+<script src="${withBuild(withBase(base, "/assets/xterm.js"))}"></script>
+<script src="${withBuild(withBase(base, "/assets/xterm-addon-fit.js"))}"></script>
 <script>${HARNESS_CLIENT_JS}</script>
 </body>
 </html>`;

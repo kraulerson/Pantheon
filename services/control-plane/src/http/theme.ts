@@ -13,6 +13,7 @@
  */
 
 import { withBase } from "./base-path.js";
+import { withBuild } from "./build-id.js";
 
 export const THEME_ASSET_PATH = "/assets/harness.css";
 
@@ -86,6 +87,8 @@ nav.tabs [role="tab"][aria-selected="true"] { background: var(--surface-primary)
 .side-all:hover { background: var(--surface-hover); color: var(--text-primary); }
 .side-toggle { background: transparent; border: 1px solid var(--border-light); }
 .chev { display: inline-block; width: 1em; color: var(--text-tertiary); }
+.build { margin-left: auto; font-size: .7rem; letter-spacing: .02em; }
+.logout + .build { margin-left: .6rem; }
 .side-item, .machine-toggle { display: flex; align-items: center; gap: .5rem; width: 100%; text-align: left; background: transparent; border: 1px solid transparent; border-radius: var(--radius); padding: .45rem .6rem; color: var(--text-primary); cursor: pointer; }
 .side-item:hover, .machine-toggle:hover { background: var(--surface-hover); }
 .machine-toggle[aria-expanded="true"] { background: var(--surface-secondary); }
@@ -115,7 +118,7 @@ export const FRAME_BUST_JS = `if (window.top !== window.self) { try { window.top
 
 /** The <head> lines every console page carries: the shared stylesheet, the theme boot, the frame-bust. */
 export function pageHead(base: string): string {
-  return `<link rel="stylesheet" href="${withBase(base, THEME_ASSET_PATH)}">\n<script>${FRAME_BUST_JS}</script>\n<script>${THEME_BOOT_JS}</script>`;
+  return `<link rel="stylesheet" href="${withBuild(withBase(base, THEME_ASSET_PATH))}">\n<script>${FRAME_BUST_JS}</script>\n<script>${THEME_BOOT_JS}</script>`;
 }
 
 /**

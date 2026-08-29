@@ -79,7 +79,7 @@ describe("renderTerminalTab", () => {
 describe("renderTerminalTab — fills the window (fit addon) — operator report 2026-08-27", () => {
   it("loads the fit addon from our origin and fits on open, on ready, and on resize", () => {
     const html = renderTerminalTab(machineModel);
-    expect(html).toContain('<script src="/assets/xterm-addon-fit.js"></script>');
+    expect(html).toMatch(/<script src="\/assets\/xterm-addon-fit\.js\?b=[^"]+"><\/script>/); // build-versioned (2026-08-28)
     expect(html).toMatch(/new window\.FitAddon\.FitAddon\(\)/);
     expect(html).toMatch(/loadAddon\(/);
     expect(html).toMatch(/ResizeObserver/);

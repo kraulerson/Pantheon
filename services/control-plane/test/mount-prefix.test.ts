@@ -70,8 +70,8 @@ describe("pages under the prefix", () => {
     expect(res.body).toContain('data-base="/harness"');
     assertAllUrlsPrefixed(res.body, "/harness");
     expect(res.body).toContain('href="/harness/admin/config"');
-    expect(res.body).toContain('src="/harness/assets/xterm.js"');
-    expect(res.body).toContain('href="/harness/assets/harness.css"');
+    expect(res.body).toMatch(/src="\/harness\/assets\/xterm\.js\?b=[^"]+"/); // assets are build-versioned
+    expect(res.body).toMatch(/href="\/harness\/assets\/harness\.css\?b=[^"]+"/);
   });
 
   it("without the header the frame is byte-identical in its URLs (root mount unchanged)", async () => {
@@ -106,7 +106,7 @@ describe("pages under the prefix", () => {
     const tab = await app.inject({ method: "GET", url: "/harness/terminal/nope", headers: { ...admin, ...PREFIX } });
     expect(tab.statusCode).toBe(200);
     assertAllUrlsPrefixed(tab.body, "/harness");
-    expect(tab.body).toContain('href="/harness/assets/harness.css"'); // the empty-state page is themed too
+    expect(tab.body).toMatch(/href="\/harness\/assets\/harness\.css\?b=[^"]+"/); // the empty-state page is themed too
     const known = renderTerminalTab({ logicalName: "mac", user: "karl", host: "192.168.1.192", port: 22, hasMachines: true, base: "/harness" });
     assertAllUrlsPrefixed(known, "/harness");
     expect(known).toContain('WS_PATH = "/harness/terminal/mac"');
@@ -195,6 +195,30 @@ describe("audit 2026-08-27 hardenings (shared origin with the chat page)", () =>
     const out = await app.inject({ method: "POST", url: "/logout", headers: { cookie, ...PREFIX } });
     expect(String(out.headers["set-cookie"])).toMatch(/;\s*Path=\/harness(;|$)/);
     expect(String(out.headers["set-cookie"])).toMatch(/Max-Age=0/);
+  });
+
+  it("says which build it is — a stamp in the page and an X-Pantheon-Build header on every response", async () => {
+    app = makeApp();
+    const res = await app.inject({ method: "GET", url: "/harness", headers: admin });
+    const build = String(res.headers["x-pantheon-build"] ?? "");
+    expect(build).toMatch(/^[A-Za-z0-9._-]{1,40}$/);
+    expect(res.body).toContain(`data-build="${build}"`);
+    expect(res.body).toMatch(new RegExp(`build ${build}`));
+    // the header rides on non-HTML too, so a curl against any route identifies the deploy
+    expect(String((await app.inject({ method: "GET", url: "/assets/harness.css" })).headers["x-pantheon-build"])).toBe(build);
+  });
+
+  it("versions every asset URL with the build, so a cached stylesheet can never mask a deploy", async () => {
+    app = makeApp();
+    const res = await app.inject({ method: "GET", url: "/harness", headers: { ...admin, ...PREFIX } });
+    const build = String(res.headers["x-pantheon-build"] ?? "");
+    for (const a of ["/harness/assets/harness.css", "/harness/assets/xterm.css", "/harness/assets/xterm.js", "/harness/assets/xterm-addon-fit.js"]) {
+      expect(res.body, a).toContain(`${a}?b=${build}`);
+    }
+    // the routes still answer when the query string is present
+    for (const a of ["/assets/harness.css", "/assets/xterm.js"]) {
+      expect((await app.inject({ method: "GET", url: `${a}?b=${build}` })).statusCode, a).toBe(200);
+    }
   });
 
   it("every console HTML page is no-store, so a deploy is never hidden behind a cached page", async () => {

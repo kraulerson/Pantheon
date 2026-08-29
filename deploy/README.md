@@ -122,3 +122,11 @@ when the file was edited in place. Either way it — a reload closes live termin
 `.env` values change with it (`CUSTOM_FOOTER`, `HELP_AND_FAQ_URL` → `/harness/help`) → `docker compose
 up -d librechat` to apply. The admin service needs `PANTHEON_CHAT_URL` in its `.env.local` for the
 Chat tab on the admin site. The admin site (`:8443`) is a root mount and needs nothing else.
+
+## Which build is live?
+
+`curl -sI https://pantheon.ferrumcorde.com/harness/assets/harness.css | grep -i x-pantheon-build`
+answers it, and the harness header shows the same `build <id>` stamp. Asset URLs carry `?b=<id>`, so
+a browser fetches fresh CSS/JS after every deploy; console HTML is `no-store`. Set `PANTHEON_BUILD`
+in `services/control-plane/.env.local` (e.g. the commit) to make the stamp a commit hash instead of
+a timestamp.

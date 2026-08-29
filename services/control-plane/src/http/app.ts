@@ -28,6 +28,7 @@ import { USER_GUIDE_HTML, USER_GUIDE_PATH } from "./user-guide.js";
 import { isKeycardPath, keycardGuard } from "./auth/keycard-guard.js";
 import { registerKeycardAdminRoutes, registerKeycardDoor } from "./routes/keycard.js";
 import { requestBase, withBase } from "./base-path.js";
+import { BUILD_ID, BUILD_HEADER } from "./build-id.js";
 import type { ApprovalSource } from "../approvals/projection.js";
 import { LOCAL_SOURCE_LABEL } from "../approvals/sources.js";
 import type { KeycardService } from "../keycard/service.js";
@@ -247,6 +248,8 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   // echoes a (validated) name, so browsers must never content-sniff (audit 2026-08-25).
   app.addHook("onSend", async (_req, reply) => {
     reply.header("X-Content-Type-Options", "nosniff");
+    // Which build answered — so "is it deployed?" is one `curl -I` away (operator report 2026-08-28).
+    reply.header(BUILD_HEADER, BUILD_ID);
     // Console pages are never meant to be framed (terminals are built in-page; the harness frames the
     // CHAT page, not the other way round). frame-ancestors wins over Caddy's site-level X-Frame-Options:
     // 'self' refuses every cross-origin ancestor (LibreChat artifacts run cross-origin); the one
