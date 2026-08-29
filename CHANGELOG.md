@@ -20,6 +20,12 @@ for handoff clarity. Categories are ordered by impact severity.
 ## [Unreleased]
 
 ### Fixed
+- 2026-08-28 **Each machine in the sidebar is now a native HTML disclosure element** (BUGS #43
+  rework, operator report). The custom arrow glyph and JS click-toggle are gone: every machine is a
+  `<details>`/`<summary>`, so the browser draws its own triangle and performs the folding even if our
+  stylesheet, glyph or client script fails to load. Our JS only remembers the state (on the `toggle`
+  event) and lazily loads that machine's tmux list on first unfold. `display:flex` is deliberately
+  not applied to the summary — it suppresses the disclosure marker in WebKit/Blink.
 - 2026-08-28 **Every page now says which build it came from, and assets are build-versioned**
   (BUGS #44, operator report "were the updates deployed?"). `X-Pantheon-Build` rides on every
   response, the harness header shows a small `build <id>` stamp, and `/assets/*` URLs carry

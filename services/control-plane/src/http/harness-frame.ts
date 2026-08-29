@@ -357,41 +357,31 @@ export const HARNESS_CLIENT_JS = `
     setSidebar(open); remember('pantheon.sidebar', open ? 'open' : 'closed');
   });
   var allBtn = doc.querySelector('[data-collapse-all]');
-  var groupSetters = [];
-  function anyGroupOpen() {
-    var open = false;
-    Array.prototype.forEach.call(doc.querySelectorAll('[data-machine-body]'), function (b) { if (!b.hidden) open = true; });
-    return open;
-  }
+  function eachGroup(fn) { Array.prototype.forEach.call(doc.querySelectorAll('[data-machine-group]'), fn); }
+  function anyGroupOpen() { var open = false; eachGroup(function (g) { if (g.open) open = true; }); return open; }
   function syncAllLabel() { if (allBtn) allBtn.textContent = anyGroupOpen() ? 'Collapse all' : 'Expand all'; }
-  Array.prototype.forEach.call(doc.querySelectorAll('[data-machine-toggle]'), function (t) {
-    var name = t.getAttribute('data-machine-toggle');
-    var group = t.closest ? t.closest('[data-machine-group]') : null;
-    var body = group ? group.querySelector('[data-machine-body]') : null;
-    if (!body) return;
-    var chev = t.querySelector('[data-chevron]');
-    var apply = function (open) {
-      body.hidden = !open;
-      t.setAttribute('aria-expanded', open ? 'true' : 'false');
-      if (chev) chev.textContent = open ? '▾' : '▸';
-    };
-    var set = function (open) {
-      apply(open);
-      remember('pantheon.sidebar.machine.' + name, open ? 'open' : 'closed');
-      // A collapsed group is never dialled (SSH-dial amplifier, M1 task 1 audit); load it the FIRST
-      // time it is unfolded, then leave it to Refresh like any other list.
-      if (open) loadTmuxIfNew(body.querySelector('[data-tmux-list]'));
-      syncAllLabel();
-    };
-    groupSetters.push(set);
+  function afterToggle(g, name) {
+    remember('pantheon.sidebar.machine.' + name, g.open ? 'open' : 'closed');
+    // A collapsed group is never dialled (SSH-dial amplifier, M1 task 1 audit); load it the FIRST
+    // time it is unfolded, then leave it to Refresh like any other list.
+    if (g.open) loadTmuxIfNew(g.querySelector('[data-tmux-list]'));
+    syncAllLabel();
+  }
+  eachGroup(function (g) {
+    var name = g.getAttribute('data-machine-group');
     var stored = recall('pantheon.sidebar.machine.' + name);
-    if (stored === 'open' || stored === 'closed') apply(stored === 'open');
-    t.addEventListener('click', function () { set(body.hidden); });
+    if (stored === 'open' || stored === 'closed') g.open = (stored === 'open');
+    // The browser toggles <details> on its own; we only react to it.
+    g.addEventListener('toggle', function () { afterToggle(g, name); });
   });
   syncAllLabel();
   if (allBtn) allBtn.addEventListener('click', function () {
     var open = !anyGroupOpen(); // one control, both directions — its label says which
-    groupSetters.forEach(function (set) { set(open); });
+    eachGroup(function (g) {
+      var name = g.getAttribute('data-machine-group');
+      g.open = open;
+      afterToggle(g, name); // do the work directly: a programmatic 'toggle' event is async in browsers
+    });
   });
   var chatBtn = doc.querySelector('[data-open-chat]');
   if (chatBtn) chatBtn.addEventListener('click', function () { openChatTab('Chat'); });
@@ -402,8 +392,8 @@ export const HARNESS_CLIENT_JS = `
     if (!st || st.gen === 0) loadTmux(slot);
   }
   function slotVisible(slot) {
-    var body = slot.closest ? slot.closest('[data-machine-body]') : null;
-    return !body || !body.hidden;
+    var g = slot.closest ? slot.closest('[data-machine-group]') : null;
+    return !g || g.open;
   }
   Array.prototype.forEach.call(doc.querySelectorAll('[data-tmux-list]'), function (s) { if (slotVisible(s)) loadTmux(s); });
 
@@ -446,12 +436,17 @@ function machineGroup(m: DevMachine, base: string): string {
       <button type="submit">+ tmux session on ${n}</button> <span data-tmux-new-status role="status"></span>
     </form>`
       : `<p class="muted"><em>${STATE_TEXT[state]}</em> — set it up in <a href="${withBase(base, "/admin/config")}">Configuration</a>.</p>`;
-  return `<section class="machine" data-machine-group="${n}" data-state="${state}">
-  <button type="button" class="machine-toggle" data-machine-toggle="${n}" aria-expanded="${open ? "true" : "false"}" aria-controls="machine-${n}"><span class="chev" data-chevron aria-hidden="true">${open ? "▾" : "▸"}</span><span class="glyph" aria-hidden="true">${STATE_GLYPH[state]}</span> ${n} <span class="muted">${STATE_TEXT[state]}</span></button>
-  <div class="machine-launch" data-machine-body id="machine-${n}"${open ? "" : " hidden"}>
+  // A NATIVE <details>: the browser draws the disclosure triangle and does the folding itself, so
+  // the control cannot vanish because a glyph, a stylesheet or our client script failed to load
+  // (operator report 2026-08-28 — two browsers showed no arrow and a dead toggle). Our JS only
+  // REMEMBERS the state and lazily loads the tmux list; `display:flex` is deliberately NOT used on
+  // the summary, because that suppresses the marker in WebKit/Blink.
+  return `<details class="machine" data-machine-group="${n}" data-state="${state}"${open ? " open" : ""}>
+  <summary class="machine-toggle" data-machine-toggle="${n}"><span class="glyph" aria-hidden="true">${STATE_GLYPH[state]}</span> ${n} <span class="muted">${STATE_TEXT[state]}</span></summary>
+  <div class="machine-launch" data-machine-body>
     ${body}
   </div>
-</section>`;
+</details>`;
 }
 
 function sidebar(machines: readonly DevMachine[], base: string): string {

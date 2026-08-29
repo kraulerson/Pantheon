@@ -609,40 +609,38 @@ describe("machines sidebar (operator request 2026-08-27: 'a collapsible sidebar 
     machine({ id: "c", logicalName: "off", enabled: false })
   ];
 
-  it("renders one collapsible group per registered machine — ready ones open with their controls, others closed with the reason and a Configuration link; the old launch bar is gone", () => {
+  it("every machine is a NATIVE disclosure element — the browser draws the arrow and does the folding, with or without our JS", () => {
     boot({ devMachines: three() });
     expect(document.querySelector("aside[data-sidebar]")).not.toBeNull();
     expect(document.querySelector("nav.launch-bar")).toBeNull();
-    const ready = document.querySelector('[data-machine-group="mac-mini"]') as HTMLElement;
-    expect(ready.getAttribute("data-state")).toBe("ready");
-    expect((ready.querySelector("[data-machine-toggle]") as HTMLElement).getAttribute("aria-expanded")).toBe("true");
-    const body = ready.querySelector("[data-machine-body]") as HTMLElement;
-    expect(body.hidden).toBe(false);
+    const group = (n: string) => document.querySelector(`[data-machine-group="${n}"]`) as HTMLDetailsElement;
+    for (const n of ["mac-mini", "unprov", "off"]) {
+      expect(group(n).tagName, n).toBe("DETAILS");
+      const summary = group(n).firstElementChild as HTMLElement;
+      expect(summary.tagName, n).toBe("SUMMARY"); // the fold control is the browser's own
+      expect(summary.getAttribute("data-machine-toggle")).toBe(n);
+    }
+    expect(group("mac-mini").open).toBe(true);
+    expect(group("unprov").open).toBe(false);
+    expect(group("off").open).toBe(false);
+    const body = group("mac-mini").querySelector("[data-machine-body]") as HTMLElement;
     for (const sel of ['[data-open-terminal="mac-mini"]', '[data-tmux-list="mac-mini"]', '[data-tmux-refresh="mac-mini"]', '[data-tmux-new="mac-mini"]']) expect(body.querySelector(sel), sel).not.toBeNull();
-    const unprov = document.querySelector('[data-machine-group="unprov"]') as HTMLElement;
-    expect(unprov.getAttribute("data-state")).toBe("unprovisioned");
-    expect((unprov.querySelector("[data-machine-toggle]") as HTMLElement).getAttribute("aria-expanded")).toBe("false");
-    expect((unprov.querySelector("[data-machine-body]") as HTMLElement).hidden).toBe(true);
-    expect(unprov.textContent).toMatch(/not provisioned/);
-    expect((unprov.querySelector('a[href="/admin/config"]') as HTMLElement)).not.toBeNull();
-    expect(unprov.querySelector("[data-open-terminal]")).toBeNull();
-    const off = document.querySelector('[data-machine-group="off"]') as HTMLElement;
-    expect(off.getAttribute("data-state")).toBe("disabled");
-    expect(off.textContent).toMatch(/disabled/);
+    expect(group("unprov").textContent).toMatch(/not provisioned/);
+    expect(group("unprov").querySelector('a[href="/admin/config"]')).not.toBeNull();
+    expect(group("unprov").querySelector("[data-open-terminal]")).toBeNull();
+    expect(group("off").textContent).toMatch(/disabled/);
   });
 
-  it("a machine group collapses and expands from its toggle and remembers the choice across reloads", () => {
+  it("remembers each machine's fold state across reloads (the browser toggles; we only remember)", () => {
     boot({ devMachines: three() });
-    const toggle = document.querySelector('[data-machine-toggle="mac-mini"]') as HTMLElement;
-    const body = () => document.querySelector('[data-machine-group="mac-mini"] [data-machine-body]') as HTMLElement;
-    toggle.click();
-    expect(body().hidden).toBe(true);
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    const g = () => document.querySelector('[data-machine-group="mac-mini"]') as HTMLDetailsElement;
+    g().open = false;
+    g().dispatchEvent(new window.Event("toggle")); // what a browser fires after folding
     expect(memStore.get("pantheon.sidebar.machine.mac-mini")).toBe("closed");
-    boot({ devMachines: three() }); // reload
-    expect(body().hidden).toBe(true);
-    (document.querySelector('[data-machine-toggle="mac-mini"]') as HTMLElement).click();
-    expect(body().hidden).toBe(false);
+    boot({ devMachines: three() });
+    expect(g().open).toBe(false);
+    g().open = true;
+    g().dispatchEvent(new window.Event("toggle"));
     expect(memStore.get("pantheon.sidebar.machine.mac-mini")).toBe("open");
   });
 
@@ -690,24 +688,24 @@ describe("machines sidebar (operator request 2026-08-27: 'a collapsible sidebar 
     const urls = () => fetchFn.mock.calls.map((c) => String(c[0]));
     expect(urls().some((u) => u.endsWith("/box-b"))).toBe(true);
     expect(urls().some((u) => u.endsWith("/mac-mini"))).toBe(false);
-    (document.querySelector('[data-machine-toggle="mac-mini"]') as HTMLElement).click();
+    const g = document.querySelector('[data-machine-group="mac-mini"]') as HTMLDetailsElement;
+    g.open = true;
+    g.dispatchEvent(new window.Event("toggle"));
     await vi.waitFor(() => expect(urls().some((u) => u.endsWith("/mac-mini"))).toBe(true));
     const after = fetchFn.mock.calls.length;
-    (document.querySelector('[data-machine-toggle="mac-mini"]') as HTMLElement).click(); // collapse
-    (document.querySelector('[data-machine-toggle="mac-mini"]') as HTMLElement).click(); // unfold again
-    expect(fetchFn.mock.calls.length).toBe(after); // already loaded — no second dial
+    g.open = false; g.dispatchEvent(new window.Event("toggle"));
+    g.open = true; g.dispatchEvent(new window.Event("toggle"));
+    expect(fetchFn.mock.calls.length).toBe(after);
   });
 
-  it("a machine name with dots and dashes gets its own group, id and remembered state", () => {
+  it("a machine name with dots and dashes gets its own group and remembered state", () => {
     boot({ devMachines: [machine({ id: "a", logicalName: "mac.mini-1" })] });
-    const group = document.querySelector('[data-machine-group="mac.mini-1"]') as HTMLElement;
-    expect(group).not.toBeNull();
-    const toggle = group.querySelector("[data-machine-toggle]") as HTMLElement;
-    const body = group.querySelector("[data-machine-body]") as HTMLElement;
-    expect(toggle.getAttribute("aria-controls")).toBe(body.id);
-    toggle.click();
+    const g = document.querySelector('[data-machine-group="mac.mini-1"]') as HTMLDetailsElement;
+    expect(g).not.toBeNull();
+    expect(g.querySelector('[data-machine-toggle="mac.mini-1"]')).not.toBeNull();
+    g.open = false;
+    g.dispatchEvent(new window.Event("toggle"));
     expect(memStore.get("pantheon.sidebar.machine.mac.mini-1")).toBe("closed");
-    expect(body.hidden).toBe(true);
   });
 
   it("folding the sidebar re-fits the active terminal (the workspace just changed width)", () => {
@@ -720,15 +718,12 @@ describe("machines sidebar (operator request 2026-08-27: 'a collapsible sidebar 
     expect(fit.fits.every((f) => f.visible)).toBe(true);
   });
 
-  it("each machine reads as a fold control: a chevron that flips with the state", () => {
-    boot({ devMachines: [machine({ id: "a", logicalName: "mac-mini" }), machine({ id: "b", logicalName: "unprov", provisioned: false })] });
-    const chev = (n: string) => (document.querySelector(`[data-machine-toggle="${n}"] [data-chevron]`) as HTMLElement);
-    expect(chev("mac-mini").textContent).toBe("▾"); // ready → open
-    expect(chev("unprov").textContent).toBe("▸"); // not ready → closed
-    (document.querySelector('[data-machine-toggle="mac-mini"]') as HTMLElement).click();
-    expect(chev("mac-mini").textContent).toBe("▸");
-    (document.querySelector('[data-machine-toggle="unprov"]') as HTMLElement).click();
-    expect(chev("unprov").textContent).toBe("▾");
+  it("uses the browser's own disclosure marker — no custom arrow glyph that can fail to render", () => {
+    boot({ devMachines: three() });
+    expect(document.querySelector("[data-chevron]")).toBeNull();
+    const summary = document.querySelector('[data-machine-toggle="mac-mini"]') as HTMLElement;
+    expect(summary.tagName).toBe("SUMMARY");
+    expect((summary.parentElement as HTMLDetailsElement).tagName).toBe("DETAILS");
   });
 
   it("the sidebar toggle is labelled in words for sighted and assistive users alike", () => {
@@ -745,15 +740,15 @@ describe("machines sidebar (operator request 2026-08-27: 'a collapsible sidebar 
   it("Collapse all / Expand all folds every machine at once and remembers each (for a long list)", () => {
     boot({ devMachines: [machine({ id: "a", logicalName: "box-a" }), machine({ id: "b", logicalName: "box-b" })] });
     const all = document.querySelector("[data-collapse-all]") as HTMLElement;
-    const bodies = () => Array.from(document.querySelectorAll("[data-machine-body]")) as HTMLElement[];
+    const groups = () => Array.from(document.querySelectorAll("[data-machine-group]")) as HTMLDetailsElement[];
     expect(all.textContent).toMatch(/Collapse all/);
     all.click();
-    expect(bodies().every((b) => b.hidden)).toBe(true);
+    expect(groups().every((g) => !g.open)).toBe(true);
     expect(memStore.get("pantheon.sidebar.machine.box-a")).toBe("closed");
     expect(memStore.get("pantheon.sidebar.machine.box-b")).toBe("closed");
     expect(all.textContent).toMatch(/Expand all/);
     all.click();
-    expect(bodies().every((b) => !b.hidden)).toBe(true);
+    expect(groups().every((g) => g.open)).toBe(true);
     expect(memStore.get("pantheon.sidebar.machine.box-a")).toBe("open");
     expect(all.textContent).toMatch(/Collapse all/);
   });

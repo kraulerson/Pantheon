@@ -86,13 +86,16 @@ nav.tabs [role="tab"][aria-selected="true"] { background: var(--surface-primary)
 .side-all { font-size: .75rem; background: transparent; border: 0; color: var(--text-tertiary); padding: .2rem .5rem; border-radius: var(--radius); cursor: pointer; }
 .side-all:hover { background: var(--surface-hover); color: var(--text-primary); }
 .side-toggle { background: transparent; border: 1px solid var(--border-light); }
-.chev { display: inline-block; width: 1em; color: var(--text-tertiary); }
 .build { margin-left: auto; font-size: .7rem; letter-spacing: .02em; }
 .logout + .build { margin-left: .6rem; }
-.side-item, .machine-toggle { display: flex; align-items: center; gap: .5rem; width: 100%; text-align: left; background: transparent; border: 1px solid transparent; border-radius: var(--radius); padding: .45rem .6rem; color: var(--text-primary); cursor: pointer; }
-.side-item:hover, .machine-toggle:hover { background: var(--surface-hover); }
-.machine-toggle[aria-expanded="true"] { background: var(--surface-secondary); }
-.machine[data-state="ready"] .machine-toggle .glyph { color: var(--text-primary); }
+.side-item { display: flex; align-items: center; gap: .5rem; width: 100%; text-align: left; background: transparent; border: 1px solid transparent; border-radius: var(--radius); padding: .45rem .6rem; color: var(--text-primary); cursor: pointer; }
+.side-item:hover { background: var(--surface-hover); }
+/* <summary> keeps display:list-item on purpose - display:flex suppresses the browser's own
+   disclosure triangle in WebKit/Blink, which is exactly the affordance we depend on here. */
+summary.machine-toggle { cursor: pointer; padding: .45rem .6rem .45rem .1rem; border-radius: var(--radius); color: var(--text-primary); }
+summary.machine-toggle:hover { background: var(--surface-hover); }
+details.machine[open] > summary.machine-toggle { background: var(--surface-secondary); }
+details.machine { border-radius: var(--radius); }
 .machine-launch .shell-btn { width: 100%; text-align: left; }
 .tmux-sessions button { width: 100%; }
 `;
