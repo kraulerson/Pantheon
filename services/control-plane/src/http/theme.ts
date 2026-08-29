@@ -80,7 +80,12 @@ nav.tabs [role="tab"][aria-selected="true"] { background: var(--surface-primary)
 .chat-host { flex: 1; min-height: 0; width: 100%; border: 0; background: var(--surface-primary); }
 /* sidebar (harness frame): LibreChat's conversation-list look */
 .sidebar { background: var(--surface-primary-alt); border-right: 1px solid var(--border-light); }
+.side-heading-row { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; }
 .side-heading { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-tertiary); margin: .6rem .5rem .2rem; }
+.side-all { font-size: .75rem; background: transparent; border: 0; color: var(--text-tertiary); padding: .2rem .5rem; border-radius: var(--radius); cursor: pointer; }
+.side-all:hover { background: var(--surface-hover); color: var(--text-primary); }
+.side-toggle { background: transparent; border: 1px solid var(--border-light); }
+.chev { display: inline-block; width: 1em; color: var(--text-tertiary); }
 .side-item, .machine-toggle { display: flex; align-items: center; gap: .5rem; width: 100%; text-align: left; background: transparent; border: 1px solid transparent; border-radius: var(--radius); padding: .45rem .6rem; color: var(--text-primary); cursor: pointer; }
 .side-item:hover, .machine-toggle:hover { background: var(--surface-hover); }
 .machine-toggle[aria-expanded="true"] { background: var(--surface-secondary); }

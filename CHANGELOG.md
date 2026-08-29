@@ -20,6 +20,13 @@ for handoff clarity. Categories are ordered by impact severity.
 ## [Unreleased]
 
 ### Fixed
+- 2026-08-28 **The sidebar's collapse controls now look like controls, and a stale page can no longer
+  hide a release** (BUGS #43, operator report). Every console HTML response carries
+  `Cache-Control: no-store` (assets stay cacheable — a heuristically cached page had been able to
+  show a pre-sidebar harness after a deploy); each machine row gains a `▾`/`▸` chevron that flips
+  with its state; the header toggle reads **☰ Machines** with an `aria-label` that flips
+  Hide/Show the machines sidebar; a **Collapse all / Expand all** control sits in the Machines
+  heading for long machine lists (each machine's choice is still remembered individually).
 - 2026-08-28 **The Approvals inbox and the keycard door now read EVERY approval store the household
   uses** (BUGS #42, UAT-4 #14). Alden's capability gateway has its own Peta, and that is where the
   live tickets were; this host's Peta had never held one, so the inbox said "No pending approvals"

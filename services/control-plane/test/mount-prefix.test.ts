@@ -197,6 +197,19 @@ describe("audit 2026-08-27 hardenings (shared origin with the chat page)", () =>
     expect(String(out.headers["set-cookie"])).toMatch(/Max-Age=0/);
   });
 
+  it("every console HTML page is no-store, so a deploy is never hidden behind a cached page", async () => {
+    app = makeApp({ login: true });
+    for (const [url, headers] of [["/harness", admin], ["/admin/config", admin], ["/admin/approvals", admin], ["/login", {}], ["/help", {}]] as Array<[string, Record<string, string>]>) {
+      const res = await app.inject({ method: "GET", url, headers });
+      expect(res.statusCode, url).toBe(200);
+      expect(res.headers["content-type"], url).toMatch(/text\/html/);
+      expect(res.headers["cache-control"], url).toBe("no-store");
+    }
+    // static assets are NOT no-store (they are versioned by deploy and cheap to cache)
+    const css = await app.inject({ method: "GET", url: "/assets/harness.css" });
+    expect(css.headers["cache-control"]).toBeUndefined();
+  });
+
   it("console HTML is framed only by itself (frame-ancestors 'self') and busts out of any same-origin frame, under the prefix and at the root", async () => {
     app = makeApp({ login: true });
     for (const headers of [{ ...admin, ...PREFIX }, admin, PREFIX, {}]) {

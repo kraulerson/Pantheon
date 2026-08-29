@@ -344,7 +344,10 @@ export const HARNESS_CLIENT_JS = `
   function setSidebar(open) {
     if (!aside) return;
     if (open) aside.removeAttribute('data-collapsed'); else aside.setAttribute('data-collapsed', '');
-    if (sideToggle) sideToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (sideToggle) {
+      sideToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      sideToggle.setAttribute('aria-label', (open ? 'Hide' : 'Show') + ' the machines sidebar');
+    }
     if (active !== null && tabs[active] && tabs[active].fit) tabs[active].fit(); // the workspace just changed width
   }
   if (aside) setSidebar(recall('pantheon.sidebar') !== 'closed');
@@ -352,22 +355,42 @@ export const HARNESS_CLIENT_JS = `
     var open = !!(aside && aside.hasAttribute('data-collapsed'));
     setSidebar(open); remember('pantheon.sidebar', open ? 'open' : 'closed');
   });
+  var allBtn = doc.querySelector('[data-collapse-all]');
+  var groupSetters = [];
+  function anyGroupOpen() {
+    var open = false;
+    Array.prototype.forEach.call(doc.querySelectorAll('[data-machine-body]'), function (b) { if (!b.hidden) open = true; });
+    return open;
+  }
+  function syncAllLabel() { if (allBtn) allBtn.textContent = anyGroupOpen() ? 'Collapse all' : 'Expand all'; }
   Array.prototype.forEach.call(doc.querySelectorAll('[data-machine-toggle]'), function (t) {
     var name = t.getAttribute('data-machine-toggle');
     var group = t.closest ? t.closest('[data-machine-group]') : null;
     var body = group ? group.querySelector('[data-machine-body]') : null;
     if (!body) return;
-    var apply = function (open) { body.hidden = !open; t.setAttribute('aria-expanded', open ? 'true' : 'false'); };
-    var stored = recall('pantheon.sidebar.machine.' + name);
-    if (stored === 'open' || stored === 'closed') apply(stored === 'open');
-    t.addEventListener('click', function () {
-      var open = body.hidden;
+    var chev = t.querySelector('[data-chevron]');
+    var apply = function (open) {
+      body.hidden = !open;
+      t.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (chev) chev.textContent = open ? '▾' : '▸';
+    };
+    var set = function (open) {
       apply(open);
       remember('pantheon.sidebar.machine.' + name, open ? 'open' : 'closed');
       // A collapsed group is never dialled (SSH-dial amplifier, M1 task 1 audit); load it the FIRST
       // time it is unfolded, then leave it to Refresh like any other list.
       if (open) loadTmuxIfNew(body.querySelector('[data-tmux-list]'));
-    });
+      syncAllLabel();
+    };
+    groupSetters.push(set);
+    var stored = recall('pantheon.sidebar.machine.' + name);
+    if (stored === 'open' || stored === 'closed') apply(stored === 'open');
+    t.addEventListener('click', function () { set(body.hidden); });
+  });
+  syncAllLabel();
+  if (allBtn) allBtn.addEventListener('click', function () {
+    var open = !anyGroupOpen(); // one control, both directions — its label says which
+    groupSetters.forEach(function (set) { set(open); });
   });
   var chatBtn = doc.querySelector('[data-open-chat]');
   if (chatBtn) chatBtn.addEventListener('click', function () { openChatTab('Chat'); });
@@ -423,7 +446,7 @@ function machineGroup(m: DevMachine, base: string): string {
     </form>`
       : `<p class="muted"><em>${STATE_TEXT[state]}</em> — set it up in <a href="${withBase(base, "/admin/config")}">Configuration</a>.</p>`;
   return `<section class="machine" data-machine-group="${n}" data-state="${state}">
-  <button type="button" class="machine-toggle" data-machine-toggle="${n}" aria-expanded="${open ? "true" : "false"}" aria-controls="machine-${n}"><span class="glyph" aria-hidden="true">${STATE_GLYPH[state]}</span> ${n} <span class="muted">${STATE_TEXT[state]}</span></button>
+  <button type="button" class="machine-toggle" data-machine-toggle="${n}" aria-expanded="${open ? "true" : "false"}" aria-controls="machine-${n}"><span class="chev" data-chevron aria-hidden="true">${open ? "▾" : "▸"}</span><span class="glyph" aria-hidden="true">${STATE_GLYPH[state]}</span> ${n} <span class="muted">${STATE_TEXT[state]}</span></button>
   <div class="machine-launch" data-machine-body id="machine-${n}"${open ? "" : " hidden"}>
     ${body}
   </div>
@@ -437,7 +460,7 @@ function sidebar(machines: readonly DevMachine[], base: string): string {
       : machines.map((m) => machineGroup(m, base)).join("\n");
   return `<aside class="sidebar" data-sidebar id="sidebar" aria-label="Chat and machines">
   <button type="button" class="side-item" data-open-chat><span class="glyph" aria-hidden="true">[💬]</span> Chat</button>
-  <h2 class="side-heading">Machines</h2>
+  <div class="side-heading-row"><h2 class="side-heading">Machines</h2>${machines.length > 0 ? `<button type="button" class="side-all" data-collapse-all>Collapse all</button>` : ""}</div>
   ${groups}
 </aside>`;
 }
@@ -481,7 +504,7 @@ ${pageHead(base)}
 </style>
 </head>
 <body>
-<header><button type="button" data-sidebar-toggle aria-expanded="true" aria-controls="sidebar" title="Show or hide the sidebar">☰</button> <strong>Pantheon Harness</strong>
+<header><button type="button" class="side-toggle" data-sidebar-toggle aria-expanded="true" aria-controls="sidebar" aria-label="Hide the machines sidebar" title="Show or hide the machines sidebar (more room for the terminal)"><span aria-hidden="true">☰</span> Machines</button> <strong>Pantheon Harness</strong>
   <button type="button" data-action="new-session">+ New Session</button>
   <!-- Configuration lives in the page chrome, NOT inside the empty-state message: it used to
        appear only when the registry was empty, so registering the first machine removed the

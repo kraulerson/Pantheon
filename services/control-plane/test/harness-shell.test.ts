@@ -720,6 +720,44 @@ describe("machines sidebar (operator request 2026-08-27: 'a collapsible sidebar 
     expect(fit.fits.every((f) => f.visible)).toBe(true);
   });
 
+  it("each machine reads as a fold control: a chevron that flips with the state", () => {
+    boot({ devMachines: [machine({ id: "a", logicalName: "mac-mini" }), machine({ id: "b", logicalName: "unprov", provisioned: false })] });
+    const chev = (n: string) => (document.querySelector(`[data-machine-toggle="${n}"] [data-chevron]`) as HTMLElement);
+    expect(chev("mac-mini").textContent).toBe("▾"); // ready → open
+    expect(chev("unprov").textContent).toBe("▸"); // not ready → closed
+    (document.querySelector('[data-machine-toggle="mac-mini"]') as HTMLElement).click();
+    expect(chev("mac-mini").textContent).toBe("▸");
+    (document.querySelector('[data-machine-toggle="unprov"]') as HTMLElement).click();
+    expect(chev("unprov").textContent).toBe("▾");
+  });
+
+  it("the sidebar toggle is labelled in words for sighted and assistive users alike", () => {
+    boot({ devMachines: [machine({ id: "a", logicalName: "mac-mini" })] });
+    const t = document.querySelector("[data-sidebar-toggle]") as HTMLElement;
+    expect(t.textContent).toMatch(/Machines/);
+    expect(t.getAttribute("aria-label")).toMatch(/sidebar/i);
+    t.click();
+    expect(t.getAttribute("aria-label")).toMatch(/show/i);
+    t.click();
+    expect(t.getAttribute("aria-label")).toMatch(/hide/i);
+  });
+
+  it("Collapse all / Expand all folds every machine at once and remembers each (for a long list)", () => {
+    boot({ devMachines: [machine({ id: "a", logicalName: "box-a" }), machine({ id: "b", logicalName: "box-b" })] });
+    const all = document.querySelector("[data-collapse-all]") as HTMLElement;
+    const bodies = () => Array.from(document.querySelectorAll("[data-machine-body]")) as HTMLElement[];
+    expect(all.textContent).toMatch(/Collapse all/);
+    all.click();
+    expect(bodies().every((b) => b.hidden)).toBe(true);
+    expect(memStore.get("pantheon.sidebar.machine.box-a")).toBe("closed");
+    expect(memStore.get("pantheon.sidebar.machine.box-b")).toBe("closed");
+    expect(all.textContent).toMatch(/Expand all/);
+    all.click();
+    expect(bodies().every((b) => !b.hidden)).toBe(true);
+    expect(memStore.get("pantheon.sidebar.machine.box-a")).toBe("open");
+    expect(all.textContent).toMatch(/Collapse all/);
+  });
+
   it("an empty registry shows the labelled empty state inside the sidebar", () => {
     boot({ devMachines: [] });
     const aside = document.querySelector("aside[data-sidebar]") as HTMLElement;

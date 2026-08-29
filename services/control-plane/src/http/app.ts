@@ -253,7 +253,13 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     // same-origin case — the embedded chat page navigating itself to the console — is busted to the
     // top window by the page's own FRAME_BUST_JS (audit 2026-08-27 A/F5 + B/F-A; BUGS #29 step 1).
     const contentType = String(reply.getHeader("content-type") ?? "");
-    if (contentType.startsWith("text/html")) reply.header("Content-Security-Policy", "frame-ancestors 'self'");
+    if (contentType.startsWith("text/html")) {
+      reply.header("Content-Security-Policy", "frame-ancestors 'self'");
+      // A console page is generated per request and changes with every deploy; a browser that
+      // heuristically cached one hides the whole release (operator report 2026-08-28 — the sidebar
+      // looked missing on a cached page). Assets are versioned by deploy and stay cacheable.
+      reply.header("Cache-Control", "no-store");
+    }
   });
 
   // Admin-tier guard on every ADMIN route (fail-closed). Public, identity-gated routes
