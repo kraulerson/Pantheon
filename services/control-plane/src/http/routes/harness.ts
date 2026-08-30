@@ -37,9 +37,16 @@ const XTERM_CSS = readFileSync(nodeRequire.resolve("@xterm/xterm/css/xterm.css")
 // Fit addon (UMD, global `FitAddon`): sizes the terminal grid to its container — without it xterm
 // stays at its 80×24 default however big the tab is (operator report 2026-08-27).
 const XTERM_FIT_JS = readFileSync(nodeRequire.resolve("@xterm/addon-fit/lib/addon-fit.js"), "utf8");
+// Clipboard addon (UMD global `ClipboardAddon`): honours OSC 52, the escape sequence tmux uses to put
+// a copy-mode selection on the SYSTEM clipboard (operator report 2026-08-30 — tmux said "copied N
+// characters to tmux buffer" and the paste came from the local machine instead).
+const XTERM_CLIPBOARD_JS = readFileSync(nodeRequire.resolve("@xterm/addon-clipboard/lib/addon-clipboard.js"), "utf8");
+// WebGL renderer (UMD global `WebglAddon`): xterm's DOM renderer lags once the grid fills a large
+// window, which is what "characters appear late" is (same report). Falls back silently if unavailable.
+const XTERM_WEBGL_JS = readFileSync(nodeRequire.resolve("@xterm/addon-webgl/lib/addon-webgl.js"), "utf8");
 
 /** Public asset paths (added to the app's guard exemption set). */
-export const HARNESS_ASSET_PATHS: readonly string[] = ["/assets/xterm.js", "/assets/xterm.css", "/assets/xterm-addon-fit.js", THEME_ASSET_PATH];
+export const HARNESS_ASSET_PATHS: readonly string[] = ["/assets/xterm.js", "/assets/xterm.css", "/assets/xterm-addon-fit.js", "/assets/xterm-addon-clipboard.js", "/assets/xterm-addon-webgl.js", THEME_ASSET_PATH];
 
 export interface HarnessRoutesDeps {
   readonly registry: {
@@ -64,6 +71,12 @@ export function registerHarnessRoutes(app: FastifyInstance, deps: HarnessRoutesD
   });
   app.get("/assets/xterm-addon-fit.js", async (_req, reply) => {
     reply.type("application/javascript").send(XTERM_FIT_JS);
+  });
+  app.get("/assets/xterm-addon-clipboard.js", async (_req, reply) => {
+    reply.type("application/javascript").send(XTERM_CLIPBOARD_JS);
+  });
+  app.get("/assets/xterm-addon-webgl.js", async (_req, reply) => {
+    reply.type("application/javascript").send(XTERM_WEBGL_JS);
   });
   // Shared LibreChat-matched stylesheet + tokens (ruling 2026-08-27). Public like the xterm assets.
   app.get(THEME_ASSET_PATH, async (_req, reply) => {

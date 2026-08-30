@@ -92,6 +92,40 @@ class FakeTerm {
   }
 }
 
+/** Stands in for @xterm/addon-clipboard (OSC 52: what tmux uses to reach the system clipboard). */
+class FakeClipboardAddon {
+  static instances: FakeClipboardAddon[] = [];
+  activated = false;
+  constructor() {
+    FakeClipboardAddon.instances.push(this);
+  }
+  activate(): void {
+    this.activated = true;
+  }
+}
+
+/** Stands in for @xterm/addon-webgl (GPU renderer — the DOM renderer lags on a big grid). */
+class FakeWebglAddon {
+  static instances: FakeWebglAddon[] = [];
+  static throwOnConstruct = false;
+  activated = false;
+  disposed = false;
+  lossCb?: () => void;
+  constructor() {
+    if (FakeWebglAddon.throwOnConstruct) throw new Error("no webgl in this browser");
+    FakeWebglAddon.instances.push(this);
+  }
+  activate(): void {
+    this.activated = true;
+  }
+  onContextLoss(cb: () => void): void {
+    this.lossCb = cb;
+  }
+  dispose(): void {
+    this.disposed = true;
+  }
+}
+
 /** Stands in for @xterm/addon-fit: every fit() records whether the terminal's panel was visible and resizes to 200×50. */
 class FakeFitAddon {
   static instances: FakeFitAddon[] = [];
@@ -138,6 +172,8 @@ function boot(model: Parameters<typeof renderHarnessFrame>[0]): void {
   (window as unknown as { WebSocket: unknown }).WebSocket = FakeWS;
   (window as unknown as { Terminal: unknown }).Terminal = FakeTerm;
   (window as unknown as { FitAddon: unknown }).FitAddon = { FitAddon: FakeFitAddon };
+  (window as unknown as { ClipboardAddon: unknown }).ClipboardAddon = { ClipboardAddon: FakeClipboardAddon };
+  (window as unknown as { WebglAddon: unknown }).WebglAddon = { WebglAddon: FakeWebglAddon };
   // Execute the client against the DOM (the same code the page ships inline).
   window.eval(HARNESS_CLIENT_JS);
 }
@@ -840,5 +876,48 @@ describe("terminal text handling (operator report 2026-08-29)", () => {
     term.selection = "";
     (term.host as HTMLElement).dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true }));
     expect(clipboardWrites).toEqual([]); // an empty selection never clobbers the clipboard
+  });
+});
+
+describe("terminal addons (operator report 2026-08-30: tmux copy lands in the wrong buffer; typing feels laggy)", () => {
+  beforeEach(() => {
+    FakeWS.instances = [];
+    FakeFitAddon.instances = [];
+    FakeClipboardAddon.instances = [];
+    FakeWebglAddon.instances = [];
+    FakeWebglAddon.throwOnConstruct = false;
+    FakeTerm.last = undefined;
+    memStore.clear();
+    document.body.innerHTML = "";
+  });
+  const openTerm = (): void => {
+    boot({ devMachines: [machine({ id: "a", logicalName: "mac-mini" })] });
+    (document.querySelector('[data-open-terminal="mac-mini"]') as HTMLElement).click();
+  };
+
+  it("loads the clipboard addon, so a copy made INSIDE the session (tmux OSC 52) reaches the system clipboard", () => {
+    openTerm();
+    expect(FakeClipboardAddon.instances).toHaveLength(1);
+    expect(FakeClipboardAddon.instances[0].activated).toBe(true);
+  });
+
+  it("renders on the GPU when the browser allows it, and disposes the renderer if the context is lost", () => {
+    openTerm();
+    expect(FakeWebglAddon.instances).toHaveLength(1);
+    const gl = FakeWebglAddon.instances[0];
+    expect(gl.activated).toBe(true);
+    expect(gl.lossCb).toBeDefined();
+    gl.lossCb!();
+    expect(gl.disposed).toBe(true); // falls back to the DOM renderer rather than freezing
+  });
+
+  it("a browser without WebGL still gets a working terminal (fails soft, never fails the session)", () => {
+    FakeWebglAddon.throwOnConstruct = true;
+    openTerm();
+    expect(FakeWebglAddon.instances).toHaveLength(0);
+    expect(FakeWS.instances).toHaveLength(1); // the session still opened
+    const status = document.querySelector(".term-status") as HTMLElement;
+    expect(status.getAttribute("data-state")).not.toBe("error");
+    expect(FakeClipboardAddon.instances).toHaveLength(1); // and the clipboard addon still loaded
   });
 });

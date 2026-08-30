@@ -20,6 +20,15 @@ for handoff clarity. Categories are ordered by impact severity.
 ## [Unreleased]
 
 ### Fixed
+- 2026-08-30 **Terminals render on the GPU, and a copy made inside tmux can reach the system
+  clipboard** (BUGS #47, #46 extended; operator report). `@xterm/addon-webgl` replaces the DOM
+  renderer (which lagged visibly once the grid filled a large window — ~5× the cells since the fit
+  fix), failing soft to the DOM renderer when WebGL is unavailable or its context is lost;
+  `@xterm/addon-clipboard` adds OSC 52, the escape sequence tmux uses to put a copy-mode selection on
+  the *system* clipboard — until now tmux's "copied N characters to tmux buffer" stayed inside tmux.
+  Both addons are served from our own origin, build-versioned, and loaded by both terminal hosts.
+  **Note for tmux users:** tmux only emits OSC 52 with `set -g set-clipboard on` (plus
+  `set -as terminal-features ',xterm-256color:clipboard'`) in the dev machine's tmux config.
 - 2026-08-29 **Terminal text no longer corrupts as the screen scrolls** (BUGS #45, operator report).
   Both terminal hosts set `convertEol: true`, which turns a bare line feed into CR+LF and so moves
   the cursor to column 0 on every LF. A PTY already sends CRLF, while full-screen apps use a bare LF

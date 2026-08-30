@@ -27,7 +27,7 @@ import type { DevMachine } from "../registry/types.js";
 import { withBase } from "./base-path.js";
 import { pageHead } from "./theme.js";
 import { BUILD_ID, withBuild } from "./build-id.js";
-import { TERMINAL_OPTIONS_JS, TERMINAL_CLIPBOARD_JS } from "./terminal-client.js";
+import { TERMINAL_OPTIONS_JS, TERMINAL_CLIPBOARD_JS, TERMINAL_ADDONS_JS } from "./terminal-client.js";
 
 export interface HarnessFrameModel {
   readonly devMachines: readonly DevMachine[];
@@ -56,6 +56,7 @@ export const HARNESS_CLIENT_JS = `
 (function () {
   var doc = document;
 ${TERMINAL_CLIPBOARD_JS}
+${TERMINAL_ADDONS_JS}
   // Mount prefix + chat address, rendered on <html> by the server (design 2026-08-27).
   var BASE = doc.documentElement.getAttribute('data-base') || '';
   var CHAT_URL = doc.documentElement.getAttribute('data-chat-url') || '';
@@ -146,6 +147,7 @@ ${TERMINAL_CLIPBOARD_JS}
     t.term = term;
     // Size the grid to the host (operator report 2026-08-27: xterm's 80×24 default filled ~60% of the
     // width and never grew). Only while visible — a hidden panel measures 0×0 and would shrink the PTY.
+    pantheonLoadAddons(term); // OSC-52 clipboard + GPU renderer (operator report 2026-08-30)
     pantheonWireClipboard(term, host); // selection + ⌘C / Ctrl+Shift+C (operator report 2026-08-29)
     t.fit = function () { if (!t.panel.hidden) fit.fit(); };
     t.fit();
@@ -560,6 +562,8 @@ ${sidebar(model.devMachines, base)}
 
 <script src="${withBuild(withBase(base, "/assets/xterm.js"))}"></script>
 <script src="${withBuild(withBase(base, "/assets/xterm-addon-fit.js"))}"></script>
+<script src="${withBuild(withBase(base, "/assets/xterm-addon-clipboard.js"))}"></script>
+<script src="${withBuild(withBase(base, "/assets/xterm-addon-webgl.js"))}"></script>
 <script>${HARNESS_CLIENT_JS}</script>
 </body>
 </html>`;

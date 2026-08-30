@@ -11,7 +11,7 @@
 import { withBase } from "./base-path.js";
 import { pageHead } from "./theme.js";
 import { withBuild } from "./build-id.js";
-import { TERMINAL_OPTIONS_JS, TERMINAL_CLIPBOARD_JS } from "./terminal-client.js";
+import { TERMINAL_OPTIONS_JS, TERMINAL_CLIPBOARD_JS, TERMINAL_ADDONS_JS } from "./terminal-client.js";
 
 export interface TerminalTabModel {
   readonly logicalName?: string;
@@ -98,6 +98,8 @@ ${pageHead(base)}
 <div id="terminal" role="application" aria-label="Claude CLI terminal for ${esc(logicalName)}"></div>
 <script src="${withBuild(withBase(base, "/assets/xterm.js"))}"></script>
 <script src="${withBuild(withBase(base, "/assets/xterm-addon-fit.js"))}"></script>
+<script src="${withBuild(withBase(base, "/assets/xterm-addon-clipboard.js"))}"></script>
+<script src="${withBuild(withBase(base, "/assets/xterm-addon-webgl.js"))}"></script>
 <script>
 (function () {
   var WS_PATH = ${jsString(wsPath)};
@@ -110,6 +112,7 @@ ${pageHead(base)}
     if (s === "error" && msg) { var m = document.getElementById("error-msg"); if (m) m.textContent = msg; }
   }
 ${TERMINAL_CLIPBOARD_JS}
+${TERMINAL_ADDONS_JS}
   var term = new window.Terminal(${TERMINAL_OPTIONS_JS});
   // Fit the grid to the page (operator report 2026-08-27: the 80×24 default filled ~60% of the width and never grew).
   var fit = new window.FitAddon.FitAddon();
@@ -119,6 +122,7 @@ ${TERMINAL_CLIPBOARD_JS}
   fit.fit();
   if (window.ResizeObserver) new window.ResizeObserver(function () { fit.fit(); }).observe(host);
   window.addEventListener("resize", function () { fit.fit(); });
+  pantheonLoadAddons(term); // OSC-52 clipboard + GPU renderer (operator report 2026-08-30)
   pantheonWireClipboard(term, host); // selection + ⌘C / Ctrl+Shift+C (operator report 2026-08-29)
   var url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + WS_PATH;
   var ws = new WebSocket(url);

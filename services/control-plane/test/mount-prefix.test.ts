@@ -212,7 +212,7 @@ describe("audit 2026-08-27 hardenings (shared origin with the chat page)", () =>
     app = makeApp();
     const res = await app.inject({ method: "GET", url: "/harness", headers: { ...admin, ...PREFIX } });
     const build = String(res.headers["x-pantheon-build"] ?? "");
-    for (const a of ["/harness/assets/harness.css", "/harness/assets/xterm.css", "/harness/assets/xterm.js", "/harness/assets/xterm-addon-fit.js"]) {
+    for (const a of ["/harness/assets/harness.css", "/harness/assets/xterm.css", "/harness/assets/xterm.js", "/harness/assets/xterm-addon-fit.js", "/harness/assets/xterm-addon-clipboard.js", "/harness/assets/xterm-addon-webgl.js"]) {
       expect(res.body, a).toContain(`${a}?b=${build}`);
     }
     // the routes still answer when the query string is present

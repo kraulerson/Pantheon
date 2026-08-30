@@ -256,6 +256,13 @@ describe("Harness UI routes (frame + terminal tab + public assets)", () => {
     expect(fit.statusCode).toBe(200);
     expect(fit.headers["content-type"]).toMatch(/javascript/);
     expect(fit.body).toContain("FitAddon");
+    // OSC-52 clipboard (a copy made inside tmux) and the GPU renderer, both from our origin.
+    for (const [path, marker] of [["/assets/xterm-addon-clipboard.js", "ClipboardAddon"], ["/assets/xterm-addon-webgl.js", "WebglAddon"]] as Array<[string, string]>) {
+      const res = await app.inject({ method: "GET", url: path });
+      expect(res.statusCode, path).toBe(200);
+      expect(res.headers["content-type"], path).toMatch(/javascript/);
+      expect(res.body, path).toContain(marker);
+    }
   });
 });
 

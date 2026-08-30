@@ -26,6 +26,28 @@ export const TERMINAL_OPTIONS_JS = `{
     rightClickSelectsWord: true
   }`;
 
+/**
+ * Addons every hosted terminal loads, both optional and both failing soft:
+ *  - **clipboard** — honours OSC 52, the escape sequence tmux emits (with `set-clipboard on`) when
+ *    you copy in its copy-mode; without it a tmux copy only ever reaches tmux's own paste buffer.
+ *  - **webgl** — the GPU renderer. xterm's DOM renderer visibly lags once the grid fills a large
+ *    window; if WebGL is unavailable or its context is lost we fall back to the DOM renderer.
+ */
+export const TERMINAL_ADDONS_JS = `
+  function pantheonLoadAddons(term) {
+    try {
+      if (window.ClipboardAddon && window.ClipboardAddon.ClipboardAddon) term.loadAddon(new window.ClipboardAddon.ClipboardAddon());
+    } catch (e) {}
+    try {
+      if (window.WebglAddon && window.WebglAddon.WebglAddon) {
+        var gl = new window.WebglAddon.WebglAddon();
+        if (gl.onContextLoss) gl.onContextLoss(function () { try { gl.dispose(); } catch (e) {} });
+        term.loadAddon(gl);
+      }
+    } catch (e) {} // no WebGL in this browser — xterm keeps its DOM renderer
+  }
+`;
+
 /** Function declarations (hoisted) that give a terminal a working clipboard. */
 export const TERMINAL_CLIPBOARD_JS = `
   function pantheonCopyFallback(text) {
