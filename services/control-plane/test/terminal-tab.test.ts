@@ -99,6 +99,7 @@ describe("renderTerminalTab — text handling (operator report 2026-08-29)", () 
     expect(html).toMatch(/xterm-addon-clipboard\.js\?b=/);
     expect(html).toMatch(/xterm-addon-webgl\.js\?b=/);
     expect(html).toMatch(/pantheonLoadAddons\(term\)/);
+    expect(html).toMatch(/software rendering/i); // says so when it falls back
     expect(html).toMatch(/writeText/);
   });
 });

@@ -147,7 +147,8 @@ ${TERMINAL_ADDONS_JS}
     t.term = term;
     // Size the grid to the host (operator report 2026-08-27: xterm's 80×24 default filled ~60% of the
     // width and never grew). Only while visible — a hidden panel measures 0×0 and would shrink the PTY.
-    pantheonLoadAddons(term); // OSC-52 clipboard + GPU renderer (operator report 2026-08-30)
+    var renderer = pantheonLoadAddons(term); // OSC-52 clipboard + GPU renderer (operator report 2026-08-30)
+    if (host.setAttribute) host.setAttribute('data-renderer', renderer);
     pantheonWireClipboard(term, host); // selection + ⌘C / Ctrl+Shift+C (operator report 2026-08-29)
     t.fit = function () { if (!t.panel.hidden) fit.fit(); };
     t.fit();
@@ -156,7 +157,8 @@ ${TERMINAL_ADDONS_JS}
     ws.onmessage = function (ev) {
       var f; try { f = JSON.parse(ev.data); } catch (e) { return; }
       if (f.t === 'ready') {
-        status.setAttribute('data-state', 'connected'); status.textContent = '[✓] connected to ' + label;
+        status.setAttribute('data-state', 'connected');
+        status.textContent = '[✓] connected to ' + label + (renderer === 'software' ? PANTHEON_SOFTWARE_NOTE : '');
         // The first fit ran before the socket was open, so tell the PTY the size explicitly now.
         t.fit();
         if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'r', c: term.cols, r: term.rows }));

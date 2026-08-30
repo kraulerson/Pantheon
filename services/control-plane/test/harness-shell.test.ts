@@ -911,6 +911,27 @@ describe("terminal addons (operator report 2026-08-30: tmux copy lands in the wr
     expect(gl.disposed).toBe(true); // falls back to the DOM renderer rather than freezing
   });
 
+  it("says so in the tab, in words, when it had to fall back to software rendering (that is what stutters)", () => {
+    FakeWebglAddon.throwOnConstruct = true;
+    openTerm();
+    const ws = FakeWS.instances[0];
+    ws.emit({ t: "ready", id: "abc" });
+    const status = document.querySelector(".term-status") as HTMLElement;
+    expect(status.textContent).toMatch(/connected/);
+    expect(status.textContent).toMatch(/software rendering/i);
+    expect((FakeTerm.last!.host as HTMLElement).getAttribute("data-renderer")).toBe("software");
+  });
+
+  it("stays quiet when the GPU renderer is in use (no noise when nothing is wrong)", () => {
+    openTerm();
+    const ws = FakeWS.instances[0];
+    ws.emit({ t: "ready", id: "abc" });
+    const status = document.querySelector(".term-status") as HTMLElement;
+    expect(status.textContent).toMatch(/connected/);
+    expect(status.textContent).not.toMatch(/software/i);
+    expect((FakeTerm.last!.host as HTMLElement).getAttribute("data-renderer")).toBe("gpu");
+  });
+
   it("a browser without WebGL still gets a working terminal (fails soft, never fails the session)", () => {
     FakeWebglAddon.throwOnConstruct = true;
     openTerm();

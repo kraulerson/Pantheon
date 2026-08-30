@@ -43,9 +43,12 @@ export const TERMINAL_ADDONS_JS = `
         var gl = new window.WebglAddon.WebglAddon();
         if (gl.onContextLoss) gl.onContextLoss(function () { try { gl.dispose(); } catch (e) {} });
         term.loadAddon(gl);
+        return 'gpu';
       }
-    } catch (e) {} // no WebGL in this browser — xterm keeps its DOM renderer
+    } catch (e) {} // no WebGL (unavailable, or blocked by a privacy shield) — xterm keeps its DOM renderer
+    return 'software'; // SAID in the tab: this is the path that stutters on a large window
   }
+  var PANTHEON_SOFTWARE_NOTE = ' — software rendering (a large window may stutter)';
 `;
 
 /** Function declarations (hoisted) that give a terminal a working clipboard. */

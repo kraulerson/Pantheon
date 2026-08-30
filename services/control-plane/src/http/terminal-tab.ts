@@ -122,7 +122,8 @@ ${TERMINAL_ADDONS_JS}
   fit.fit();
   if (window.ResizeObserver) new window.ResizeObserver(function () { fit.fit(); }).observe(host);
   window.addEventListener("resize", function () { fit.fit(); });
-  pantheonLoadAddons(term); // OSC-52 clipboard + GPU renderer (operator report 2026-08-30)
+  var renderer = pantheonLoadAddons(term); // OSC-52 clipboard + GPU renderer (operator report 2026-08-30)
+  if (host.setAttribute) host.setAttribute("data-renderer", renderer);
   pantheonWireClipboard(term, host); // selection + ⌘C / Ctrl+Shift+C (operator report 2026-08-29)
   var url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + WS_PATH;
   var ws = new WebSocket(url);
@@ -131,6 +132,10 @@ ${TERMINAL_ADDONS_JS}
     var f; try { f = JSON.parse(ev.data); } catch (e) { return; }
     if (f.t === "ready") {
       setState("connected");
+      if (renderer === "software") {
+        var c = document.getElementById("state-connected");
+        if (c) c.textContent = c.textContent + PANTHEON_SOFTWARE_NOTE;
+      }
       fit.fit();
       // The first fit ran before the socket was open — tell the PTY the size explicitly now.
       if (ws.readyState === 1) ws.send(JSON.stringify({ t: "r", c: term.cols, r: term.rows }));
