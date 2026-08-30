@@ -25,8 +25,9 @@
 
 import type { DevMachine } from "../registry/types.js";
 import { withBase } from "./base-path.js";
-import { pageHead, XTERM_THEME_JS } from "./theme.js";
+import { pageHead } from "./theme.js";
 import { BUILD_ID, withBuild } from "./build-id.js";
+import { TERMINAL_OPTIONS_JS, TERMINAL_CLIPBOARD_JS } from "./terminal-client.js";
 
 export interface HarnessFrameModel {
   readonly devMachines: readonly DevMachine[];
@@ -54,6 +55,7 @@ const TMUX_NAME_PATTERN = "[A-Za-z0-9_][A-Za-z0-9_-]{0,63}";
 export const HARNESS_CLIENT_JS = `
 (function () {
   var doc = document;
+${TERMINAL_CLIPBOARD_JS}
   // Mount prefix + chat address, rendered on <html> by the server (design 2026-08-27).
   var BASE = doc.documentElement.getAttribute('data-base') || '';
   var CHAT_URL = doc.documentElement.getAttribute('data-chat-url') || '';
@@ -131,7 +133,7 @@ export const HARNESS_CLIENT_JS = `
     var host = doc.createElement('div'); host.className = 'term-host'; t.panel.appendChild(host);
     var term; var fit;
     try {
-      term = new window.Terminal({ convertEol: true, fontFamily: '"Roboto Mono", Menlo, Consolas, monospace', theme: ${XTERM_THEME_JS} });
+      term = new window.Terminal(${TERMINAL_OPTIONS_JS});
       fit = new window.FitAddon.FitAddon();
       term.loadAddon(fit);
       term.open(host);
@@ -144,6 +146,7 @@ export const HARNESS_CLIENT_JS = `
     t.term = term;
     // Size the grid to the host (operator report 2026-08-27: xterm's 80×24 default filled ~60% of the
     // width and never grew). Only while visible — a hidden panel measures 0×0 and would shrink the PTY.
+    pantheonWireClipboard(term, host); // selection + ⌘C / Ctrl+Shift+C (operator report 2026-08-29)
     t.fit = function () { if (!t.panel.hidden) fit.fit(); };
     t.fit();
     if (window.ResizeObserver) { t.ro = new window.ResizeObserver(function () { t.fit(); }); t.ro.observe(host); }

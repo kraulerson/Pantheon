@@ -88,3 +88,14 @@ describe("renderTerminalTab — fills the window (fit addon) — operator report
     expect(html).toMatch(/t: "r", c: term\.cols, r: term\.rows/);
   });
 });
+
+describe("renderTerminalTab — text handling (operator report 2026-08-29)", () => {
+  it("creates the terminal PTY-correct (no convertEol) with selection-friendly options and clipboard wiring", () => {
+    const html = renderTerminalTab(machineModel);
+    expect(html).not.toContain("convertEol");
+    expect(html).toContain("macOptionClickForcesSelection: true");
+    expect(html).toContain("rightClickSelectsWord: true");
+    expect(html).toMatch(/attachCustomKeyEventHandler/);
+    expect(html).toMatch(/writeText/);
+  });
+});

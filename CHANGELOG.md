@@ -20,6 +20,18 @@ for handoff clarity. Categories are ordered by impact severity.
 ## [Unreleased]
 
 ### Fixed
+- 2026-08-29 **Terminal text no longer corrupts as the screen scrolls** (BUGS #45, operator report).
+  Both terminal hosts set `convertEol: true`, which turns a bare line feed into CR+LF and so moves
+  the cursor to column 0 on every LF. A PTY already sends CRLF, while full-screen apps use a bare LF
+  to move down *keeping* the column — so their redraws landed short by the leading columns whenever
+  the screen scrolled, and only a resize (a full repaint) cleared it. The option is gone.
+- 2026-08-29 **Selecting and copying from a terminal works** (BUGS #46, operator report). Dragging
+  now selects even while a full-screen app owns the mouse (Option-drag on macOS, or xterm's own
+  Shift-drag), right-click selects a word, **finishing a selection copies it**, and **⌘C** /
+  **Ctrl+Shift+C** copy explicitly (`navigator.clipboard` with an `execCommand` fallback). Plain
+  **Ctrl+C** is untouched — in a terminal it interrupts the running program. Both the harness tabs
+  and the standalone terminal page share one module (`src/http/terminal-client.ts`) so they cannot
+  drift apart.
 - 2026-08-28 **Each machine in the sidebar is now a native HTML disclosure element** (BUGS #43
   rework, operator report). The custom arrow glyph and JS click-toggle are gone: every machine is a
   `<details>`/`<summary>`, so the browser draws its own triangle and performs the folding even if our

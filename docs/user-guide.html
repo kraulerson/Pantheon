@@ -206,6 +206,20 @@ sidebar — hiding it gives the terminal the full width — and the page remembe
 <p>Sessions open as tabs along the top; close one with its ✕. Each state is spelled out in words,
 never by colour alone.</p>
 
+<h3 id="copying">Selecting and copying text in a terminal</h3>
+
+<p><strong>Drag across the text</strong> you want. If a full-screen program is using the mouse
+itself (tmux, the Claude CLI), a plain drag goes to that program instead — hold <kbd>Shift</kbd>
+(or <kbd>Option</kbd> on a Mac) while dragging and the harness selects instead. Double-click picks a
+word; right-click picks the word under the pointer.</p>
+
+<p><strong>The moment you finish selecting, the text is already on your clipboard.</strong>
+<kbd>&#8984;C</kbd> (or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>) copies it too. Paste with
+<kbd>&#8984;V</kbd>.</p>
+
+<p><kbd>Ctrl</kbd>+<kbd>C</kbd> is <em>not</em> copy in a terminal — it interrupts whatever is
+running, and it still does exactly that here. That is why copying uses <kbd>&#8984;C</kbd>.</p>
+
 <h3 id="tmux">tmux sessions on a machine</h3>
 
 <p>Beside each ready machine's <strong>Claude CLI &rarr; <em>name</em></strong> button, the harness asks

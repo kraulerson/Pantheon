@@ -9,8 +9,9 @@
  */
 
 import { withBase } from "./base-path.js";
-import { pageHead, XTERM_THEME_JS } from "./theme.js";
+import { pageHead } from "./theme.js";
 import { withBuild } from "./build-id.js";
+import { TERMINAL_OPTIONS_JS, TERMINAL_CLIPBOARD_JS } from "./terminal-client.js";
 
 export interface TerminalTabModel {
   readonly logicalName?: string;
@@ -108,7 +109,8 @@ ${pageHead(base)}
     });
     if (s === "error" && msg) { var m = document.getElementById("error-msg"); if (m) m.textContent = msg; }
   }
-  var term = new window.Terminal({ convertEol: true, fontFamily: '"Roboto Mono", Menlo, Consolas, monospace', theme: ${XTERM_THEME_JS} });
+${TERMINAL_CLIPBOARD_JS}
+  var term = new window.Terminal(${TERMINAL_OPTIONS_JS});
   // Fit the grid to the page (operator report 2026-08-27: the 80×24 default filled ~60% of the width and never grew).
   var fit = new window.FitAddon.FitAddon();
   term.loadAddon(fit);
@@ -117,6 +119,7 @@ ${pageHead(base)}
   fit.fit();
   if (window.ResizeObserver) new window.ResizeObserver(function () { fit.fit(); }).observe(host);
   window.addEventListener("resize", function () { fit.fit(); });
+  pantheonWireClipboard(term, host); // selection + ⌘C / Ctrl+Shift+C (operator report 2026-08-29)
   var url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + WS_PATH;
   var ws = new WebSocket(url);
   setState("loading");

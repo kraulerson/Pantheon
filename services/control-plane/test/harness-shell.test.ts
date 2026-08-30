@@ -43,6 +43,7 @@ class FakeWS {
 }
 
 class FakeTerm {
+  static last: FakeTerm | undefined;
   written: string[] = [];
   disposed = false;
   dataCb?: (d: string) => void;
@@ -50,6 +51,22 @@ class FakeTerm {
   host?: Element;
   cols = 80;
   rows = 24;
+  readonly options: Record<string, unknown>;
+  keyHandler?: (e: KeyboardEvent) => boolean;
+  selection = "";
+  constructor(options: Record<string, unknown> = {}) {
+    this.options = options;
+    FakeTerm.last = this;
+  }
+  attachCustomKeyEventHandler(h: (e: KeyboardEvent) => boolean): void {
+    this.keyHandler = h;
+  }
+  getSelection(): string {
+    return this.selection;
+  }
+  hasSelection(): boolean {
+    return this.selection.length > 0;
+  }
   open(el: Element): void {
     this.host = el;
   }
@@ -106,8 +123,17 @@ function installStorage(): void {
   });
 }
 
+const clipboardWrites: string[] = [];
+function installClipboard(): void {
+  Object.defineProperty(window.navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: (t: string) => { clipboardWrites.push(t); return Promise.resolve(); } }
+  });
+}
+
 function boot(model: Parameters<typeof renderHarnessFrame>[0]): void {
   installStorage();
+  installClipboard();
   document.body.innerHTML = bodyOf(renderHarnessFrame(model)); // <script> set via innerHTML stays inert
   (window as unknown as { WebSocket: unknown }).WebSocket = FakeWS;
   (window as unknown as { Terminal: unknown }).Terminal = FakeTerm;
@@ -757,5 +783,62 @@ describe("machines sidebar (operator request 2026-08-27: 'a collapsible sidebar 
     boot({ devMachines: [] });
     const aside = document.querySelector("aside[data-sidebar]") as HTMLElement;
     expect(aside.querySelector('[data-state="empty"]')?.textContent).toMatch(/No dev machines configured/);
+  });
+});
+
+describe("terminal text handling (operator report 2026-08-29)", () => {
+  beforeEach(() => {
+    FakeWS.instances = [];
+    FakeFitAddon.instances = [];
+    FakeTerm.last = undefined;
+    clipboardWrites.length = 0;
+    memStore.clear();
+    document.body.innerHTML = "";
+  });
+  const openTerm = (): FakeTerm => {
+    boot({ devMachines: [machine({ id: "a", logicalName: "mac-mini" })] });
+    (document.querySelector('[data-open-terminal="mac-mini"]') as HTMLElement).click();
+    return FakeTerm.last as FakeTerm;
+  };
+
+  it("does NOT set convertEol — a PTY already sends CRLF, and converting drags the cursor to column 0 on every line feed (scroll corruption)", () => {
+    const term = openTerm();
+    expect(term.options).not.toHaveProperty("convertEol");
+  });
+
+  it("lets the mouse select text even while a full-screen app grabs the mouse (Option-drag, right-click word)", () => {
+    const term = openTerm();
+    expect(term.options.macOptionClickForcesSelection).toBe(true);
+    expect(term.options.rightClickSelectsWord).toBe(true);
+  });
+
+  it("⌘C (and Ctrl+Shift+C) copies the selection and is not sent to the shell", () => {
+    const term = openTerm();
+    term.selection = "the quick brown fox\njumped over the lazy dog";
+    expect(term.keyHandler).toBeDefined();
+    const ev = (init: Partial<KeyboardEvent>): KeyboardEvent => ({ type: "keydown", key: "c", metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, ...init }) as KeyboardEvent;
+    expect(term.keyHandler!(ev({ metaKey: true }))).toBe(false); // handled here, not forwarded
+    expect(clipboardWrites).toEqual([term.selection]);
+    expect(term.keyHandler!(ev({ ctrlKey: true, shiftKey: true }))).toBe(false);
+    expect(clipboardWrites).toHaveLength(2);
+  });
+
+  it("plain Ctrl+C still interrupts the running program (it is never hijacked as copy)", () => {
+    const term = openTerm();
+    term.selection = "something selected";
+    const ev = { type: "keydown", key: "c", ctrlKey: true, metaKey: false, shiftKey: false, altKey: false } as KeyboardEvent;
+    expect(term.keyHandler!(ev)).toBe(true); // passed through to the PTY
+    expect(clipboardWrites).toEqual([]);
+  });
+
+  it("finishing a selection with the mouse copies it (copy on select)", () => {
+    const term = openTerm();
+    term.selection = "one two three";
+    (term.host as HTMLElement).dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true }));
+    expect(clipboardWrites).toEqual(["one two three"]);
+    clipboardWrites.length = 0;
+    term.selection = "";
+    (term.host as HTMLElement).dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true }));
+    expect(clipboardWrites).toEqual([]); // an empty selection never clobbers the clipboard
   });
 });
