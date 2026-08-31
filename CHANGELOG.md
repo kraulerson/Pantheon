@@ -25,7 +25,8 @@ for handoff clarity. Categories are ordered by impact severity.
   carries `data-renderer="gpu|software"`, so a browser that blocks WebGL (Brave Shields, Firefox
   `resistFingerprinting`) is visible instead of being mistaken for a slow harness. Measured for the
   record: the server path is not the bottleneck — 2 ms keystroke→echo round trip, and 5,000 lines
-  delivered as 173 frames / 29 KB in 35 ms.
+  delivered as 173 frames / 29 KB in 35 ms. Operator-confirmed smooth on Zen once the GPU
+  renderer reached the browser (2026-08-30).
 
 ### Fixed
 - 2026-08-30 **Terminals render on the GPU, and a copy made inside tmux can reach the system
