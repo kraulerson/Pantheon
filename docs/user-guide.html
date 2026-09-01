@@ -208,12 +208,19 @@ never by colour alone.</p>
 
 <h3 id="copying">Selecting and copying text in a terminal</h3>
 
-<p><strong>Drag across the text</strong> you want. If a full-screen program is using the mouse
-itself (tmux, the Claude CLI), a plain drag goes to <em>that program</em> instead — on a Mac hold
-<kbd>Option</kbd> (<kbd>&#8997;</kbd>) while dragging, on Windows/Linux hold <kbd>Shift</kbd>, and the
-harness selects instead. Double-click picks a word; right-click picks the word under the pointer.
-If you see tmux say <em>"copied N characters to tmux buffer"</em>, tmux answered the drag, not the
-harness — hold <kbd>Option</kbd> and drag again, or set up tmux's clipboard (below).</p>
+<p><strong>Drag across the text</strong> you want. With tmux's mouse mode on (set up 2026-09-01), a
+plain drag belongs to <em>tmux</em>: it selects in tmux's own copy mode and — because tmux now hands
+its copies over (below) — the text still lands on your Mac clipboard. To select in the harness's own
+layer instead, hold <kbd>Option</kbd> (<kbd>&#8997;</kbd>) while dragging on a Mac
+(<kbd>Shift</kbd> on Windows/Linux); that selection is copied the moment you let go. Double-click
+picks a word; right-click picks the word under the pointer. Either way the text reaches your
+clipboard — the difference is only which layer draws the highlight.</p>
+
+<p><strong>The mouse wheel scrolls back through the session.</strong> That needs tmux's mouse mode:
+without it, a terminal running a full-screen program turns each wheel tick into an Up/Down arrow
+press, which programs like the Claude CLI read as "previous message" — so the wheel appeared to walk
+your typed history instead of scrolling. With mouse mode on the wheel enters tmux's scrollback;
+press <kbd>q</kbd> (or just start typing) to return to the live prompt.</p>
 
 <p><strong>The moment you finish selecting, the text is already on your clipboard.</strong>
 <kbd>&#8984;C</kbd> (or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>) copies it too. Paste with

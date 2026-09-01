@@ -20,6 +20,16 @@ for handoff clarity. Categories are ordered by impact severity.
 ## [Unreleased]
 
 ### Changed
+- 2026-09-01 **tmux mouse mode enabled on the dev machine, so the wheel scrolls the session**
+  (operator report). With tmux not asking for mouse events, a terminal in the alternate screen
+  converts each wheel tick into an Up/Down arrow (xterm.js `_handlePassiveWheel`), which the Claude
+  CLI reads as "previous message" — the wheel appeared to walk the input history. `set -g mouse on`
+  in `~/.tmux.conf` on the Mac mini (plus the running server) puts the wheel back into tmux's
+  scrollback. Drag-selection then belongs to tmux, which is fine since `set-clipboard on` hands its
+  copies to the browser over OSC 52; Option-drag still selects in the harness's own layer.
+  **Not done:** xterm's `mouseEventsRequireAlt` (which would keep plain drags local while Option-drag
+  reaches tmux) exists only upstream in xterm master — it is not in the pinned 6.0.0 public API, so
+  the harness keeps `macOptionClickForcesSelection` instead.
 - 2026-08-30 **A terminal now says when it is rendering in software** (BUGS #47 follow-up). The tab's
   status line reads "connected to … — software rendering (a large window may stutter)" and the host
   carries `data-renderer="gpu|software"`, so a browser that blocks WebGL (Brave Shields, Firefox
