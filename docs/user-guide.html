@@ -231,7 +231,13 @@ copies is invisible to your Mac unless you tell it to hand the text over. Add th
 <code>~/.tmux.conf</code> on the dev machine and reload tmux
 (<code>tmux source-file ~/.tmux.conf</code>):</p>
 <pre><code>set -g set-clipboard on
-set -as terminal-features ',xterm-256color:clipboard'</code></pre>
+set -g mouse on</code></pre>
+<p class="muted">These two lines are what a dev machine needs for the harness to feel right: the
+first hands tmux's copies to your clipboard, the second gives the mouse wheel back to tmux so it
+scrolls the session instead of walking your input history. They are recorded here because they live
+in <code>~/.tmux.conf</code> on the dev machine, outside this project — if that machine is ever
+rebuilt, put them back. (tmux 3.6 already advertises clipboard support for the harness's terminal
+type; on an older tmux add <code>set -as terminal-features ',xterm-256color:clipboard'</code> too.)</p>
 <p>The harness understands the resulting hand-over (OSC&nbsp;52) and puts the text on your real
 clipboard. Without it, use <kbd>Option</kbd>-drag so the harness — not tmux — makes the selection.</p>
 
