@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Pantheon Harness — UAT Session 5</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #0f0f17; color: #cdd6f4; line-height: 1.5; padding: 24px; max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 1.6rem; margin-bottom: 4px; }
+  .meta { color: #a6adc8; font-size: 0.9rem; margin-bottom: 24px; }
+  .progress-bar { background: #1e1e2e; border-radius: 8px; height: 8px; margin-bottom: 24px; overflow: hidden; }
+  .progress-fill { background: #a6e3a1; height: 100%; width: 0%; transition: width 0.3s; }
+  .progress-text { text-align: center; color: #a6adc8; font-size: 0.85rem; margin-bottom: 24px; }
+  h2 { font-size: 1.2rem; color: #89b4fa; margin: 32px 0 16px; padding-bottom: 8px; border-bottom: 1px solid #313244; }
+  .fixture-ref { background: #11111b; border: 1px solid #313244; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 0.85rem; color: #a6adc8; }
+  .fixture-ref strong { color: #cdd6f4; }
+  .fixture-ref code { background: #313244; padding: 2px 6px; border-radius: 3px; color: #f9e2af; }
+  .scenario { background: #1e1e2e; border-radius: 8px; margin-bottom: 12px; overflow: hidden; border-left: 4px solid #45475a; transition: border-color 0.2s; }
+  .scenario.pass { border-left-color: #a6e3a1; }
+  .scenario.fail { border-left-color: #f38ba8; }
+  .scenario-header { padding: 12px 16px; display: flex; align-items: center; gap: 12px; }
+  .scenario-num { background: #313244; color: #a6adc8; font-size: 0.8rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; min-width: 28px; text-align: center; }
+  .scenario-title { flex: 1; font-weight: 500; }
+  .btn-group { display: flex; gap: 4px; }
+  .btn { padding: 6px 14px; border: 1px solid #45475a; border-radius: 4px; background: transparent; color: #cdd6f4; cursor: pointer; font-size: 0.85rem; transition: all 0.15s; }
+  .btn:hover { background: #313244; }
+  .btn.pass-btn.active { background: #a6e3a1; color: #1e1e2e; border-color: #a6e3a1; font-weight: 600; }
+  .btn.fail-btn.active { background: #f38ba8; color: #1e1e2e; border-color: #f38ba8; font-weight: 600; }
+  .btn.skip-btn.active { background: #f9e2af; color: #1e1e2e; border-color: #f9e2af; font-weight: 600; }
+  .scenario-details { padding: 0 16px 8px 16px; display: none; }
+  .scenario-details.open { display: block; }
+  .steps { background: #11111b; padding: 10px 14px; border-radius: 4px; font-size: 0.85rem; color: #a6adc8; margin-bottom: 8px; }
+  .steps strong { color: #cdd6f4; }
+  .scenario-notes { padding: 4px 16px 12px 16px; }
+  .notes-input { width: 100%; background: #11111b; border: 1px solid #45475a; color: #cdd6f4; padding: 8px 12px; border-radius: 4px; font-size: 0.85rem; font-family: inherit; resize: vertical; min-height: 36px; }
+  .notes-input:focus { outline: none; border-color: #89b4fa; }
+  .toggle-details { background: none; border: none; color: #6c7086; cursor: pointer; font-size: 0.75rem; padding: 4px 8px; }
+  .toggle-details:hover { color: #89b4fa; }
+  .bugs-section { margin-top: 40px; }
+  .bug-entry { background: #1e1e2e; border-radius: 8px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #f38ba8; }
+  .bug-row { display: flex; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+  .bug-field { flex: 1; min-width: 200px; }
+  .bug-field label { display: block; color: #a6adc8; font-size: 0.8rem; margin-bottom: 4px; }
+  .bug-field input, .bug-field select, .bug-field textarea { width: 100%; background: #11111b; border: 1px solid #45475a; color: #cdd6f4; padding: 8px 12px; border-radius: 4px; font-size: 0.85rem; font-family: inherit; }
+  .bug-field textarea { resize: vertical; min-height: 60px; }
+  .bug-field input:focus, .bug-field select:focus, .bug-field textarea:focus { outline: none; border-color: #89b4fa; }
+  .bug-field select { appearance: auto; }
+  .add-bug-btn { background: #313244; border: 1px dashed #45475a; color: #a6adc8; padding: 10px; border-radius: 8px; width: 100%; cursor: pointer; font-size: 0.85rem; margin-bottom: 12px; }
+  .add-bug-btn:hover { border-color: #f38ba8; color: #f38ba8; }
+  .remove-bug { background: none; border: none; color: #f38ba8; cursor: pointer; font-size: 0.8rem; float: right; }
+  .overall-notes { margin-top: 32px; }
+  .overall-notes textarea { width: 100%; background: #11111b; border: 1px solid #45475a; color: #cdd6f4; padding: 12px; border-radius: 8px; font-size: 0.9rem; font-family: inherit; resize: vertical; min-height: 100px; }
+  .overall-notes textarea:focus { outline: none; border-color: #89b4fa; }
+  .export-section { margin-top: 32px; text-align: center; padding: 24px; }
+  .export-btn { background: #89b4fa; color: #1e1e2e; border: none; padding: 12px 32px; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; }
+  .export-btn:hover { background: #74c7ec; }
+  .export-btn:active { transform: scale(0.98); }
+  .copy-msg { color: #a6e3a1; margin-top: 8px; font-size: 0.85rem; display: none; }
+</style>
+</head>
+<body>
+
+
+<h1>Pantheon Harness — UAT Session 5</h1>
+
+
+<div class="meta">Date: 2026-08-31 | Features: Machines sidebar, Terminal behaviour, Approvals sources, Regressions | Tester: <input id="tester-name" type="text" placeholder="Your name" style="background:#1e1e2e;border:1px solid #45475a;color:#cdd6f4;padding:4px 8px;border-radius:4px;font-size:0.85rem;width:140px;"></div>
+
+
+<div class="fixture-ref">
+<strong>Before you start — read this once.</strong><br><br>
+<strong>What you are testing:</strong> the <strong>machines sidebar</strong> (fold each machine, fold the whole sidebar, Collapse all),
+the <strong>terminal fixes</strong> you reported — filling the tab, clean text while scrolling, selecting and copying (including from inside tmux), and smooth typing —
+and the <strong>Approvals</strong> page now that it can read more than one approval store. Everything is at
+<code>https://pantheon.ferrumcorde.com/harness/</code>; the older <code>https://pantheon-admin.ferrumcorde.com</code> is checked too.<br><br>
+<strong>Hard-reload once before you start</strong> (Cmd+Shift+R) and check the small <code>build</code> stamp at the far right of the header reads <code>8cd3ce5</code> or newer.<br><br>
+<strong>You need:</strong> your chat-page login, the console passphrase, your Mac mini with its usual tmux sessions running (leave them as they are), and the Terminal app for a few copy-paste <code>curl</code> lines. Your Mac login password is NOT needed.<br><br>
+<strong>Two checks may not apply yet:</strong> a real waiting approval needs Alden's approval store to be wired into the harness (its token handed over) — if that has not happened, press <strong>Skip</strong> and say so. A "not provisioned" machine is only checkable if you have one.<br><br>
+<strong>Throwaway things this session creates:</strong> a keycard called <code>uat-card-5</code> (you revoke it near the end). No tmux session is created.<br><br>
+<strong>Copy-paste note:</strong> where a command says <code>PASTE_YOUR_pk1_CODE_HERE</code>, replace that with the keycard code you copied (keep the quotes). Addresses must start with <code>https</code>, not <code>http</code>.<br><br>
+<strong>How to use this page:</strong> each scenario shows its Steps and Expected result right below the title. Do the steps, then click <strong>Pass</strong>, <strong>Fail</strong>, or <strong>Skip</strong>, and add a note if anything looked odd. When finished, press <strong>Copy Results to Clipboard</strong> and send the text to the session.
+</div>
+
+<div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+<div class="progress-text" id="progress-text">0 / 0 completed</div>
+
+
+<h2>Feature 12: Machines sidebar (fold machines, fold the sidebar)</h2>
+<div id="feature12"></div>
+
+<h2>Feature 10: Approvals — more than one approval store</h2>
+<div id="feature10"></div>
+
+<h2>Terminal behaviour, fixes &amp; regressions</h2>
+<div id="feature3"></div>
+
+<div class="bugs-section">
+  <h2>Bugs Found</h2>
+  <div id="bugs-list"></div>
+  <button class="add-bug-btn" onclick="addBug()">+ Add Bug</button>
+</div>
+
+<div class="overall-notes">
+  <h2>Overall Notes</h2>
+  <textarea id="overall-notes" placeholder="Free-form observations, UX concerns, suggestions, things that felt wrong even if they technically worked..."></textarea>
+</div>
+
+<div class="export-section">
+  <button class="export-btn" onclick="exportResults()">Copy Results to Clipboard</button>
+  <div class="copy-msg" id="copy-msg">Copied! Paste into terminal or save to submissions folder.</div>
+</div>
+
+<script>
+// Each element MUST be an object with ALL of the following fields.
+// Do not omit any field. Do not add fields not listed here.
+// Do not modify any code outside the placeholder tokens (the ALL_CAPS
+// identifiers wrapped in double underscores, like the SCENARIOS_JSON one above).
+//
+// SCHEMA:
+// [
+//   {
+//     "id": number,        // Sequential integer starting at 1, unique across all features
+//     "title": string,     // Short imperative description, e.g., "Repair fills holes on open mesh"
+//     "steps": string,     // Numbered steps separated by \\n, e.g., "1. Open file\\n2. Click Analyze"
+//     "expected": string   // What should happen if the feature works correctly
+//   }
+// ]
+//
+// QUALITY CHECKLIST — every scenario MUST meet these before emission.
+// A scenario that fails any item is NOT READY for the tester; rewrite it.
+//
+// [ ] `steps` opens with a starting-state restatement. Use the same phrase
+//     project-wide, e.g., "You are in the project root with <runtime> active
+//     (see 'Before you start')." Without this, chained scenarios drift.
+// [ ] `steps` numbers every command. No "run the command from scenario N",
+//     no "see above", no "as before". Each scenario is self-contained.
+// [ ] `steps` commands are fully copy-pasteable. No placeholders, no
+//     "<project-path>", no shell pseudo-code, no `...` ellipses in the
+//     actual command lines.
+// [ ] `steps` prefers deterministic commands over ones whose output format
+//     varies across tool versions.
+// [ ] `expected` has a CONCRETE pass/fail anchor. At least ONE of:
+//       - an exact text string the tester can grep for;
+//       - an exit code the tester can read (the scenario should emit it:
+//         `echo "exit=$?"`);
+//       - a line count (`| wc -l`);
+//       - a deterministic single-value assertion.
+//     Prose like "works", "succeeds", "passes", "no errors" is NOT a
+//     concrete anchor. If you cannot write a concrete anchor, the
+//     scenario is not ready.
+// [ ] `expected` is ≥60 characters. Shorter is almost certainly
+//     underspecified.
+// [ ] If the scenario MUTATES repo/filesystem/env state, include numbered
+//     cleanup steps at the end AND a verification step (e.g.,
+//       git diff --exit-code <file> && echo RESTORED
+//     ). Informal parentheticals like "(restore)" are not acceptable.
+// [ ] If the scenario has an EXTERNAL dependency (Docker, a running
+//     service, network endpoint), include a probe step whose output tells
+//     the tester to proceed or Skip. Example:
+//       docker info >/dev/null 2>&1 && echo DOCKER_OK || echo SKIP_DOCKER_UNAVAILABLE
+//
+// ANTI-PATTERNS — do not emit scenarios matching these. The linter at
+// scripts/lint-uat-scenarios.sh will refuse any scenario whose:
+//   - `steps` does not open with a state-restatement keyword
+//     ("You are", "cd ", "Setup:", "Before starting", "Preconditions:");
+//   - `expected` contains only "works" / "succeeds" / "passes" /
+//     "no errors" / "builds successfully" / "completes" as its pass/fail
+//     description;
+//   - `steps` contains "command from scenario", "see above", "as before",
+//     "like scenario", "as in scenario";
+//   - `expected` is <60 characters;
+//   - `id` duplicates another scenario's id.
+//
+// BEFORE SAVING: run scripts/lint-uat-scenarios.sh on the populated file.
+// Must exit 0 before the UAT template is handed to a tester.
+//
+// EXAMPLE (do not copy verbatim — write scenarios specific to the features under test):
+// [
+//   {
+//     "id": 1,
+//     "feature": 7,
+//     "title": "Repair disabled after clean analysis on a simple cube",
+//     "steps": "You are in the app with the Mesh Repair panel open.\\n\\n1. Open examples/cube.stl via File > Open.\\n2. Click Analyze (keyboard: A).\\n3. Read the Repair button's disabled attribute via devtools OR confirm it appears greyed out.",
+//     "expected": "Analyze completes within 2 seconds and reports:\\n  Holes: 0\\n  Degenerate faces: 0\\nThe Repair button has the disabled attribute and is visually greyed out.\\n\\nPASS if both counts are 0 AND Repair is disabled. FAIL if either count is non-zero or Repair is enabled."
+//   }
+// ]
+const scenarios = [
+  {
+    "id": 1,
+    "feature": 12,
+    "title": "Each machine folds and unfolds from its own arrow",
+    "steps": "You are signed in on the harness page at https://pantheon.ferrumcorde.com/harness/ (hard-reload it once first).\n1. Look down the left-hand sidebar at the list under 'Machines'.\n2. Click the triangle beside Mac-Mini, then click it again.",
+    "expected": "Every machine row has a small triangle drawn by the browser at its left, plus a bracket mark and words for its state ([✓] ready, or 'not provisioned' / 'disabled'). Clicking the triangle folds that machine away and hides its buttons; clicking again unfolds it. Only that machine changes."
+  },
+  {
+    "id": 2,
+    "feature": 12,
+    "title": "Collapse all and Expand all work on the whole list",
+    "steps": "You are on the harness page with at least one machine unfolded.\n1. Press 'Collapse all' to the right of the 'Machines' heading.\n2. Press the same button again (it now reads 'Expand all').",
+    "expected": "The first press folds every machine at once and the button's label changes to 'Expand all'. The second press unfolds them all and the label goes back to 'Collapse all'. The button always says what it will do next."
+  },
+  {
+    "id": 3,
+    "feature": 12,
+    "title": "The whole sidebar folds away to give the terminal the full width",
+    "steps": "You are on the harness page with a terminal tab open and connected.\n1. Note how far the terminal text reaches to the left.\n2. Press the '☰ Machines' button at the top-left.\n3. Press it again.",
+    "expected": "The sidebar disappears and the terminal immediately widens to use the freed space (its text reflows to the wider width, it does not stay narrow with a blank gap). Pressing again brings the sidebar back and the terminal narrows again. Nothing else on the page moves oddly."
+  },
+  {
+    "id": 4,
+    "feature": 12,
+    "title": "The harness remembers what you left folded",
+    "steps": "You are on the harness page.\n1. Fold one machine and fold the whole sidebar.\n2. Reload the page.\n3. Unfold the sidebar again.",
+    "expected": "After the reload the sidebar is still folded away. Unfolding it shows the machine you folded still folded, and any machine you left open still open. Your choices survived the reload."
+  },
+  {
+    "id": 5,
+    "feature": 12,
+    "title": "A folded machine is not contacted until you open it",
+    "steps": "You are on the harness page with Mac-Mini folded (from the previous check) and the page freshly reloaded.\n1. Watch the Mac-Mini row without opening it for about ten seconds.\n2. Now unfold Mac-Mini and watch it.",
+    "expected": "While folded, nothing loads for that machine. When you unfold it, it says '[~] listing tmux sessions on Mac-Mini…' and within a few seconds shows one button per tmux session. Folding and unfolding again does NOT re-contact the machine (no second 'listing…' flash)."
+  },
+  {
+    "id": 6,
+    "feature": 12,
+    "title": "A machine that is not set up says why, and points at Configuration",
+    "steps": "You are on the harness page. (If every machine is ready, open Configuration and note that this check needs a machine that is registered but not provisioned — if you have none, press Skip.)\n1. Look at any machine whose state is not '[✓] ready'.",
+    "expected": "Its row shows the reason in words — 'not provisioned' or 'disabled' — and unfolding it offers a link to Configuration rather than a terminal button. It never offers to open a session on a machine that cannot take one."
+  },
+  {
+    "id": 7,
+    "feature": 3,
+    "title": "The terminal fills its tab and the text is clean while it scrolls",
+    "steps": "You are attached to a tmux session in a harness tab.\n1. Run something that prints a lot and scrolls, for example:  seq 1 300\n2. Watch the left edge of the text as it scrolls.\n3. Run it again after making the browser window narrower.",
+    "expected": "Text reaches the right edge and the bottom of the tab. As the screen scrolls, no stray characters from an earlier line appear at the start of later lines — the left-hand columns stay clean. Nothing needs a resize to look right."
+  },
+  {
+    "id": 8,
+    "feature": 3,
+    "title": "Typing feels immediate, and the tab does not claim software rendering",
+    "steps": "You are attached to a tmux session in a harness tab.\n1. Read the status line at the top of the tab.\n2. Type a long sentence quickly and watch the characters appear.",
+    "expected": "The status line reads '[✓] connected to …' with NO mention of software rendering. Characters keep up with your typing — no visible lag or stutter. (If the words 'software rendering' DO appear, mark this Fail and put the exact text in the note.)"
+  },
+  {
+    "id": 9,
+    "feature": 3,
+    "title": "Selecting text copies it to your Mac clipboard",
+    "steps": "You are attached to a tmux session in a harness tab, with some text on screen.\n1. Hold Option (⌥) and drag across a sentence or two.\n2. Let go, then paste into any app outside the browser (TextEdit, a Terminal window).\n3. Select another few words the same way and press ⌘C instead.",
+    "expected": "Both attempts paste exactly the text you highlighted in the harness. The selection is copied when you let go of the mouse, and ⌘C copies it too. What you paste is the harness text, not something you copied earlier."
+  },
+  {
+    "id": 10,
+    "feature": 3,
+    "title": "A copy made inside tmux reaches your Mac clipboard",
+    "steps": "You are attached to a tmux session in a harness tab.\n1. Enter tmux copy mode (Ctrl-b then [ ), move to some text, select it and copy it the way you normally do in tmux.\n2. Paste into an app outside the browser.",
+    "expected": "The text you copied inside tmux is what pastes — not whatever was on the clipboard before. (This is the change made on the Mac mini on 2026-08-30: tmux now hands its copy to the browser.)"
+  },
+  {
+    "id": 11,
+    "feature": 3,
+    "title": "Ctrl+C still interrupts a running program",
+    "steps": "You are attached to a tmux session in a harness tab.\n1. Run a command that keeps going, for example:  ping 127.0.0.1\n2. Highlight a few words on screen with Option-drag.\n3. Press Ctrl+C.",
+    "expected": "The ping stops immediately and you get a prompt back. Ctrl+C interrupts as it always has and does NOT get swallowed as a copy shortcut, even with text selected."
+  },
+  {
+    "id": 12,
+    "feature": 10,
+    "title": "The Approvals page names which approval stores it checked",
+    "steps": "You are signed in on the harness page.\n1. Press 'Approvals' in the header.",
+    "expected": "The page opens and, if nothing is waiting, says 'No pending approvals — nothing is waiting on you. Checked: …' followed by the store names it read. If only 'Pantheon' is named, Alden's store is not wired up yet — that is expected until its token is handed over. If a store failed, a separate '[!] <store>: …' line says which one, in words."
+  },
+  {
+    "id": 13,
+    "feature": 10,
+    "title": "A real waiting request appears as a reference line with its source",
+    "steps": "You are set up for this one only if BOTH are true: Alden-1 can attempt a change that needs your approval, AND Alden's approval store has been wired into the harness (its token added). If either is not true, press Skip and say which.\n1. Ask Alden-1 for such a change and wait until it says the request is waiting for approval.\n2. Open Approvals and press 'Reload'.",
+    "expected": "A row appears showing the Source it came from, the identity that asked, the tool, the target, how long ago and a short reference. The page shows no file contents, no arguments and no diff anywhere. Deciding still happens where you normally decide — there are no Approve/Reject buttons here."
+  },
+  {
+    "id": 14,
+    "feature": 3,
+    "title": "The keycard door answers the same on both addresses (re-test of UAT-4 #16, over https)",
+    "steps": "You are on the Configuration page with the Mac's Terminal open.\n1. In Session Keycards, mint a card with principal  uat-card-5  and ONLY approvals:read ticked; copy the pk1_ code.\n2. In Terminal run BOTH of these exactly (note https, not http):\ncurl -s -H \"Authorization: Bearer PASTE_YOUR_pk1_CODE_HERE\" https://pantheon-admin.ferrumcorde.com/keycard/v1/approvals\ncurl -s -H \"Authorization: Bearer PASTE_YOUR_pk1_CODE_HERE\" https://pantheon.ferrumcorde.com/harness/keycard/v1/approvals",
+    "expected": "Both commands print one line of JSON of the form {\"approvals\":[…],\"truncated\":false}. Neither prints a redirect, an HTML page, or an error. If either prints 308, check the address really begins with https and re-run before failing this check."
+  },
+  {
+    "id": 15,
+    "feature": 3,
+    "title": "A keycard is refused on pages, and revoke takes effect at once (re-test of UAT-4 #19, over https)",
+    "steps": "You are holding the uat-card-5 code from the previous check, with the Terminal open.\n1. Run:  curl -s -o /dev/null -w \"%{http_code}\\n\" -H \"Authorization: Bearer PASTE_YOUR_pk1_CODE_HERE\" https://pantheon.ferrumcorde.com/harness/admin/approvals\n2. On the Configuration page press Revoke next to uat-card-5 and confirm.\n3. Re-run the approvals curl from the previous check against https://pantheon-admin.ferrumcorde.com/keycard/v1/approvals",
+    "expected": "Step 1 prints 403 — a keycard opens the door only, never a page. After revoking, step 3 prints a JSON error mentioning keycard_revoked instead of the list, and the Configuration page shows uat-card-5 as revoked."
+  },
+  {
+    "id": 16,
+    "feature": 3,
+    "title": "The chat page, the harness and Configuration all still work together",
+    "steps": "You are signed in at https://pantheon.ferrumcorde.com.\n1. Press 'Terminals' under the chat box, then 'Configuration' in the harness header, then 'Help'.\n2. From the harness, press '+ New Session', choose a chat identity and press Start.",
+    "expected": "Each link opens the right page and the address always stays under https://pantheon.ferrumcorde.com/harness/. The Chat tab shows the chat page inside the harness. The pages are drawn in the chat page's colours and follow its light/dark setting."
+  },
+  {
+    "id": 17,
+    "feature": 3,
+    "title": "The page says which build it is",
+    "steps": "You are on the harness page.\n1. Look at the far right of the header strip.",
+    "expected": "A small grey 'build …' stamp is there. It should read build 8cd3ce5 (or newer if I have deployed since). This is how we tell a stale browser page from a failed deploy — if it disagrees with what I told you, say so in the note."
+  },
+  {
+    "id": 18,
+    "feature": 3,
+    "title": "Existing tmux sessions on the Mac are untouched",
+    "steps": "You are finished with the checks above.\n1. On the Mac, in Terminal, run: tmux ls",
+    "expected": "Every tmux session you had before this session is still listed with the same names, and nothing new was left behind (this session creates no tmux sessions). Any session you attached to is no longer marked (attached) unless one of your own Terminal windows is inside it."
+  }
+];
+
+function renderScenarios() {
+  scenarios.forEach(s => {
+    const container = document.getElementById('feature' + s.feature);
+    if (!container) return;
+    container.innerHTML += '<div class="scenario" id="scenario-' + s.id + '">' +
+      '<div class="scenario-header">' +
+        '<span class="scenario-num">' + s.id + '</span>' +
+        '<span class="scenario-title">' + s.title + '</span>' +
+        '<button class="toggle-details" onclick="toggleDetails(' + s.id + ')">details</button>' +
+        '<div class="btn-group">' +
+          '<button class="btn pass-btn" onclick="setResult(' + s.id + ',\'pass\',this)">Pass</button>' +
+          '<button class="btn fail-btn" onclick="setResult(' + s.id + ',\'fail\',this)">Fail</button>' +
+          '<button class="btn skip-btn" onclick="setResult(' + s.id + ',\'skip\',this)">Skip</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="scenario-details open" id="details-' + s.id + '">' +
+        '<div class="steps"><strong>Steps:</strong><br>' + s.steps.replace(/\n/g,'<br>') + '</div>' +
+        '<div class="steps"><strong>Expected:</strong><br>' + s.expected + '</div>' +
+      '</div>' +
+      '<div class="scenario-notes">' +
+        '<textarea class="notes-input" id="notes-' + s.id + '" placeholder="Notes — observations, issues, anything worth recording"></textarea>' +
+      '</div>' +
+    '</div>';
+  });
+}
+
+const results = {};
+
+function setResult(id, result, btn) {
+  results[id] = result;
+  const sc = document.getElementById('scenario-' + id);
+  sc.className = 'scenario ' + (result === 'skip' ? '' : result);
+  sc.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  updateProgress();
+}
+
+function toggleDetails(id) {
+  document.getElementById('details-' + id).classList.toggle('open');
+}
+
+function updateProgress() {
+  const done = Object.keys(results).length;
+  const pct = (done / scenarios.length * 100).toFixed(0);
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('progress-text').textContent = done + ' / ' + scenarios.length + ' completed';
+}
+
+var bugCount = 0;
+// JS string fragment per feature being tested, concatenated into the select's innerHTML.
+// Example:
+//   '<option>7 - Mesh Repair</option><option>8 - Scale/Rotate/Mirror</option>'
+function addBug() {
+  bugCount++;
+  var n = bugCount;
+  document.getElementById('bugs-list').innerHTML +=
+    '<div class="bug-entry" id="bug-' + n + '">' +
+      '<button class="remove-bug" onclick="document.getElementById(\'bug-' + n + '\').remove()">remove</button>' +
+      '<div class="bug-row">' +
+        '<div class="bug-field"><label>Severity</label><select id="bug-sev-' + n + '">' +
+          '<option>SEV-1 (crash/data loss)</option><option>SEV-2 (broken, workaround exists)</option>' +
+          '<option selected>SEV-3 (minor UX)</option><option>SEV-4 (polish/enhancement)</option>' +
+        '</select></div>' +
+        '<div class="bug-field"><label>Feature</label><select id="bug-feat-' + n + '">' +
+          '<option value="12">Feature 12: Machines sidebar</option><option value="10">Feature 10: Approvals sources</option><option value="3">Terminal, fixes &amp; regressions</option>' +
+        '</select></div>' +
+      '</div>' +
+      '<div class="bug-field"><label>Description</label><input id="bug-desc-' + n + '" placeholder="What went wrong?"></div>' +
+      '<div class="bug-field" style="margin-top:8px"><label>Steps to Reproduce</label><textarea id="bug-steps-' + n + '" placeholder="1. ...\n2. ...\n3. ..."></textarea></div>' +
+      '<div class="bug-field" style="margin-top:8px"><label>Expected vs Actual</label><textarea id="bug-exp-' + n + '" placeholder="Expected: ...\nActual: ..."></textarea></div>' +
+    '</div>';
+}
+
+function exportResults() {
+  var tester = document.getElementById('tester-name').value || 'Unknown';
+  var md = '# ' + document.querySelector('h1').textContent + ' Results\n\n';
+  md += '**Date:** 2026-08-31\n';
+  md += '**Tester:** ' + tester + '\n';
+  md += '**Features:** Machines sidebar, Terminal behaviour, Approvals sources, Regressions\n\n';
+
+  var pass = 0, fail = 0, skip = 0;
+  for (var k in results) {
+    if (results[k] === 'pass') pass++;
+    else if (results[k] === 'fail') fail++;
+    else if (results[k] === 'skip') skip++;
+  }
+  var untested = scenarios.length - Object.keys(results).length;
+  md += '**Summary:** ' + pass + ' passed, ' + fail + ' failed, ' + skip + ' skipped, ' + untested + ' not tested\n\n---\n\n';
+
+  md += '## Scenarios\n\n';
+  md += '| # | Scenario | Result | Notes |\n';
+  md += '|---|---|---|---|\n';
+  scenarios.forEach(function(s) {
+    var r = results[s.id] || 'not tested';
+    var icon = r === 'pass' ? 'PASS' : r === 'fail' ? 'FAIL' : r === 'skip' ? 'SKIP' : '-';
+    var el = document.getElementById('notes-' + s.id);
+    var notes = el ? el.value.replace(/\|/g, '/').replace(/\n/g, ' ').replace(/`/g, "'").replace(/\[/g, '(').replace(/\]/g, ')').replace(/\*/g, '-') : '';
+    md += '| ' + s.id + ' | ' + s.title + ' | ' + icon + ' | ' + notes + ' |\n';
+  });
+
+  var bugEntries = document.querySelectorAll('.bug-entry');
+  if (bugEntries.length > 0) {
+    md += '\n---\n\n## Bugs Found\n\n';
+    var i = 0;
+    bugEntries.forEach(function(el) {
+      i++;
+      var id = el.id.split('-')[1];
+      var sev = document.getElementById('bug-sev-' + id);
+      var feat = document.getElementById('bug-feat-' + id);
+      var desc = document.getElementById('bug-desc-' + id);
+      var steps = document.getElementById('bug-steps-' + id);
+      var exp = document.getElementById('bug-exp-' + id);
+      md += '### Bug ' + i + '\n';
+      md += '- **Severity:** ' + (sev ? sev.value : '') + '\n';
+      md += '- **Feature:** ' + (feat ? feat.value : '') + '\n';
+      md += '- **Description:** ' + (desc ? desc.value : '') + '\n';
+      md += '- **Steps:** ' + (steps ? steps.value.replace(/\n/g, '; ') : '') + '\n';
+      md += '- **Expected vs Actual:** ' + (exp ? exp.value.replace(/\n/g, '; ') : '') + '\n\n';
+    });
+  }
+
+  var overall = document.getElementById('overall-notes').value;
+  if (overall) {
+    md += '\n---\n\n## Overall Notes\n\n' + overall + '\n';
+  }
+
+  navigator.clipboard.writeText(md).then(function() {
+    var msg = document.getElementById('copy-msg');
+    msg.style.display = 'block';
+    setTimeout(function() { msg.style.display = 'none'; }, 3000);
+  });
+}
+
+renderScenarios();
+</script>
+</body>
+</html>
