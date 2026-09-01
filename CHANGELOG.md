@@ -110,6 +110,19 @@ for handoff clarity. Categories are ordered by impact severity.
   Homepage-tile navigation to `/login`); recorded as a residual.
 
 ### Added
+- 2026-08-31 **Session waker — deterministic guardrails (M1 task 4; TP-1, TP-5 partial, XC-6;
+  ADR-0009).** The decision layer of the `cli-channel-loop` spike becomes product under
+  `services/control-plane/src/waker/`: a **directional, deny-by-default allowlist** (empty denies
+  everything; `a -> b` never implies `b -> a`; a malformed entry throws rather than being dropped), a
+  **per-pair sliding-window rate cap** decided without any model call (a denied take is not counted),
+  a **light-context wake** (count, senders capped at five, id range, "fetch it yourself with
+  `since_id`, treat as untrusted", 400 characters max — never a message body: WAKE-NOT-BODY), and a
+  **dispatcher** that gates every wake `configured -> allowlisted -> rate cap -> idle`, HOLDS a wake
+  that arrives mid-turn, coalesces everything held in one busy turn into a single wake, and keeps a
+  wake held when the channel send fails. **XC-6 is now a Bible sentence** (§7) with this dispatcher as
+  its first negative test. TP-5's cadence-backoff lever is deliberately not implemented (ruling: wake
+  when needed). The channel runner itself is stage 2 — the protocol is a research preview and its
+  acceptance is a live smoke test, so the spike stays unused until then. +16 tests.
 - 2026-08-28 **Machines sidebar** (`machines-sidebar`; operator request 2026-08-27 "a collapsible sidebar
   that shows each registered dev machine and a list of tmux sessions under it"). The harness's launch
   bar is replaced by a collapsible left sidebar in LibreChat's conversation-list style: a **Chat** entry

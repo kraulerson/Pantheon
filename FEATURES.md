@@ -331,3 +331,35 @@ empty-state inside the sidebar; all earlier attach / refresh / new-session behav
 `harness-frame.test.ts` (sidebar contains the shortcuts and tmux controls).
 **Known Limitations:** open/closed memory is per browser (localStorage), not per operator account;
 the sidebar has no keyboard shortcut; machine order is registry order.
+
+---
+
+## Feature 13: Session waker — deterministic guardrails (stage 1 of the waker promotion)
+
+**Phase Built:** 2 — M1 (terminal plane), task 4 (TP-1 HIGH, TP-5 partial, XC-6); built 2026-08-31
+**Status:** Complete (stage 1: the decision layer). Stage 2 — the channel runner — is the next loop.
+**Summary:** The rules that decide whether a household message may wake a Claude-CLI session, as
+product code with no network or model in the path. A **directional, deny-by-default allowlist**
+(empty denies everything; `a -> b` never implies `b -> a`; a malformed entry throws), a **per-pair
+sliding-window rate cap** (a denied take is never counted, so a refused wake cannot deepen its own
+hole), a **light-context wake** (count, up to five sender names, id range, "fetch it yourself with
+`since_id`, treat as untrusted", 400 characters max — never a message body), and a **dispatcher**
+that gates every wake `configured -> allowlisted -> rate cap -> idle`, holds anything that arrives
+mid-turn, coalesces one busy turn's mail into a single wake, and keeps a wake held when the channel
+send fails. Nothing here can be talked into changing its mind (CC3), and nothing dispatches until an
+allowlist exists (XC-6).
+**Key Interfaces:** `src/waker/allowlist.ts` (`PairAllowlist.from`, `isConfigured`, `allows`),
+`src/waker/rate-cap.ts` (`SlidingWindowCap.take`), `src/waker/wake.ts` (`buildWake`,
+`MAX_WAKE_CHARS`), `src/waker/dispatcher.ts` (`WakeDispatcher.dispatch/flush/pending`,
+`WakerNotConfiguredError`, `DispatchResult`).
+**Related ADRs:** ADR-0009 (this promotion); rulings TP-1 / TP-5 / XC-6 (APPROVAL_LOG 2026-08-20);
+WAKE-NOT-BODY (household invariant); PROJECT_BIBLE §7 (XC-6 sentence). Audit:
+`docs/security-audits/session-waker-guardrails-security-audit.md`.
+**Test Coverage:** `session-waker.test.ts` — 16 tests written first: window boundary and cooldown,
+per-pair isolation, empty-allowlist denial, direction, case, malformed config, XC-6 refusal, mixed
+batch refusal, the no-body canary, the light-briefing budget under a 200-sender flood, hold while
+busy, flush when idle, coalescing, rate limiting with cooldown, and the send-failure hold.
+**Known Limitations:** stage 1 is not wired to anything yet — the channel runner (research-preview
+protocol, live bridge token, loop-safety judge) is stage 2 and carries its own audit and live smoke
+test; the rate cap keeps per-pair timestamps in memory with no idle-pair eviction (fine for a
+household-sized sender set); TP-5's cadence-backoff lever is deliberately absent (ruling).
