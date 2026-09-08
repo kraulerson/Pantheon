@@ -1,0 +1,735 @@
+<title>Pantheon Design Sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* ---------- drafting-sheet tokens: light is the vellum sheet, dark is the light-table ---------- */
+  :root {
+    --ground: #e9ebef;        /* the desk */
+    --sheet: #f7f8fa;         /* the drawing sheet */
+    --grid: #d3d8e0;
+    --grid-major: #c2c9d4;
+    --surface: #ffffff;       /* module face, inspector */
+    --surface-2: #eef1f5;
+    --ink: #1a222d;
+    --ink-2: #4c5866;
+    --muted: #7a8593;
+    --line: #c9d0da;
+    --line-strong: #8d97a5;
+    --accent: #c4561a;        /* survey orange: selection + primary action only */
+    --accent-ink: #ffffff;
+    --accent-soft: #f6e3d8;
+    --focus: #1f5fbf;
+    --ok: #2e7d4f;
+    --warn: #a2681a;
+    --bad: #b03a2e;
+    /* layer hues: ALWAYS paired with a tag and a border style, never the only signal */
+    --l-ui: #2b6cb0;
+    --l-cp: #5b3fa0;
+    --l-tc: #b03a2e;
+    --l-br: #1f7a63;
+    --l-st: #8a6d1f;
+    --l-ex: #5c6672;
+    --shadow: 0 1px 2px rgba(20, 30, 45, .10), 0 6px 18px rgba(20, 30, 45, .08);
+    --font-display: "IBM Plex Sans Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+    --font-body: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "IBM Plex Mono", Menlo, Consolas, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0f1319; --sheet: #161b23; --grid: #222a35; --grid-major: #2c3643;
+      --surface: #1d242e; --surface-2: #232c38; --ink: #e7ebf1; --ink-2: #b8c1cc; --muted: #8d98a6;
+      --line: #313b48; --line-strong: #5a6674; --accent: #e8813f; --accent-ink: #14100c; --accent-soft: #3a2519;
+      --focus: #6ea3f0; --ok: #57b380; --warn: #d1a24a; --bad: #e0685c;
+      --l-ui: #6ea3f0; --l-cp: #a98ae6; --l-tc: #ee7f73; --l-br: #4fbf9d; --l-st: #d6b45a; --l-ex: #9aa6b4;
+      --shadow: 0 1px 2px rgba(0,0,0,.5), 0 8px 24px rgba(0,0,0,.35);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0f1319; --sheet: #161b23; --grid: #222a35; --grid-major: #2c3643;
+    --surface: #1d242e; --surface-2: #232c38; --ink: #e7ebf1; --ink-2: #b8c1cc; --muted: #8d98a6;
+    --line: #313b48; --line-strong: #5a6674; --accent: #e8813f; --accent-ink: #14100c; --accent-soft: #3a2519;
+    --focus: #6ea3f0; --ok: #57b380; --warn: #d1a24a; --bad: #e0685c;
+    --l-ui: #6ea3f0; --l-cp: #a98ae6; --l-tc: #ee7f73; --l-br: #4fbf9d; --l-st: #d6b45a; --l-ex: #9aa6b4;
+    --shadow: 0 1px 2px rgba(0,0,0,.5), 0 8px 24px rgba(0,0,0,.35);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font: 14px/1.45 var(--font-body); overflow: hidden;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  @media (prefers-reduced-motion: no-preference) {
+    .module, .chip, button { transition: box-shadow .12s ease, border-color .12s ease, background-color .12s ease; }
+  }
+
+  /* ---------- frame ---------- */
+  .app { display: grid; grid-template-rows: auto 1fr; grid-template-columns: 1fr 360px; height: 100vh; }
+  header.titleblock {
+    grid-column: 1 / -1; display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+    padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--line);
+  }
+  .tb-id { display: flex; align-items: baseline; gap: 10px; font-family: var(--font-display); }
+  .tb-id .proj { font-size: 20px; font-weight: 600; letter-spacing: .02em; }
+  .tb-id .sheet-no { font-family: var(--font-mono); font-size: 12px; color: var(--muted); letter-spacing: .06em; }
+  .toolbar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .toolbar .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
+  button.tool {
+    padding: 6px 10px; border: 1px solid var(--line-strong); border-radius: 4px; background: var(--surface);
+    cursor: pointer; font-family: var(--font-display); font-weight: 500; font-size: 13px; letter-spacing: .02em;
+  }
+  button.tool:hover { background: var(--surface-2); }
+  button.tool[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button.tool.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button.tool.danger { color: var(--bad); border-color: var(--bad); }
+  button.tool:disabled { opacity: .45; cursor: default; }
+  .chip {
+    margin-left: auto; font-family: var(--font-mono); font-size: 12px; padding: 4px 8px;
+    border: 1px solid var(--line); border-radius: 3px; color: var(--ink-2); background: var(--surface-2);
+    white-space: nowrap;
+  }
+  .chip[data-state="shared"] { border-color: var(--ok); }
+  .chip[data-state="local"] { border-color: var(--warn); }
+  .chip[data-state="saving"] { border-color: var(--line-strong); }
+
+  /* ---------- canvas ---------- */
+  .canvas { position: relative; overflow: auto; background: var(--ground); }
+  .sheet {
+    position: relative; width: 2400px; height: 1600px; transform-origin: 0 0;
+    background-color: var(--sheet);
+    background-image:
+      linear-gradient(var(--grid-major) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-major) 1px, transparent 1px),
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 160px 160px, 160px 160px, 32px 32px, 32px 32px;
+    box-shadow: var(--shadow);
+  }
+  .sheet[data-mode="connect"] { cursor: crosshair; }
+  svg.wires { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  svg.wires path.wire { fill: none; stroke: var(--line-strong); stroke-width: 1.6; }
+  svg.wires path.wire[data-kind="stream"] { stroke-dasharray: 7 4; }
+  svg.wires path.wire[data-kind="event"] { stroke-dasharray: 2 4; stroke-linecap: round; }
+  svg.wires path.wire[data-kind="approval"] { stroke-width: 2.6; }
+  svg.wires path.wire[data-kind="data"] { stroke-dasharray: 12 3 2 3; }
+  svg.wires path.hit { fill: none; stroke: transparent; stroke-width: 14; cursor: pointer; pointer-events: stroke; }
+  svg.wires g.selected path.wire { stroke: var(--accent); stroke-width: 2.6; }
+  svg.wires .lbl-bg { fill: var(--sheet); stroke: var(--line); rx: 3; }
+  svg.wires g.selected .lbl-bg { stroke: var(--accent); }
+  svg.wires text.lbl { font: 11.5px var(--font-mono); fill: var(--ink-2); pointer-events: none; }
+  svg.wires g.selected text.lbl { fill: var(--ink); }
+  marker path { fill: var(--line-strong); }
+  g.selected marker path, marker.sel path { fill: var(--accent); }
+
+  .module {
+    position: absolute; display: flex; flex-direction: column; min-width: 160px; min-height: 90px;
+    background: var(--surface); border: 1.5px solid var(--line-strong); border-radius: 3px;
+    box-shadow: var(--shadow); cursor: grab; user-select: none; overflow: hidden;
+  }
+  .module:active { cursor: grabbing; }
+  .module.selected { outline: 2.5px solid var(--accent); outline-offset: 1px; }
+  .module.pending-from { outline: 2.5px dashed var(--accent); outline-offset: 1px; }
+  /* layer encodings: tag text + border style + hue (three channels, never colour alone) */
+  .module[data-layer="ui"] { border-style: solid; border-color: var(--l-ui); }
+  .module[data-layer="cp"] { border-style: double; border-width: 4px; border-color: var(--l-cp); }
+  .module[data-layer="tc"] { border-color: var(--l-tc); border-left-width: 8px; }
+  .module[data-layer="br"] { border-style: dashed; border-color: var(--l-br); }
+  .module[data-layer="st"] { border-color: var(--l-st); border-top-width: 5px; border-top-style: double; }
+  .module[data-layer="ex"] { border-style: dotted; border-width: 2px; border-color: var(--l-ex); }
+  .module[data-status="remove"] { opacity: .62; }
+  .module[data-status="remove"] .m-name { text-decoration: line-through; }
+  .m-head {
+    display: flex; align-items: center; gap: 8px; padding: 6px 8px 4px;
+    font-family: var(--font-display); font-weight: 600; font-size: 14.5px; line-height: 1.2;
+  }
+  .m-tag {
+    font: 500 10.5px/1 var(--font-mono); letter-spacing: .08em; padding: 3px 5px; border-radius: 2px;
+    color: var(--surface); flex: none;
+  }
+  .module[data-layer="ui"] .m-tag { background: var(--l-ui); }
+  .module[data-layer="cp"] .m-tag { background: var(--l-cp); }
+  .module[data-layer="tc"] .m-tag { background: var(--l-tc); }
+  .module[data-layer="br"] .m-tag { background: var(--l-br); }
+  .module[data-layer="st"] .m-tag { background: var(--l-st); }
+  .module[data-layer="ex"] .m-tag { background: var(--l-ex); }
+  .m-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .m-body {
+    flex: 1; padding: 2px 8px 6px; font-size: 12.5px; line-height: 1.35; color: var(--ink-2);
+    overflow: hidden; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
+  }
+  .m-foot {
+    display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-top: 1px solid var(--line);
+    font: 11px var(--font-mono); color: var(--muted);
+  }
+  .m-status { font-weight: 500; }
+  .m-status[data-status="keep"] { color: var(--ok); }
+  .m-status[data-status="change"] { color: var(--warn); }
+  .m-status[data-status="remove"] { color: var(--bad); }
+  .m-links { margin-left: auto; }
+  .resize {
+    position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize;
+    background: linear-gradient(135deg, transparent 50%, var(--line-strong) 50%, var(--line-strong) 60%, transparent 60%, transparent 75%, var(--line-strong) 75%, var(--line-strong) 85%, transparent 85%);
+  }
+
+  .legend {
+    position: sticky; left: 0; bottom: 0; display: flex; gap: 14px; flex-wrap: wrap; align-items: center;
+    padding: 8px 14px; background: var(--surface); border-top: 1px solid var(--line);
+    font: 12px var(--font-mono); color: var(--ink-2);
+  }
+  .legend .k { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .sw { width: 26px; height: 14px; border: 1.5px solid; border-radius: 2px; }
+  .legend .sw[data-layer="ui"] { border-color: var(--l-ui); }
+  .legend .sw[data-layer="cp"] { border-color: var(--l-cp); border-style: double; border-width: 4px; }
+  .legend .sw[data-layer="tc"] { border-color: var(--l-tc); border-left-width: 6px; }
+  .legend .sw[data-layer="br"] { border-color: var(--l-br); border-style: dashed; }
+  .legend .sw[data-layer="st"] { border-color: var(--l-st); border-top-width: 4px; border-top-style: double; }
+  .legend .sw[data-layer="ex"] { border-color: var(--l-ex); border-style: dotted; border-width: 2px; }
+  .legend .wire-k { display: inline-block; width: 34px; border-top: 2px solid var(--line-strong); vertical-align: middle; }
+  .legend .wire-k[data-kind="stream"] { border-top-style: dashed; }
+  .legend .wire-k[data-kind="event"] { border-top-style: dotted; }
+  .legend .wire-k[data-kind="approval"] { border-top-width: 3px; }
+  .canvas-wrap { display: grid; grid-template-rows: 1fr auto; min-height: 0; }
+
+  /* ---------- inspector ---------- */
+  aside.inspector {
+    border-left: 1px solid var(--line); background: var(--surface); overflow: auto; padding: 14px 16px 24px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .insp-title { font-family: var(--font-display); font-weight: 600; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .insp-h { font-family: var(--font-display); font-weight: 600; font-size: 18px; line-height: 1.2; text-wrap: balance; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font: 500 11.5px var(--font-mono); letter-spacing: .04em; color: var(--ink-2); }
+  .field label .who { color: var(--muted); font-weight: 400; }
+  .field input, .field select, .field textarea {
+    width: 100%; padding: 7px 8px; border: 1px solid var(--line-strong); border-radius: 3px; background: var(--sheet);
+  }
+  .field textarea { min-height: 84px; resize: vertical; line-height: 1.4; }
+  .field textarea.mono { font-family: var(--font-mono); font-size: 12.5px; }
+  .field.want textarea { border-color: var(--accent); background: var(--surface); min-height: 110px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .row4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .links { display: flex; flex-direction: column; gap: 4px; }
+  .link {
+    display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; padding: 5px 8px;
+    border: 1px solid var(--line); border-radius: 3px; font: 12px var(--font-mono); cursor: pointer;
+  }
+  .link:hover { background: var(--surface-2); }
+  .link .arrow { color: var(--muted); }
+  .hint { font-size: 12.5px; color: var(--muted); line-height: 1.4; }
+  .wf { border: 1px solid var(--line); border-radius: 3px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .wf input { font-family: var(--font-display); font-weight: 600; }
+  .wf textarea { min-height: 96px; }
+  .wf .wf-actions { display: flex; justify-content: flex-end; }
+  .stack { display: flex; flex-direction: column; gap: 8px; }
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  dialog {
+    border: 1px solid var(--line-strong); border-radius: 4px; background: var(--surface); color: var(--ink);
+    width: min(680px, 92vw); padding: 16px 18px; box-shadow: var(--shadow);
+  }
+  dialog::backdrop { background: rgba(10, 14, 20, .45); }
+  dialog h2 { margin: 0 0 8px; font-family: var(--font-display); font-size: 18px; }
+  dialog textarea { width: 100%; min-height: 220px; font-family: var(--font-mono); font-size: 12px; }
+  dialog .actions { margin-top: 10px; justify-content: flex-end; }
+
+  @media (max-width: 900px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr 40vh; }
+    aside.inspector { border-left: 0; border-top: 1px solid var(--line); }
+  }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+
+<div class="app">
+  <header class="titleblock">
+    <div class="tb-id">
+      <span class="proj">PANTHEON</span>
+      <span class="sheet-no">SHEET A-01 · ARCHITECTURE · <span data-rev>REV 0</span></span>
+    </div>
+    <div class="toolbar" role="toolbar" aria-label="Sheet tools">
+      <button class="tool primary" data-act="add">+ Module</button>
+      <button class="tool" data-act="connect" aria-pressed="false" title="Click a source module, then a target">Connect</button>
+      <button class="tool" data-act="undo" title="Undo (Ctrl+Z)">Undo</button>
+      <span class="sep"></span>
+      <button class="tool" data-act="zoom-out" aria-label="Zoom out">−</button>
+      <button class="tool" data-act="zoom-reset" data-zoom-label>100%</button>
+      <button class="tool" data-act="zoom-in" aria-label="Zoom in">+</button>
+      <span class="sep"></span>
+      <button class="tool" data-act="brief" title="Copy a Markdown brief of this sheet">Copy brief</button>
+      <button class="tool" data-act="export" title="Copy the sheet as JSON">Copy JSON</button>
+      <button class="tool" data-act="import">Paste JSON</button>
+      <button class="tool danger" data-act="reset">Reset to proposal</button>
+    </div>
+    <span class="chip" data-save data-state="local">loading…</span>
+  </header>
+
+  <div class="canvas-wrap">
+    <div class="canvas" data-canvas>
+      <div class="sheet" data-sheet data-mode="select">
+        <svg class="wires" data-wires>
+          <defs>
+            <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"></path></marker>
+            <marker id="arr-sel" class="sel" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"></path></marker>
+          </defs>
+          <g data-wire-layer></g>
+        </svg>
+        <div data-modules></div>
+      </div>
+    </div>
+    <div class="legend" aria-label="Legend">
+      <span class="k"><span class="sw" data-layer="ui"></span>UI plane</span>
+      <span class="k"><span class="sw" data-layer="cp"></span>CP control plane</span>
+      <span class="k"><span class="sw" data-layer="tc"></span>TC trust core</span>
+      <span class="k"><span class="sw" data-layer="br"></span>BR brains</span>
+      <span class="k"><span class="sw" data-layer="st"></span>ST storage</span>
+      <span class="k"><span class="sw" data-layer="ex"></span>EX outside the harness</span>
+      <span class="k" style="margin-left:auto"><span class="wire-k" data-kind="call"></span>call</span>
+      <span class="k"><span class="wire-k" data-kind="stream"></span>stream</span>
+      <span class="k"><span class="wire-k" data-kind="event"></span>event</span>
+      <span class="k"><span class="wire-k" data-kind="approval"></span>approval</span>
+      <span class="k">○ proposed · ● keep · ◐ change · ✕ remove</span>
+    </div>
+  </div>
+
+  <aside class="inspector" data-inspector aria-live="polite"></aside>
+</div>
+
+<dialog data-dialog>
+  <h2 data-dlg-title>Paste JSON</h2>
+  <p class="hint" data-dlg-text></p>
+  <textarea data-dlg-text-area hidden></textarea>
+  <div class="actions">
+    <button class="tool" data-dlg-cancel>Cancel</button>
+    <button class="tool primary" data-dlg-ok>OK</button>
+  </div>
+</dialog>
+
+<script>
+(function () {
+  "use strict";
+  var GRID = 8, SHEET_W = 2400, SHEET_H = 1600, DOC_PATH = "design/current", LS_KEY = "pantheon-design-sheet";
+  var LAYERS = { ui: "UI plane", cp: "Control plane", tc: "Trust core", br: "Brains", st: "Storage", ex: "Outside the harness" };
+  var STATUS = { proposed: "○ proposed", keep: "● keep", change: "◐ change", remove: "✕ remove" };
+  var KINDS = { call: "call", stream: "stream", event: "event", approval: "approval", data: "data" };
+
+  /* ---------- the proposal: the architecture as recommended on 2026-09-01; "Reset to proposal" restores it ---------- */
+  function proposal() {
+    var M = function (id, name, layer, x, y, want, how, q, status) {
+      return { id: id, name: name, layer: layer, status: status || "proposed", x: x, y: y, w: 300, h: 160, want: want, how: how, questions: q || "" };
+    };
+    var C = function (id, from, to, label, kind) { return { id: id, from: from, to: to, label: label, kind: kind || "call" }; };
+    var cA = 60, cB = 440, cC = 900, cD = 1380, cE = 1820;
+    return {
+      rev: 0, updatedAt: 0,
+      notes: "Questions for Karl are in each module's \"Open questions\". Change anything: drag, resize, rename, rewrite the \"What I want it to do\" box in your own words, add or delete modules and wires. When you are done, Claude reads this sheet back directly (or press Copy brief and paste it).",
+      modules: [
+        M("caddy", "Caddy edge (LAN-only TLS)", "ex", cA, 60, "One address for everything, only reachable on the LAN. No public exposure, ever.", "Already running on VM 1093. Terminates HTTPS for pantheon.ferrumcorde.com and forwards to the control plane. With LibreChat gone the /harness path-split disappears: one origin, one app.", "", "keep"),
+        M("cc", "Claude Code sessions (tmux on dev machines)", "ex", cA, 300, "See every registered machine and its tmux sessions, attach in one click, copy/paste and scroll like a real terminal.", "SSH from the control plane to each registered machine; tmux attach inside an xterm.js pane; OSC 52 copies reach the Mac clipboard. Shipped in M1.", "", "keep"),
+        M("bridge", "Household bridge (mail between identities)", "ex", cA, 540, "Identities can leave each other messages and be woken when mail arrives, without me at the keyboard.", "Existing Alden bridge (sender-required, server timestamps, per-slug queues). The waker polls it; bodies are only ever fetched through a gated tool.", "", "keep"),
+        M("scoped", "Scoped systems (Gitea, Qdrant, Obsidian)", "ex", cA, 780, "Reads are frictionless; every write is approved by me first.", "Reached only through Peta tool servers. Reads return trusted:false fragments; writes are dangerLevel 2 and wait on an approval ticket.", "", "keep"),
+        M("librechat", "LibreChat + Mongo + Meilisearch", "ex", cA, 1020, "Retire once Pantheon Chat does the job daily.", "Stays running side by side during the transition; export conversation history before it goes. Removing it closes the one-origin residual (TM-024).", "How long a side-by-side period do you want before it is switched off?", "remove"),
+
+        M("shell", "Harness shell (header, sidebar, tabs)", "ui", cB, 60, "One page, one sign-in, one look. Machines and sessions in a collapsible sidebar; chat, terminals, approvals and admin as tabs.", "Server-rendered by the control plane (Fastify), plain browser JS, theme tokens already built. 30-day operator session.", "", "keep"),
+        M("chat", "Pantheon Chat pane", "ui", cB, 300, "Talk to an identity or straight to a brain. Switch identity/mode per conversation. Thinking on/off and effort as real controls, not picker hacks. Approvals and grounding visible in the conversation.", "Streams from the control plane over SSE/WebSocket. Markdown + code rendering from pinned libraries. Colourblind-safe states by shape and text. Replaces LibreChat's page.", "Do you need file/image attachments in v1? Mobile layout in v1? Import old LibreChat history or start clean?", "proposed"),
+        M("terms", "Terminals tab", "ui", cB, 540, "Full-screen terminal that fits the window, copy/paste that just works, mouse wheel scrolls the session.", "xterm.js 6 + fit/webgl/clipboard addons over a WebSocket to the control plane's SSH bridge. Shipped and confirmed working.", "", "keep"),
+        M("inbox", "Pending Approvals tab", "ui", cB, 780, "Every write waiting on me, from every approval store, in one list, with an Approve/Reject button right there.", "Reads a list of Peta stores (PANTHEON_APPROVAL_SOURCES). Today read-only reference lines (D8); the decide button lands in M2 C.3.", "Approve from the chat pane too, or only from this tab?", "change"),
+        M("admin", "Admin (registry, keycards, config)", "ui", cB, 1020, "Register machines, mint keycards, see config. Stays out of the daily flow.", "Existing admin pages under the same shell; step-up rules per BUGS #36.", "", "keep"),
+
+        M("cpsvc", "Control-plane service (Fastify, TypeScript)", "cp", cC, 60, "The one program I own that everything else plugs into.", "Fastify 5 on Node 24, strict TypeScript, JSON-schema validated routes, 671 tests. Serves the shell, the chat API, terminals, approvals, admin, and hosts the waker.", "", "keep"),
+        M("facade", "Facade: identity endpoint", "cp", cC, 300, "When I pick an identity, that identity's persona, memory and tools apply, and nothing else leaks in.", "OpenAI-compatible chat endpoint (kept so any client can use it). Loads the identity profile at session start (creation-time only), runs grounding, calls the brain, routes tool calls to Peta. Translates thinking/effort controls per brain.", "", "proposed"),
+        M("ground", "Grounding + taint pipeline (trusted:false)", "cp", cC, 540, "Only what I type is trusted. Anything recalled or received is marked untrusted and can never quietly turn into a write.", "Taint-by-presence: any trusted:false fragment in context gates that session's writes at Peta. Inspectable: the chat pane can show what was grounded and why.", "", "proposed"),
+        M("waker", "Session waker (allowlist, rate cap, idle)", "cp", cC, 780, "Wake a sleeping identity when mail arrives, never mid-turn, never a flood, never with the message body.", "Stage 1 shipped (ADR-0009): configured → allowlisted → rate cap → idle; coalesced wakes ≤ 400 chars. Stage 2 = the MCP channel runner.", "", "keep"),
+        M("convo", "Conversation store (SQLite + FTS5)", "st", cC, 1020, "Every conversation kept and searchable, on my own disk.", "Control-plane SQLite under the additive-DDL ruling; FTS5 replaces Meilisearch; nightly copy into the existing backup.", "Auto-titles use a model call — fine, or plain first-line titles?", "proposed"),
+        M("reg", "Registry / session / keycard store (SQLite)", "st", cC, 1260, "Remember my machines, sessions and keycards.", "Exists today. Same file, same rules.", "", "keep"),
+
+        M("peta", "Peta gateway (Pantheon's trust core)", "tc", cD, 300, "The gate that says no. Per-tool permissions, approval tickets, and the keys the sessions never see.", "Adopted, hardened, ELv2, never copied. One identity = one Peta user; write tools dangerLevel 2; admin API driven directly.", "", "keep"),
+        M("alden-peta", "Alden capability gateway (household's Peta)", "tc", cD, 780, "Approvals raised by the household's identities show up in my inbox too.", "A second Peta instance on the Alden side (LXC 1088). Read as a second approval source once its admin token is handed over.", "", "keep"),
+
+        M("brain1", "Alden-1 brain (Qwen3.5-122B, MoE)", "br", cE, 300, "The main brain. Fast mode by default, thinking when I ask for it.", "llama.cpp OpenAI endpoint, no key. Honours chat_template_kwargs.enable_thinking only; effort levels ignored, so the Facade maps effort to on/off.", "", "keep"),
+        M("brain2", "llm-mini (27B, heretic)", "br", cE, 540, "A quicker second brain for light work and Winston.", "llama.cpp with --jinja and an API key; tool calling proven. Faster per token than the 122B.", "", "keep")
+      ],
+      connections: [
+        C("w1", "caddy", "shell", "HTTPS, LAN only"),
+        C("w2", "shell", "chat", "tab"), C("w3", "shell", "terms", "tab"), C("w4", "shell", "inbox", "tab"), C("w5", "shell", "admin", "tab"),
+        C("w6", "chat", "cpsvc", "chat turn", "stream"),
+        C("w7", "cpsvc", "facade", "identity turn"),
+        C("w8", "cpsvc", "convo", "save + search", "data"),
+        C("w9", "facade", "ground", "ground + label"),
+        C("w10", "facade", "brain1", "completion", "stream"),
+        C("w11", "cpsvc", "brain2", "basic LLM, no persona", "stream"),
+        C("w12", "ground", "scoped", "reads (trusted:false)", "data"),
+        C("w13", "facade", "peta", "tool calls"),
+        C("w14", "peta", "scoped", "approved write", "approval"),
+        C("w15", "peta", "inbox", "pending ticket", "approval"),
+        C("w16", "alden-peta", "inbox", "pending ticket", "approval"),
+        C("w17", "bridge", "waker", "new mail", "event"),
+        C("w18", "waker", "cc", "wake (no body)", "event"),
+        C("w19", "terms", "cc", "tmux over SSH", "stream"),
+        C("w20", "admin", "reg", "registry", "data"),
+        C("w21", "cpsvc", "shell", "renders")
+      ],
+      workflows: [
+        { id: "f1", title: "W1 · A chat turn with an identity", steps: ["I type in Pantheon Chat. That text is the only trusted input.", "The control plane stores the message in the Conversation store.", "The Facade loads the identity, grounds it: every recalled fragment is labelled trusted:false.", "The brain answers and the reply streams into the chat pane.", "If the identity calls a tool, Peta decides: reads pass, writes raise a ticket.", "The reply is saved and indexed; grounding is visible on demand."] },
+        { id: "f2", title: "W2 · A basic-LLM turn (no identity)", steps: ["I switch the conversation to a brain instead of an identity.", "The control plane sends straight to that brain: no persona, memory or tools, so nothing to gate.", "Thinking on/off is a toggle on the pane; the answer streams back."] },
+        { id: "f3", title: "W3 · A gated write", steps: ["An identity calls a write tool (Gitea, Qdrant, Obsidian, bridge send).", "Peta mints an approval ticket and holds the call.", "The ticket appears in Pending Approvals (Pantheon's Peta and the household's).", "I approve or reject there, or inline in the chat.", "Peta signs and executes with keys the session never sees; the result comes back labelled."] },
+        { id: "f4", title: "W4 · A session wake", steps: ["Mail lands on the bridge for an identity.", "The waker checks: configured → allowlisted pair → rate cap → session idle.", "A light wake (names and ids only, under 400 characters) reaches the Claude Code session.", "The session fetches the mail through its gated mailbox tool and treats it as untrusted."] },
+        { id: "f5", title: "W5 · Attaching a terminal", steps: ["Unfold a machine in the sidebar; its tmux sessions load.", "Click one; the control plane opens SSH and attaches tmux in an xterm pane.", "Copy with plain drag (tmux) or Option-drag (browser); the wheel scrolls the session."] }
+      ]
+    };
+  }
+
+  /* ---------- state ---------- */
+  var state = null, selected = null, zoom = 1, mode = "select", pendingFrom = null, undoStack = [], db = null, docRef = null, saveTimer = null, unsubscribe = null;
+  var $ = function (sel, root) { return (root || document).querySelector(sel); };
+  var sheet = $("[data-sheet]"), modulesEl = $("[data-modules]"), wireLayer = $("[data-wire-layer]"), inspector = $("[data-inspector]"), saveChip = $("[data-save]"), canvas = $("[data-canvas]");
+  var uid = function (p) { return p + Math.random().toString(36).slice(2, 8); };
+  var snap = function (v) { return Math.round(v / GRID) * GRID; };
+  var byId = function (id) { for (var i = 0; i < state.modules.length; i++) if (state.modules[i].id === id) return state.modules[i]; return null; };
+  var connById = function (id) { for (var i = 0; i < state.connections.length; i++) if (state.connections[i].id === id) return state.connections[i]; return null; };
+  var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
+
+  function pushUndo() { undoStack.push(JSON.stringify(state)); if (undoStack.length > 60) undoStack.shift(); $("[data-act=undo]").disabled = false; }
+  function commit(opts) {
+    state.updatedAt = Date.now(); state.rev = (state.rev || 0) + 1;
+    $("[data-rev]").textContent = "REV " + state.rev;
+    if (!opts || !opts.skipRender) renderAll();
+    scheduleSave();
+  }
+
+  /* ---------- persistence: shared store first, local mirror always ---------- */
+  function setChip(stateName, text) { saveChip.dataset.state = stateName; saveChip.textContent = text; }
+  function saveLocal() { try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) { /* private window or blocked storage: the shared store still holds it */ } }
+  function scheduleSave() {
+    saveLocal();
+    if (!docRef) { setChip("local", "saved in this browser only"); return; }
+    setChip("saving", "saving…");
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      docRef.set(JSON.parse(JSON.stringify(state))).then(function () { setChip("shared", "saved · Claude can read this"); })
+        .catch(function (e) { setChip("local", "shared store failed (" + (e && e.code ? e.code : "error") + ") · saved in this browser"); });
+    }, 600);
+  }
+  function loadLocal() { try { var raw = localStorage.getItem(LS_KEY); return raw ? JSON.parse(raw) : null; } catch (e) { return null; } }
+  function valid(s) { return s && Array.isArray(s.modules) && Array.isArray(s.connections) && Array.isArray(s.workflows); }
+  function adopt(s) { state = s; if (!state.workflows) state.workflows = []; if (typeof state.notes !== "string") state.notes = ""; $("[data-rev]").textContent = "REV " + (state.rev || 0); selected = null; renderAll(); }
+
+  function connectStore() {
+    if (!(window.claude && typeof window.claude.use === "function")) { setChip("local", "saved in this browser only"); return; }
+    window.claude.use("db").then(function (ns) {
+      if (!ns) { setChip("local", "shared store unavailable · saved in this browser"); return; }
+      db = ns; docRef = db.doc(DOC_PATH);
+      return docRef.get().then(function (snap) {
+        var remote = snap && snap.exists ? snap.data() : null;
+        if (valid(remote) && (remote.updatedAt || 0) >= (state.updatedAt || 0)) { adopt(remote); setChip("shared", "loaded from the shared store"); }
+        else { scheduleSave(); }
+        unsubscribe = docRef.onSnapshot(function (s) {
+          if (!s.exists || s.metadata.hasPendingWrites) return;
+          var d = s.data();
+          if (valid(d) && (d.updatedAt || 0) > (state.updatedAt || 0)) { adopt(d); setChip("shared", "updated from the shared store"); }
+        }, function (e) { setChip("local", "live updates off (" + e.code + ")"); });
+      });
+    }).catch(function (e) { setChip("local", "shared store failed (" + (e && e.code ? e.code : "error") + ")"); });
+  }
+
+  /* ---------- rendering ---------- */
+  function renderAll() { renderModules(); renderWires(); renderInspector(); }
+
+  function renderModules() {
+    modulesEl.innerHTML = "";
+    state.modules.forEach(function (m) {
+      var el = document.createElement("div");
+      el.className = "module" + (selected && selected.type === "module" && selected.id === m.id ? " selected" : "") + (pendingFrom === m.id ? " pending-from" : "");
+      el.dataset.id = m.id; el.dataset.layer = m.layer; el.dataset.status = m.status;
+      el.style.left = m.x + "px"; el.style.top = m.y + "px"; el.style.width = m.w + "px"; el.style.height = m.h + "px";
+      el.setAttribute("tabindex", "0"); el.setAttribute("role", "button");
+      el.setAttribute("aria-label", m.name + ", " + LAYERS[m.layer] + ", " + m.status);
+      var links = state.connections.filter(function (c) { return c.from === m.id || c.to === m.id; }).length;
+      el.innerHTML =
+        '<div class="m-head"><span class="m-tag">' + esc(m.layer.toUpperCase()) + '</span><span class="m-name">' + esc(m.name) + "</span></div>" +
+        '<div class="m-body">' + esc(m.want) + "</div>" +
+        '<div class="m-foot"><span class="m-status" data-status="' + esc(m.status) + '">' + esc(STATUS[m.status] || m.status) + '</span><span class="m-links">' + links + " wire" + (links === 1 ? "" : "s") + "</span></div>" +
+        '<div class="resize" data-resize aria-hidden="true"></div>';
+      modulesEl.appendChild(el);
+    });
+  }
+
+  function anchor(a, b) {
+    var ax = a.x + a.w / 2, ay = a.y + a.h / 2, bx = b.x + b.w / 2, by = b.y + b.h / 2;
+    var dx = bx - ax, dy = by - ay;
+    if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? { x: a.x + a.w, y: ay, side: "r" } : { x: a.x, y: ay, side: "l" };
+    return dy > 0 ? { x: ax, y: a.y + a.h, side: "b" } : { x: ax, y: a.y, side: "t" };
+  }
+  function wirePath(p, q) {
+    var k = Math.max(40, Math.min(160, Math.hypot(q.x - p.x, q.y - p.y) / 2.2));
+    var c1 = p.side === "r" ? [p.x + k, p.y] : p.side === "l" ? [p.x - k, p.y] : p.side === "b" ? [p.x, p.y + k] : [p.x, p.y - k];
+    var c2 = q.side === "r" ? [q.x + k, q.y] : q.side === "l" ? [q.x - k, q.y] : q.side === "b" ? [q.x, q.y + k] : [q.x, q.y - k];
+    return { d: "M" + p.x + "," + p.y + " C" + c1[0] + "," + c1[1] + " " + c2[0] + "," + c2[1] + " " + q.x + "," + q.y,
+             mid: { x: (p.x + 3 * c1[0] + 3 * c2[0] + q.x) / 8, y: (p.y + 3 * c1[1] + 3 * c2[1] + q.y) / 8 } };
+  }
+  function renderWires() {
+    var NS = "http://www.w3.org/2000/svg";
+    wireLayer.innerHTML = "";
+    state.connections.forEach(function (c) {
+      var a = byId(c.from), b = byId(c.to); if (!a || !b) return;
+      var p = anchor(a, b), q = anchor(b, a), w = wirePath(p, q);
+      var isSel = selected && selected.type === "wire" && selected.id === c.id;
+      var g = document.createElementNS(NS, "g"); g.dataset.id = c.id; if (isSel) g.classList.add("selected");
+      var hit = document.createElementNS(NS, "path"); hit.setAttribute("class", "hit"); hit.setAttribute("d", w.d); hit.dataset.wire = c.id;
+      var path = document.createElementNS(NS, "path"); path.setAttribute("class", "wire"); path.setAttribute("d", w.d); path.dataset.kind = c.kind || "call";
+      path.setAttribute("marker-end", isSel ? "url(#arr-sel)" : "url(#arr)");
+      g.appendChild(hit); g.appendChild(path);
+      if (c.label) {
+        var t = document.createElementNS(NS, "text"); t.setAttribute("class", "lbl"); t.setAttribute("x", w.mid.x); t.setAttribute("y", w.mid.y + 4); t.setAttribute("text-anchor", "middle"); t.textContent = c.label;
+        var bg = document.createElementNS(NS, "rect"); bg.setAttribute("class", "lbl-bg"); bg.dataset.wire = c.id; bg.style.cursor = "pointer";
+        g.appendChild(bg); g.appendChild(t);
+        wireLayer.appendChild(g);
+        var bb = t.getBBox(); bg.setAttribute("x", bb.x - 5); bg.setAttribute("y", bb.y - 2); bg.setAttribute("width", bb.width + 10); bg.setAttribute("height", bb.height + 4);
+      } else { wireLayer.appendChild(g); }
+    });
+  }
+
+  function field(label, who, inputHtml, cls) {
+    return '<div class="field ' + (cls || "") + '"><label>' + esc(label) + (who ? ' <span class="who">· ' + esc(who) + "</span>" : "") + "</label>" + inputHtml + "</div>";
+  }
+  function options(map, cur) { return Object.keys(map).map(function (k) { return '<option value="' + k + '"' + (k === cur ? " selected" : "") + ">" + esc(map[k]) + "</option>"; }).join(""); }
+
+  function renderInspector() {
+    var html = "";
+    if (selected && selected.type === "module" && byId(selected.id)) {
+      var m = byId(selected.id);
+      var wires = state.connections.filter(function (c) { return c.from === m.id || c.to === m.id; });
+      html += '<div class="insp-title">Module</div><div class="insp-h">' + esc(m.name) + "</div>";
+      html += field("Name", "", '<input data-f="name" value="' + esc(m.name) + '">');
+      html += '<div class="row">' + field("Layer", "", '<select data-f="layer">' + options(LAYERS, m.layer) + "</select>") + field("Status", "", '<select data-f="status">' + options(STATUS, m.status) + "</select>") + "</div>";
+      html += field("What I want it to do", "Karl, in your own words", '<textarea data-f="want">' + esc(m.want) + "</textarea>", "want");
+      html += field("How it would work", "Claude, technical", '<textarea data-f="how" class="mono">' + esc(m.how) + "</textarea>");
+      html += field("Open questions", "either of us", '<textarea data-f="questions">' + esc(m.questions) + "</textarea>");
+      html += '<div class="row4">' + field("x", "", '<input type="number" data-f="x" step="8" value="' + m.x + '">') + field("y", "", '<input type="number" data-f="y" step="8" value="' + m.y + '">') + field("w", "", '<input type="number" data-f="w" step="8" min="160" value="' + m.w + '">') + field("h", "", '<input type="number" data-f="h" step="8" min="90" value="' + m.h + '">') + "</div>";
+      html += '<div class="insp-title">Wires (' + wires.length + ")</div><div class=\"links\">";
+      if (!wires.length) html += '<div class="hint">No wires yet. Press Connect, click this module, then click another.</div>';
+      wires.forEach(function (c) {
+        var other = c.from === m.id ? byId(c.to) : byId(c.from);
+        html += '<div class="link" data-select-wire="' + c.id + '" tabindex="0"><span>' + (c.from === m.id ? '<span class="arrow">→ </span>' : '<span class="arrow">← </span>') + esc(other ? other.name : "?") + (c.label ? ' <span class="arrow">· ' + esc(c.label) + "</span>" : "") + "</span><span class=\"arrow\">" + esc(c.kind || "call") + "</span></div>";
+      });
+      html += "</div>";
+      html += '<div class="actions"><button class="tool" data-act="connect-from">Connect from here</button><button class="tool danger" data-act="delete-module">Delete module</button></div>';
+      html += '<p class="hint">Drag to move, drag the corner to resize, arrow keys nudge, Delete removes. Esc deselects.</p>';
+    } else if (selected && selected.type === "wire" && connById(selected.id)) {
+      var c = connById(selected.id), a = byId(c.from), b = byId(c.to);
+      html += '<div class="insp-title">Wire</div><div class="insp-h">' + esc(a ? a.name : "?") + " → " + esc(b ? b.name : "?") + "</div>";
+      html += field("Label", "what travels along it", '<input data-f="label" value="' + esc(c.label) + '">');
+      html += field("Kind", "", '<select data-f="kind">' + options(KINDS, c.kind || "call") + "</select>");
+      html += '<div class="actions"><button class="tool" data-act="flip-wire">Flip direction</button><button class="tool danger" data-act="delete-wire">Delete wire</button></div>';
+      html += '<p class="hint">Kinds only change the line style: call (solid), stream (dashed), event (dotted), approval (heavy), data (dash-dot).</p>';
+    } else {
+      html += '<div class="insp-title">Sheet</div><div class="insp-h">Pantheon architecture, as proposed</div>';
+      html += '<p class="hint">Click a module or a wire label to edit it. Nothing here is final: the sheet is where you tell Claude what you want before any architecture or language is chosen.</p>';
+      html += field("Notes for Claude", "Karl", '<textarea data-f="notes" rows="5">' + esc(state.notes) + "</textarea>", "want");
+      html += '<div class="insp-title">Workflows</div><div class="stack" data-workflows>';
+      state.workflows.forEach(function (w) {
+        html += '<div class="wf" data-wf="' + w.id + '"><input data-wf-title value="' + esc(w.title) + '" aria-label="Workflow title"><textarea data-wf-steps aria-label="Steps, one per line">' + esc(w.steps.join("\n")) + '</textarea><div class="wf-actions"><button class="tool danger" data-act="delete-wf" data-wf-id="' + w.id + '">Delete</button></div></div>';
+      });
+      html += '</div><div class="actions"><button class="tool" data-act="add-wf">+ Workflow</button></div>';
+      html += '<p class="hint">One step per line. Name modules exactly as they appear on the sheet so the brief can link them.</p>';
+    }
+    inspector.innerHTML = html;
+  }
+
+  /* ---------- interaction: canvas ---------- */
+  var drag = null;
+  sheet.addEventListener("pointerdown", function (ev) {
+    var modEl = ev.target.closest(".module");
+    if (!modEl) { if (ev.target === sheet || ev.target.closest("svg") && !ev.target.dataset.wire) { select(null); } return; }
+    var m = byId(modEl.dataset.id); if (!m) return;
+    if (mode === "connect") { handleConnectClick(m); ev.preventDefault(); return; }
+    select({ type: "module", id: m.id });
+    var resizing = !!ev.target.closest("[data-resize]");
+    drag = { id: m.id, resizing: resizing, sx: ev.clientX, sy: ev.clientY, ox: m.x, oy: m.y, ow: m.w, oh: m.h, moved: false, el: modEl };
+    modEl.setPointerCapture(ev.pointerId);
+    ev.preventDefault();
+  });
+  sheet.addEventListener("pointermove", function (ev) {
+    if (!drag) return;
+    var m = byId(drag.id); if (!m) return;
+    var dx = (ev.clientX - drag.sx) / zoom, dy = (ev.clientY - drag.sy) / zoom;
+    if (!drag.moved && Math.hypot(dx, dy) < 3) return;
+    if (!drag.moved) { drag.moved = true; pushUndo(); }
+    if (drag.resizing) {
+      m.w = Math.max(160, snap(drag.ow + dx)); m.h = Math.max(90, snap(drag.oh + dy));
+      drag.el.style.width = m.w + "px"; drag.el.style.height = m.h + "px";
+    } else {
+      m.x = Math.min(SHEET_W - m.w, Math.max(0, snap(drag.ox + dx))); m.y = Math.min(SHEET_H - m.h, Math.max(0, snap(drag.oy + dy)));
+      drag.el.style.left = m.x + "px"; drag.el.style.top = m.y + "px";
+    }
+    renderWires();
+  });
+  function endDrag() { if (!drag) return; var moved = drag.moved; drag = null; if (moved) commit(); }
+  sheet.addEventListener("pointerup", endDrag);
+  sheet.addEventListener("pointercancel", endDrag);
+  sheet.addEventListener("click", function (ev) {
+    var w = ev.target.dataset && ev.target.dataset.wire;
+    if (w) { select({ type: "wire", id: w }); }
+  });
+  sheet.addEventListener("keydown", function (ev) {
+    if (!(selected && selected.type === "module")) return;
+    var m = byId(selected.id); if (!m) return;
+    var step = ev.shiftKey ? GRID * 4 : GRID, moved = false;
+    if (ev.key === "ArrowLeft") { m.x = Math.max(0, m.x - step); moved = true; }
+    if (ev.key === "ArrowRight") { m.x = Math.min(SHEET_W - m.w, m.x + step); moved = true; }
+    if (ev.key === "ArrowUp") { m.y = Math.max(0, m.y - step); moved = true; }
+    if (ev.key === "ArrowDown") { m.y = Math.min(SHEET_H - m.h, m.y + step); moved = true; }
+    if (moved) { ev.preventDefault(); pushUndo(); commit(); focusModule(m.id); }
+  });
+  function focusModule(id) { var el = modulesEl.querySelector('[data-id="' + id + '"]'); if (el) el.focus({ preventScroll: true }); }
+
+  function select(sel) { selected = sel; pendingFrom = mode === "connect" ? pendingFrom : null; renderAll(); if (sel && sel.type === "module") focusModule(sel.id); }
+
+  function handleConnectClick(m) {
+    if (!pendingFrom) { pendingFrom = m.id; renderModules(); return; }
+    if (pendingFrom === m.id) { pendingFrom = null; renderModules(); return; }
+    pushUndo();
+    var c = { id: uid("w"), from: pendingFrom, to: m.id, label: "", kind: "call" };
+    state.connections.push(c); pendingFrom = null; setMode("select");
+    selected = { type: "wire", id: c.id }; commit();
+    var lbl = inspector.querySelector('[data-f="label"]'); if (lbl) lbl.focus();
+  }
+  function setMode(next) { mode = next; sheet.dataset.mode = next; $("[data-act=connect]").setAttribute("aria-pressed", next === "connect" ? "true" : "false"); if (next !== "connect") pendingFrom = null; renderModules(); }
+
+  /* ---------- interaction: inspector ---------- */
+  var editTimer = null, editUndoArmed = false;
+  inspector.addEventListener("focusin", function (ev) { if (ev.target.matches("input, textarea, select")) editUndoArmed = true; });
+  inspector.addEventListener("input", function (ev) {
+    var t = ev.target;
+    if (editUndoArmed) { pushUndo(); editUndoArmed = false; }
+    if (t.dataset.f) {
+      var f = t.dataset.f;
+      if (f === "notes") { state.notes = t.value; }
+      else if (selected && selected.type === "module") {
+        var m = byId(selected.id); if (!m) return;
+        if (["x", "y", "w", "h"].indexOf(f) >= 0) { var n = parseInt(t.value, 10); if (!isNaN(n)) m[f] = f === "w" ? Math.max(160, n) : f === "h" ? Math.max(90, n) : Math.max(0, n); }
+        else m[f] = t.value;
+        var el = modulesEl.querySelector('[data-id="' + m.id + '"]');
+        if (el) { el.style.left = m.x + "px"; el.style.top = m.y + "px"; el.style.width = m.w + "px"; el.style.height = m.h + "px"; el.dataset.layer = m.layer; el.dataset.status = m.status;
+          $(".m-name", el).textContent = m.name; $(".m-body", el).textContent = m.want; $(".m-tag", el).textContent = m.layer.toUpperCase(); var st = $(".m-status", el); st.textContent = STATUS[m.status]; st.dataset.status = m.status; }
+        if (t.tagName === "SELECT") { commit({ skipRender: true }); renderModules(); renderWires(); return; }
+        renderWires();
+      } else if (selected && selected.type === "wire") {
+        var c = connById(selected.id); if (!c) return; c[f] = t.value; renderWires();
+      }
+      commit({ skipRender: true });
+      if (t.tagName === "SELECT") renderInspector();
+      return;
+    }
+    var wf = t.closest("[data-wf]");
+    if (wf) {
+      var w = state.workflows.filter(function (x) { return x.id === wf.dataset.wf; })[0]; if (!w) return;
+      if (t.hasAttribute("data-wf-title")) w.title = t.value;
+      if (t.hasAttribute("data-wf-steps")) w.steps = t.value.split("\n");
+      commit({ skipRender: true });
+    }
+  });
+  inspector.addEventListener("click", function (ev) {
+    var b = ev.target.closest("[data-act]"), lw = ev.target.closest("[data-select-wire]");
+    if (lw) { select({ type: "wire", id: lw.dataset.selectWire }); return; }
+    if (!b) return;
+    act(b.dataset.act, b);
+  });
+  inspector.addEventListener("keydown", function (ev) { var lw = ev.target.closest("[data-select-wire]"); if (lw && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); select({ type: "wire", id: lw.dataset.selectWire }); } });
+
+  /* ---------- toolbar + actions ---------- */
+  document.querySelector(".toolbar").addEventListener("click", function (ev) { var b = ev.target.closest("[data-act]"); if (b) act(b.dataset.act, b); });
+
+  function act(name, btn) {
+    if (name === "add") {
+      pushUndo();
+      var left = canvas.scrollLeft / zoom + 40, top = canvas.scrollTop / zoom + 40;
+      var m = { id: uid("m"), name: "New module", layer: "cp", status: "proposed", x: snap(left), y: snap(top), w: 300, h: 160, want: "", how: "", questions: "" };
+      state.modules.push(m); selected = { type: "module", id: m.id }; commit();
+      var nm = inspector.querySelector('[data-f="name"]'); if (nm) { nm.focus(); nm.select(); }
+    }
+    if (name === "connect") setMode(mode === "connect" ? "select" : "connect");
+    if (name === "connect-from" && selected && selected.type === "module") { setMode("connect"); pendingFrom = selected.id; renderModules(); }
+    if (name === "undo") { var prev = undoStack.pop(); if (prev) { state = JSON.parse(prev); state.updatedAt = Date.now(); state.rev = (state.rev || 0) + 1; $("[data-rev]").textContent = "REV " + state.rev; if (selected && selected.type === "module" && !byId(selected.id)) selected = null; if (selected && selected.type === "wire" && !connById(selected.id)) selected = null; renderAll(); scheduleSave(); } $("[data-act=undo]").disabled = undoStack.length === 0; }
+    if (name === "delete-module" && selected && selected.type === "module") { pushUndo(); var id = selected.id; state.modules = state.modules.filter(function (m) { return m.id !== id; }); state.connections = state.connections.filter(function (c) { return c.from !== id && c.to !== id; }); selected = null; commit(); }
+    if (name === "delete-wire" && selected && selected.type === "wire") { pushUndo(); var wid = selected.id; state.connections = state.connections.filter(function (c) { return c.id !== wid; }); selected = null; commit(); }
+    if (name === "flip-wire" && selected && selected.type === "wire") { pushUndo(); var c = connById(selected.id); if (c) { var f = c.from; c.from = c.to; c.to = f; commit(); } }
+    if (name === "add-wf") { pushUndo(); state.workflows.push({ id: uid("f"), title: "W" + (state.workflows.length + 1) + " · ", steps: [""] }); commit(); var last = inspector.querySelector("[data-workflows] .wf:last-child [data-wf-title]"); if (last) last.focus(); }
+    if (name === "delete-wf") { pushUndo(); var wfid = btn.dataset.wfId; state.workflows = state.workflows.filter(function (w) { return w.id !== wfid; }); commit(); }
+    if (name === "zoom-in") setZoom(zoom + 0.1);
+    if (name === "zoom-out") setZoom(zoom - 0.1);
+    if (name === "zoom-reset") setZoom(1);
+    if (name === "export") copyText(JSON.stringify(state, null, 2), "Sheet JSON copied");
+    if (name === "brief") copyText(brief(), "Brief copied as Markdown");
+    if (name === "import") openDialog("Paste JSON", "Paste a sheet exported with Copy JSON. It replaces what is on the sheet (Undo brings the old one back).", true, function (text) {
+      try { var s = JSON.parse(text); if (!valid(s)) throw new Error("not a sheet"); pushUndo(); adopt(s); commit(); }
+      catch (e) { setChip("local", "that was not a sheet JSON"); }
+    });
+    if (name === "reset") openDialog("Reset to proposal", "Replace everything on the sheet with the proposal from 2026-09-01? Your edits stay reachable with Undo until you reload.", false, function () { pushUndo(); adopt(proposal()); commit(); });
+  }
+  function setZoom(z) { zoom = Math.min(1.6, Math.max(0.5, Math.round(z * 10) / 10)); sheet.style.transform = "scale(" + zoom + ")"; sheet.style.width = SHEET_W + "px"; sheet.style.height = SHEET_H + "px"; canvas.style.setProperty("--z", zoom); $("[data-zoom-label]").textContent = Math.round(zoom * 100) + "%"; sizeSpacer(); }
+  var spacer = document.createElement("div"); spacer.style.position = "absolute"; spacer.style.left = "0"; spacer.style.top = "0"; spacer.style.width = "1px"; spacer.style.height = "1px"; spacer.style.pointerEvents = "none"; canvas.appendChild(spacer);
+  function sizeSpacer() { spacer.style.left = (SHEET_W * zoom) + "px"; spacer.style.top = (SHEET_H * zoom) + "px"; }
+
+  document.addEventListener("keydown", function (ev) {
+    var inField = ev.target.matches("input, textarea, select");
+    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "z" && !inField) { ev.preventDefault(); act("undo"); return; }
+    if (ev.key === "Escape") { if (mode === "connect") setMode("select"); else if (!inField) select(null); if ($("[data-dialog]").open) $("[data-dialog]").close(); return; }
+    if ((ev.key === "Delete" || ev.key === "Backspace") && !inField && selected) { ev.preventDefault(); act(selected.type === "module" ? "delete-module" : "delete-wire"); }
+  });
+
+  /* ---------- dialog (our own element, never window.prompt/confirm) ---------- */
+  var dlg = $("[data-dialog]"), dlgOk = null;
+  function openDialog(title, text, withText, onOk) {
+    $("[data-dlg-title]").textContent = title; $("[data-dlg-text]").textContent = text;
+    var ta = $("[data-dlg-text-area]"); ta.hidden = !withText; ta.value = "";
+    dlgOk = onOk; dlg.showModal(); if (withText) ta.focus();
+  }
+  $("[data-dlg-cancel]").addEventListener("click", function () { dlg.close(); });
+  $("[data-dlg-ok]").addEventListener("click", function () { var v = $("[data-dlg-text-area]").value; dlg.close(); if (dlgOk) dlgOk(v); });
+
+  function copyText(text, okMsg) {
+    var done = function () { var prev = saveChip.textContent, prevState = saveChip.dataset.state; setChip(prevState, okMsg); setTimeout(function () { setChip(prevState, prev); }, 1800); };
+    if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text).then(done).catch(function () { fallbackCopy(text); done(); }); }
+    else { fallbackCopy(text); done(); }
+  }
+  function fallbackCopy(text) { var ta = document.createElement("textarea"); ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0"; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch (e) { /* nothing else to try */ } document.body.removeChild(ta); }
+
+  /* ---------- the brief: what Claude reads back ---------- */
+  function brief() {
+    var out = ["# Pantheon design sheet · REV " + (state.rev || 0), ""];
+    if (state.notes) out.push("## Notes from Karl", "", state.notes, "");
+    out.push("## Modules", "");
+    Object.keys(LAYERS).forEach(function (layer) {
+      var ms = state.modules.filter(function (m) { return m.layer === layer; }); if (!ms.length) return;
+      out.push("### " + LAYERS[layer], "");
+      ms.forEach(function (m) {
+        out.push("- **" + m.name + "** (" + STATUS[m.status] + ")");
+        if (m.want) out.push("  - What Karl wants: " + m.want.replace(/\n/g, " "));
+        if (m.how) out.push("  - How: " + m.how.replace(/\n/g, " "));
+        if (m.questions) out.push("  - Open questions: " + m.questions.replace(/\n/g, " "));
+        var ws = state.connections.filter(function (c) { return c.from === m.id; });
+        if (ws.length) out.push("  - Wires out: " + ws.map(function (c) { var b = byId(c.to); return (b ? b.name : "?") + (c.label ? " [" + c.label + ", " + (c.kind || "call") + "]" : " [" + (c.kind || "call") + "]"); }).join("; "));
+      });
+      out.push("");
+    });
+    if (state.workflows.length) {
+      out.push("## Workflows", "");
+      state.workflows.forEach(function (w) { out.push("### " + w.title, ""); w.steps.filter(function (s) { return s.trim(); }).forEach(function (s, i) { out.push((i + 1) + ". " + s); }); out.push(""); });
+    }
+    return out.join("\n");
+  }
+
+  /* ---------- boot ---------- */
+  var local = loadLocal();
+  adopt(valid(local) ? local : proposal());
+  setZoom(1);
+  $("[data-act=undo]").disabled = true;
+  setChip("local", "loading shared store…");
+  connectStore();
+  window.addEventListener("beforeunload", function () { if (unsubscribe) unsubscribe(); });
+})();
+</script>

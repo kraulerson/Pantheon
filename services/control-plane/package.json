@@ -2,6 +2,7 @@
   "name": "@pantheon-harness/control-plane",
   "version": "0.1.0",
   "private": true,
+  "license": "UNLICENSED",
   "description": "Pantheon Harness control-plane glue: grounding + trusted:false taint engine (pure logic).",
   "type": "module",
   "engines": {

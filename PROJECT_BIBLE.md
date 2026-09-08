@@ -660,6 +660,26 @@ A **persistent xterm.js SSH-terminal tab** to a selected DevMachine, opened from
 
 ---
 
+### Third-party code: the lifting rule (ratified 2026-09-01, APPROVAL_LOG)
+
+Copying code from another project is allowed, subject to four lines that are not negotiable:
+
+1. **Permissive sources only.** Code text may be lifted only from MIT, Apache-2.0, BSD or ISC
+   sources (Apache additionally: carry its NOTICE and state the changes). AGPL, GPL, SSPL, BUSL and
+   ELv2 sources contribute *patterns* only — never text — regardless of "personal use".
+2. **Lift modules, never apps.** Nothing that drags in the donor's framework or build chain; that is
+   adoption under another name and stays governed by build-over-adopt.
+3. **Provenance travels with the file.** Every lifted file carries a header naming the source
+   repository, commit, path, licence and what we changed, and `THIRD_PARTY_NOTICES.md` gains the
+   full licence text **in the same commit**.
+4. **Lifted code is untrusted input.** It meets this project's strict TypeScript, lint, test-first
+   and security-audit bar before merge — a copied file that skips that becomes an unaudited island
+   inside the trust boundary.
+
+The repository itself is **all rights reserved** (`LICENSE`; `"license": "UNLICENSED"` in
+`package.json`) by Karl's ruling of the same date — a deliberate choice, compatible with including
+MIT code, and revisited only if the project is ever handed to someone else.
+
 ## 11. Build & Distribution Strategy
 <!-- Last Updated: 2026-07-10 -->
 

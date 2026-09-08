@@ -278,6 +278,7 @@ for handoff clarity. Categories are ordered by impact severity.
   `24.x`; deployed via `npm ci` (prebuilt binary) — three restart cycles: up in 2 s, 0 crashes.
 
 ### Documentation
+- 2026-09-01 **Code-lifting rule + repository licence recorded** (APPROVAL_LOG; Bible §10; `LICENSE` all rights reserved; `THIRD_PARTY_NOTICES.md` with the LibreChat MIT theme-token lift; `"license": "UNLICENSED"`). **Design sheet added:** `docs/design/pantheon-design-sheet.html`, an interactive architecture mockup (drag/resize/rewire/annotate modules, workflows, Markdown brief, JSON in/out, shared-store persistence) seeded with the proposed hand-built chat plane, for Karl to mark up before any architecture or language is chosen.
 - 2026-08-25 **Data-model doctrine ruling A** — PROJECT_BIBLE §5 Principle 3 gains a ratified
   exception for the control-plane's single-operator SQLite tables (forward-only additive DDL at
   startup; destructive changes need a numbered migration + backup; operational counters exempt from
