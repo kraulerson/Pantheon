@@ -30,13 +30,26 @@ export const TERMINAL_OPTIONS_JS = `{
  * Addons every hosted terminal loads, both optional and both failing soft:
  *  - **clipboard** — honours OSC 52, the escape sequence tmux emits (with `set-clipboard on`) when
  *    you copy in its copy-mode; without it a tmux copy only ever reaches tmux's own paste buffer.
+ *    The addon gets OUR provider (BUGS #48, UAT-5 #10): tmux writes the sequence with an EMPTY
+ *    selection field (`ESC ] 52 ; ; <base64> BEL`) and the addon's stock provider honours only
+ *    `c`, so every tmux copy was silently dropped while an app's own `52;c;…` arrived. The same
+ *    provider answers a clipboard READ query (`52;c;?`) with nothing — the operator's clipboard
+ *    can hold a token, and the reply would travel into the PTY of a dev machine.
  *  - **webgl** — the GPU renderer. xterm's DOM renderer visibly lags once the grid fills a large
  *    window; if WebGL is unavailable or its context is lost we fall back to the DOM renderer.
  */
 export const TERMINAL_ADDONS_JS = `
+  function pantheonClipboardProvider() {
+    return {
+      // '' is what tmux sends; 'c' is the clipboard proper. 'p' (X11 primary) stays ignored: the Mac has none.
+      writeText: function (sel, text) { if (sel === '' || sel === 'c') pantheonCopy(text); },
+      // Never hand the clipboard to a remote program (the addon echoes this reply into the PTY).
+      readText: function () { return ''; }
+    };
+  }
   function pantheonLoadAddons(term) {
     try {
-      if (window.ClipboardAddon && window.ClipboardAddon.ClipboardAddon) term.loadAddon(new window.ClipboardAddon.ClipboardAddon());
+      if (window.ClipboardAddon && window.ClipboardAddon.ClipboardAddon) term.loadAddon(new window.ClipboardAddon.ClipboardAddon(undefined, pantheonClipboardProvider()));
     } catch (e) {}
     try {
       if (window.WebglAddon && window.WebglAddon.WebglAddon) {

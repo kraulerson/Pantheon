@@ -39,6 +39,13 @@ for handoff clarity. Categories are ordered by impact severity.
   renderer reached the browser (2026-08-30).
 
 ### Fixed
+- 2026-10-16 **A copy made inside tmux now reaches the Mac clipboard through the harness** (BUGS #48;
+  UAT-5 #10 FAIL, Karl: Fix Now, option B1). tmux sends its copies as OSC 52 with an *empty*
+  selection field, and the clipboard addon's stock provider honours only `c`, so every tmux copy was
+  silently dropped while an application's own `52;c;…` arrived — the 2026-08-30 entry below never
+  actually held for tmux. Both terminal hosts now hand the addon a Pantheon provider that treats the
+  empty field as the system clipboard (and keeps `c`; `p` stays ignored), writing through the same
+  path ⌘C uses. Tested against the real pinned addon class (`test/terminal-clipboard-osc52.test.ts`).
 - 2026-08-30 **Terminals render on the GPU, and a copy made inside tmux can reach the system
   clipboard** (BUGS #47, #46 extended; operator report). `@xterm/addon-webgl` replaces the DOM
   renderer (which lagged visibly once the grid filled a large window — ~5× the cells since the fit
@@ -99,6 +106,11 @@ for handoff clarity. Categories are ordered by impact severity.
   `/harness/terminal/:name` page. +6 behaviour tests (jsdom shell), +1 render, +1 asset route.
 
 ### Security
+- 2026-10-16 **A remote program can no longer read the operator's clipboard through a terminal tab**
+  (BUGS #48, same change). The clipboard addon's stock provider answered an OSC 52 read query
+  (`52;c;?`) with `navigator.clipboard.readText()` behind the browser's permission prompt and echoed
+  the result into the dev machine's PTY — a path from a token on the clipboard to a machine that must
+  not see it. Pantheon's provider answers every read with nothing.
 - 2026-08-25 **tmux-aware launcher — audit remediation** (three parallel Phase 2.4 audits: input
   validation / injection, threat model / authz / secrets, client-side / CC1 —
   `docs/security-audits/tmux-aware-launcher-security-audit.md`; 0 SEV-1, 1 SEV-2, 8 SEV-3, ~25 SEV-4

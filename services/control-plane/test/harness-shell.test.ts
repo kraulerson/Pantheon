@@ -96,7 +96,10 @@ class FakeTerm {
 class FakeClipboardAddon {
   static instances: FakeClipboardAddon[] = [];
   activated = false;
-  constructor() {
+  /** The clipboard provider the shell hands the addon (BUGS #48: tmux's empty selection field). */
+  provider?: { writeText: (selection: string, text: string) => unknown; readText: (selection: string) => unknown };
+  constructor(_base64?: unknown, provider?: FakeClipboardAddon["provider"]) {
+    this.provider = provider;
     FakeClipboardAddon.instances.push(this);
   }
   activate(): void {
@@ -899,6 +902,14 @@ describe("terminal addons (operator report 2026-08-30: tmux copy lands in the wr
     openTerm();
     expect(FakeClipboardAddon.instances).toHaveLength(1);
     expect(FakeClipboardAddon.instances[0].activated).toBe(true);
+  });
+
+  it("hands the clipboard addon Pantheon's own provider, so tmux's copies (empty selection field) land on the clipboard (BUGS #48)", () => {
+    openTerm();
+    const provider = FakeClipboardAddon.instances[0].provider;
+    expect(provider).toBeDefined();
+    provider!.writeText("", "copied inside tmux");
+    expect(clipboardWrites).toEqual(["copied inside tmux"]);
   });
 
   it("renders on the GPU when the browser allows it, and disposes the renderer if the context is lost", () => {
