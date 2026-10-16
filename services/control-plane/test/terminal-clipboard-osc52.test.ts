@@ -9,7 +9,7 @@
  * forms the tester used, and look at what reaches `navigator.clipboard`.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { TERMINAL_CLIPBOARD_JS, TERMINAL_ADDONS_JS } from "../src/http/terminal-client.js";
 
@@ -101,11 +101,27 @@ describe("OSC 52 through pantheonLoadAddons (what both terminal hosts ship)", ()
     expect(clipboardWrites).toEqual([]);
   });
 
-  it("a program asking to READ the clipboard gets nothing back, and the clipboard is never read", async () => {
+  it("a program asking to READ the clipboard gets an empty reply, and the clipboard is never read", async () => {
     const term = loadTerm();
     await term.handler!("c;?");
     await settle();
     expect(clipboardReads).toBe(0);
-    for (const reply of term.inputs) expect(reply).not.toContain(b64("OPERATOR-SECRET"));
+    // The addon always answers a query; the reply must carry an empty payload (selection echoed, no data).
+    expect(term.inputs).toEqual(["\x1b]52;c;\x07"]);
+  });
+
+  it("a remote write never reaches the execCommand fallback — that path needs a user gesture, so from OSC 52 it could only steal focus (review finding 1)", async () => {
+    Object.defineProperty(window.navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: () => Promise.reject(new DOMException("Document is not focused", "NotAllowedError")) }
+    });
+    const execCommand = vi.fn(() => true);
+    (document as unknown as { execCommand: unknown }).execCommand = execCommand;
+    const term = loadTerm();
+    await term.handler!(osc52("", "from-an-unfocused-window"));
+    await settle();
+    await settle();
+    expect(execCommand).not.toHaveBeenCalled();
+    expect(document.querySelectorAll("textarea")).toHaveLength(0);
   });
 });

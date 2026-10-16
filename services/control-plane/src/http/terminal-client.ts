@@ -42,7 +42,13 @@ export const TERMINAL_ADDONS_JS = `
   function pantheonClipboardProvider() {
     return {
       // '' is what tmux sends; 'c' is the clipboard proper. 'p' (X11 primary) stays ignored: the Mac has none.
-      writeText: function (sel, text) { if (sel === '' || sel === 'c') pantheonCopy(text); },
+      // Direct write only, never the execCommand fallback: a remote write carries no user gesture, so the
+      // fallback could only churn the DOM and pull focus off the terminal (adversarial review, finding 1).
+      writeText: function (sel, text) {
+        if ((sel === '' || sel === 'c') && text && navigator.clipboard && navigator.clipboard.writeText) {
+          var p = navigator.clipboard.writeText(text); if (p && p.catch) p.catch(function () {});
+        }
+      },
       // Never hand the clipboard to a remote program (the addon echoes this reply into the PTY).
       readText: function () { return ''; }
     };
