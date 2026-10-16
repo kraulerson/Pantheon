@@ -14,7 +14,26 @@
       "recommendation": "A1",
       "rationale": "The terminal plane just became milestone one; UAT on it is now the highest-value testing we could do, and four bug fixes plus the enrolment feature are currently unverified by anyone but me. Deferral is legitimate (the operator is the Orchestrator) but should be a recorded decision, not a silent skip."
     },
-    "user_response": "PENDING",
-    "final_outcome": "escalated"
+    "user_response": "accepted",
+    "final_outcome": "bypassed"
+  },
+  {
+    "timestamp": "2026-10-16T18:06:45Z",
+    "session_id": null,
+    "type": "escalation",
+    "actor": "framework",
+    "enforcement_level_at_event": "strict",
+    "details": {
+      "question": "The commit hook blocks every commit until Phase 2 initialization is verified; 3 of 7 steps cannot pass as the project stands (main is NOT branch-protected on GitHub; the lockfile check looks only at the repo root while ours is in services/control-plane/; data-model backup/restore cannot be auto-verified). How do we proceed?",
+      "options": [
+        "A1: Record a governance ruling in APPROVAL_LOG (single-operator repo keeps main unprotected by design; service-dir lockfile counts as scaffolded; data model applied under the 2026-08-25 additive-DDL ruling, VM in PBS backups, restore untested = recorded residual), mark the steps on that ruling, continue the three commits; hand the two check defects to the framework owner",
+        "A2: Configure GitHub branch protection on main now (PR-only + status checks), then mark and continue — changes the whole commit/push/deploy workflow today",
+        "A3: Hold all commits until the framework owner fixes the lockfile and host-dispatcher checks"
+      ],
+      "recommendation": "A1",
+      "rationale": "The hook's principle is 'no Phase 2 work on an unverified foundation'; the foundation has 14 shipped features, CI, pre-commit hooks and backups. Two of the three failures are check defects for this layout; the third (branch protection) is a real, deliberate state of a one-operator repo that a ruling can own. Nothing is marked without Karl's word."
+    },
+    "user_response": "accepted",
+    "final_outcome": "bypassed"
   }
 ]

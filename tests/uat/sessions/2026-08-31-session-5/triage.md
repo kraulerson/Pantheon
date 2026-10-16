@@ -91,3 +91,19 @@ never sends. Logged, not fixed.
   reply to a `?` query carries no data. Previously `navigator.clipboard.readText()` was reachable
   behind the browser's permission prompt.
 - No server change, no new asset, no new dependency; the addon version stays 0.2.0 exact-pinned.
+
+## Closure (2026-10-16)
+
+- Results filed `a12a797`; #48 fixed `9348a52` and hardened after the independent adversarial
+  review `e2c8e9b` (verdict SHIP; one new SEV-4 fixed, one pre-existing SEV-4 reworded; see
+  `docs/security-audits/bugs-48-tmux-clipboard-osc52-security-audit.md`).
+- Checklist 9/9 (`gate_passed` on the automated re-test against the real pinned addon); feature
+  counter reset by Karl in his terminal (`scripts/test-gate.sh --reset-counter`, 2026-10-16);
+  `scripts/test-gate.sh --check-batch` → "Clear to continue (2 features until next testing session)".
+- The commit gate required a Build Loop for the source commits; it was opened as
+  `bugs-48-tmux-clipboard-osc52` with the five performed steps marked and `feature_recorded`
+  deliberately left unmarked (a bug fix must not count toward the test gate). Karl clears it with
+  `scripts/process-checklist.sh --reset build_loop` before the next real feature starts.
+- Carried to UAT-6: scenarios 7, 8, 9, 14, 16 (not run), 6 and 13 (skipped by ruling), plus the
+  live hand check of #48 (Ctrl-b `[`, select, copy, paste outside the browser) after deploy.
+- Phase 2 initialization checklist verified 7/7 on Karl's ruling A1 (APPROVAL_LOG 2026-10-16).
