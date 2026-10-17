@@ -20,10 +20,20 @@
       "WebFetch(domain:*)"
     ],
     "deny": [
+      "Bash(curl * | bash)",
       "Bash(rm -rf /)",
       "Bash(rm -rf /*)",
-      "Bash(curl * | bash)",
       "Bash(wget * | bash)",
+      "Edit(/.claude/approvals.jsonl)",
+      "Edit(/.claude/framework/**)",
+      "Edit(/.claude/manifest.json)",
+      "Edit(/.claude/settings.json)",
+      "Edit(/.claude/settings.local.json)",
+      "Edit(/.git/config)",
+      "Edit(/.git/hooks/**)",
+      "Edit(/.git/info/**)",
+      "Edit(//private/tmp/.claude_*)",
+      "Edit(//tmp/.claude_*)",
       "Read(./.env)",
       "Read(./.env.*)"
     ]
@@ -34,10 +44,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/framework/hooks/marker-tracker.sh"
-          },
-          {
-            "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/track-tool-usage.sh"
           },
           {
@@ -45,14 +51,12 @@
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/bypass-detector.sh"
           }
         ]
-      }
-    ],
-    "PreCompact": [
+      },
       {
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/framework/hooks/pre-compact-reminder.sh"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/framework/hooks/marker-tracker.sh"
           }
         ]
       }
@@ -63,11 +67,34 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/framework/hooks/enforce-evaluate.sh"
-          },
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/pre-commit-gate.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/framework/hooks/marker-guard.sh"
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/session-mcp-gate.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/session-mcp-gate.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/framework/hooks/enforce-evaluate.sh"
           },
           {
             "type": "command",
@@ -84,24 +111,24 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/framework/hooks/pre-deploy-check.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/pre-commit-gate.sh"
           }
         ]
       },
       {
-        "matcher": "Bash|Write|Edit",
+        "matcher": "Bash|Write|Edit|NotebookEdit",
         "hooks": [
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/framework/hooks/config-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/framework/hooks/marker-guard.sh"
           }
         ]
       },
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write|Edit|NotebookEdit",
         "hooks": [
           {
             "type": "command",
@@ -124,33 +151,11 @@
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/framework/hooks/changelog-sync-check.sh"
           }
         ]
-      },
-      {
-        "matcher": "Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/session-mcp-gate.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/session-mcp-gate.sh"
-          }
-        ]
       }
     ],
     "SessionStart": [
       {
         "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/framework/hooks/session-start.sh"
-          },
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/session-version-check.sh"
@@ -160,6 +165,14 @@
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/session-test-gate-check.sh"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/framework/hooks/session-start.sh"
+          }
+        ]
       }
     ],
     "Stop": [
@@ -167,15 +180,29 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/framework/hooks/stop-checklist.sh"
-          },
-          {
-            "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/session-end-qdrant-reminder.sh"
           },
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/bypass-detector.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/framework/hooks/stop-checklist.sh"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/framework/hooks/record-approval.sh"
           }
         ]
       }
