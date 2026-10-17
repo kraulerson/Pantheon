@@ -15,7 +15,10 @@ description = "Test fixtures with fake keys / test vectors (not real secrets)"
 # Scoped to the exact test files that hold synthetic key material:
 #  - peta-crypto.test.ts : HMAC/token crypto test vectors
 #  - devmachine-*.test.ts: fake OpenSSH keys used to prove custody REJECTS / never leaks them
+#  - console-masking.test.ts: one synthetic sample per masking pattern (incl. a fake PEM block)
+#    used to prove the console's secret masker bites on each shape (Maestro Console F1, 2026-10-17)
 paths = [
   '''services/control-plane/test/peta-crypto\.test\.ts$''',
   '''services/control-plane/test/devmachine-[a-z-]*\.test\.ts$''',
+  '''services/control-plane/test/console-masking\.test\.ts$''',
 ]

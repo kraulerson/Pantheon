@@ -1,0 +1,18 @@
+{
+  "schema": 2,
+  "question": "Commit the staged example change?",
+  "options": [
+    {
+      "id": "A1",
+      "text": "Commit the staged change",
+      "approves": "commit"
+    },
+    {
+      "id": "A2",
+      "text": "Hold - do not commit",
+      "approves": "none"
+    }
+  ],
+  "recommendation": "A1",
+  "offered_at": "2026-10-17T08:00:00Z"
+}

@@ -1,15 +1,16 @@
 /**
  * Server entrypoint — Task #16f. `createServer` composes the whole control-plane into one runnable
  * Fastify app (registry + harness UI + terminal WebSocket + config), so `npm start` serves the
- * Config page, harness frame, and Claude-CLI terminals. Tested via inject (no real listen).
+ * Config page, harness frame, and Claude-CLI terminals. Tested via inject; one test listens on 127.0.0.1:0
+ * to run the onListen hook (the console poller's start), and nothing is dialled.
  */
 
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { FastifyInstance } from "fastify";
-import { createServer } from "../src/server.js";
+import { configFromEnv, createServer } from "../src/server.js";
 
 const TOKEN = "admin-token-0123456789abcdef0123456789abcdef";
 const auth = { authorization: `Bearer ${TOKEN}` };
@@ -123,5 +124,49 @@ describe("createServer — Peta approvals backend is wired when PETA_URL/PETA_AD
     const door = await app.inject({ method: "GET", url: "/keycard/v1/approvals", headers: { authorization: `Bearer ${minted.json().token}` } });
     expect(door.statusCode).toBe(503);
     expect(door.json()).toMatchObject({ state: "unavailable" });
+  });
+});
+
+describe("configFromEnv — Maestro Console settings file (F1 Task 10)", () => {
+  it("configFromEnv reads PANTHEON_CONSOLE_SETTINGS and defaults beside the DB", () => {
+    const base = { ADMIN_API_TOKEN: TOKEN };
+    expect(configFromEnv({ ...base, PANTHEON_CONSOLE_SETTINGS: "/etc/pantheon/console.json" }).consoleSettingsPath).toBe("/etc/pantheon/console.json");
+    // Beside whatever DB is configured, and beside the default DB when none is.
+    expect(configFromEnv({ ...base, PANTHEON_DB: "/var/lib/pantheon/control-plane.db" }).consoleSettingsPath).toBe("/var/lib/pantheon/console-settings.json");
+    expect(configFromEnv(base).consoleSettingsPath).toBe(resolve("data/console-settings.json"));
+    // `.env.local.example` ships `PANTHEON_CONSOLE_SETTINGS=` — an empty value is "unset", like every other optional path here.
+    expect(configFromEnv({ ...base, PANTHEON_CONSOLE_SETTINGS: "" }).consoleSettingsPath).toBe(resolve("data/console-settings.json"));
+  });
+});
+
+// Final review M2: ADR-0010 — a bad console settings file disables the console module only. A settings path that
+// cannot be read (EISDIR, EACCES) used to throw out of createServer and stop the whole control-plane.
+describe("createServer — a console settings file that cannot be read (final review M2)", () => {
+  it("a settings path that is a directory disables the console only: the server starts, the poller is not started, the API says disabled", async () => {
+    keyDir = mkdtempSync(join(tmpdir(), "pantheon-srv-keys-"));
+    const settingsDir = mkdtempSync(join(tmpdir(), "pantheon-srv-settings-"));
+    const lines: string[] = [];
+    const write = vi.spyOn(process.stderr, "write").mockImplementation((chunk: string | Uint8Array) => {
+      lines.push(...String(chunk).split("\n"));
+      return true;
+    });
+    try {
+      app = await createServer({ adminToken: TOKEN, dbPath: ":memory:", keyDir, keyHandle: "harness", consoleSettingsPath: settingsDir });
+      const state = await app.inject({ method: "GET", url: "/console/api/state", headers: auth });
+      expect(state.statusCode).toBe(200);
+      expect(state.json()).toMatchObject({ settings: { disabled: true, entry: "(file)" } });
+      const page = await app.inject({ method: "GET", url: "/console", headers: auth });
+      expect(page.body).toContain('data-console-disabled="(file)"');
+      // The rest of the control-plane runs: the harness frame still answers.
+      expect((await app.inject({ method: "GET", url: "/harness", headers: auth })).statusCode).toBe(200);
+      await app.listen({ port: 0, host: "127.0.0.1" });
+      const events = lines.filter((l) => l.startsWith("{")).map((l) => JSON.parse(l) as Record<string, unknown>);
+      expect(events.find((e) => e["event"] === "console.settings_unreadable")).toMatchObject({ level: "error", code: "EISDIR" });
+      expect(events.find((e) => e["event"] === "console.poller_not_started")).toMatchObject({ entry: "(file)", detail: "(file) could not be read" });
+      expect(events.some((e) => e["event"] === "console.poller_started")).toBe(false);
+    } finally {
+      write.mockRestore();
+      rmSync(settingsDir, { recursive: true, force: true });
+    }
   });
 });

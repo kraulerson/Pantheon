@@ -1,0 +1,25 @@
+❯ What were these screens that stopped the agents?
+```
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. No
+
+ Esc to cancel · Tab to amend · ctrl+x ctrl+k twice to stop background agents
+
+❯ 1. test/fixtures/console (Recommended)
+  2. test/console/fixtures
+
+Enter to select · ↑/↓ to navigate · Esc to cancel
+
+ ❯ No, exit
+   Yes, I trust this folder
+
+ Enter to confirm · Esc to cancel
+```
+
+⏺ The first is a permission prompt, the second a question menu, the third the folder-trust prompt.
+
+────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle)

@@ -18,8 +18,8 @@
  * {@link SshConnectionError} — never a raw error, never key material.
  *
  * The remote command is the branded {@link RemoteCommand} type: it can only be minted by the
- * allow-listing builders in `tmux.ts`, so a plain attacker-influenced string cannot reach `exec`
- * without a deliberate cast (TM-020).
+ * allow-listing builders in `tmux.ts` and `console/probe-command.ts`, so a plain attacker-influenced
+ * string cannot reach `exec` without a deliberate cast (TM-020).
  *
  * The ssh2 client is injected via {@link SshClientFactory} so the lifecycle is unit-testable; the
  * default factory wraps the real `ssh2.Client`.
@@ -31,8 +31,9 @@ import { type KeyCustody } from "./custody.js";
 import { type SshTarget } from "./provisioning.js";
 
 /**
- * A remote command that has passed allow-list validation. Minted ONLY by `tmux.ts`'s builders —
- * the brand makes an unvalidated string a compile error at the exec seam.
+ * A remote command that has passed allow-list validation. Minted ONLY by the allow-listing builders in
+ * `tmux.ts` and `console/probe-command.ts` — the brand makes an unvalidated string a compile error at
+ * the exec seam.
  */
 export type RemoteCommand = string & { readonly __brand: "RemoteCommand" };
 

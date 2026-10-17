@@ -1,0 +1,18 @@
+⏺ There are two ways to lay out the fixtures directory.
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ☐ Layout
+
+│ The fixtures can live beside the other test fixtures or next to the console tests.
+│ Where should the console fixtures live?
+
+❯ 1. test/fixtures/console (Recommended)
+     One folder beside the other test fixtures, so every reader of test inputs looks in
+     one place.
+  2. test/console/fixtures
+     Next to the console tests
+  3. Type something.
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  4. Chat about this
+
+Enter to select · ↑/↓ to navigate · Esc to cancel
+

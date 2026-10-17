@@ -363,3 +363,76 @@ busy, flush when idle, coalescing, rate limiting with cooldown, and the send-fai
 protocol, live bridge token, loop-safety judge) is stage 2 and carries its own audit and live smoke
 test; the rate cap keeps per-pair timestamps in memory with no idle-pair eviction (fine for a
 household-sized sender set); TP-5's cadence-backoff lever is deliberately absent (ruling).
+
+---
+
+## Feature 15: Maestro Console F1 — read-only session feed
+
+**Phase Built:** 2 — Maestro Console Track 1, step F1 (new MVP scope, PRODUCT_MANIFESTO §5 amendment
+2026-10-16); built 2026-10-16/17 as one commit (ruling A1)
+**Status:** Complete in code. Next: deploy to VM 1093, then a read-only real-use period of at least
+3 days (spec §11). The O1 rule for reply-borne questions is fixed from that period's data before F2
+is planned.
+**Summary:**
+- **What it shows:** a **Console** tab in the harness (`/console`) shows every Claude Code session in
+  tmux on every registered dev machine without any setup on the machines. The first tab row lists
+  the machines, each with its worst state and per-state counts. The second row lists the selected
+  machine's projects (one per tmux session, with glyph, name and border from the settings file).
+- **Cards:** each Claude reply becomes a card with its masked TL;DR, age and tool-call count.
+  **▸ full text · ▸ why · ▸ what it did** are read live from the machine on demand and never stored.
+- **NEEDS YOU:** a session needs you when its session file says `waiting`, when a permission, trust or
+  `AskUserQuestion` menu is on its screen (even while it is `busy`), or when a pending-approval file
+  exists. Those cards are pinned on top and the tab title counts them.
+- **Read-only:** nothing on the page can act on a session. There is no reply box, no Submit and no
+  answer button; menus are answered in the terminal (**Open terminal ↗**).
+- **Fail visible:** every state is a glyph plus a word, never colour alone. Every failure is labelled:
+  ✕ UNREACHABLE, ⚠ CAN'T READ, … no data yet, ○ ENDED, ? UNKNOWN STATUS ‹value›, "not reachable —
+  start it in tmux", and a banner when the settings file is refused.
+
+**Key Interfaces:**
+- **Remote commands:** `src/console/probe-command.ts` (`buildProbeCommand`, `buildExpandCommand` — the
+  two read-only remote scripts); `src/console/probe.ts` (`runProbe`, `parseProbeOutput`).
+- **Parsing and storage:** `src/console/transcript.ts` (`splitTurns`, `extractTldr`);
+  `src/console/cards.ts` (`stateFor`, `detectNeedsYou`, `kindFor`, `buildCardFaces`, `projectKeyFor`,
+  `pickLiveSession`); `src/console/menu-fixtures.ts` (`menuOnScreen`); `src/console/masking.ts`
+  (`maskSecrets`, `MASK_PATTERNS`); `src/console/store.ts` (`SqliteConsoleStore`).
+- **Polling and expand:** `src/console/poller.ts` (`createConsolePoller`, `createProbeExec`);
+  `src/console/expand.ts` (`expandCard`); `src/console/settings.ts` (`loadConsoleSettings`,
+  `consoleSettingsFrom`).
+- **Routes and page:** `src/http/routes/console.ts` (`GET /console`, `GET /console/api/state`,
+  `GET /console/api/cards/:id/expand`); `src/http/console-page.ts` (`renderConsolePage`,
+  `CONSOLE_CLIENT_JS`, `CONSOLE_FONT_ASSETS`).
+- **Configuration:** env `PANTHEON_CONSOLE_SETTINGS`. Tables `console_session` and `console_card`
+  (Bible §5).
+
+**Related ADRs:** ADR-0010 (and its follow-up 2026-10-17); rulings R1 (store only the masked face) and
+R5 (menus read-only); TM-026 (machine probe); Bible §9 C.9. Audit:
+`docs/security-audits/maestro-console-f1-security-audit.md`.
+
+**Test Coverage:** 260 tests in 12 files, all passing on 2026-10-17:
+- `console-settings` 13, `console-masking` 28 (one per pattern, plus a mutation guard proving every
+  pattern bites and linear-time guards on hostile input), `console-probe-command` 11 (allow-lists and
+  the read-only invariant), `console-probe-parse` 19.
+- `console-transcript` 27 (turn boundaries, partial lines, oversize lines, every-byte two-slice
+  sweeps), `console-menu-fixtures` 21 (real captured menus match; a fenced copy, the bare prompt and
+  the CDF render do not), `console-cards` 23, `console-store` 20.
+- `console-poller` 40 (budget, catch-up, offset reset, session exit, per-machine isolation),
+  `console-expand` 17 (span, uuid and count checks; nothing stored), `console-routes` 11 (guard matrix,
+  keycard 403, no-store, ids), `console-page` 30 (jsdom: tab rows, states, expand, banners, an
+  `innerHTML` spy with hostile payloads).
+- Also extended: `harness-frame.test.ts` (the header link), `http-app.test.ts` (font assets) and
+  `server.test.ts` (`PANTHEON_CONSOLE_SETTINGS` and its default).
+
+**Known Limitations:**
+- **Not in F1:** no Submit, reply-borne questions (O1) and cheat-sheet areas or skills (stored and
+  validated only, no screen uses them yet).
+- **Undocumented formats:** `sessions/*.json` and the menu screens are undocumented Claude Code
+  formats. A change shows as CAN'T READ or a missed menu, not as a wrong state.
+- **Menu detection limits:** fence tracking covers only the captured pane tail. The
+  `1 to review · 2 to send · 0 to dismiss` prompt was never observed on a real screen.
+- **Projects outside tmux:** a session without a tmux pane (or in an `sh-*` session, reserved for F2
+  machine shells) is listed under "not reachable".
+- **Open terminal ↗** opens the Terminals tab, not the exact session.
+- **Settings take effect on restart:** the settings file is read once at startup.
+- **Masking misses:** an unrecognised secret format can reach a card face or the live expand view
+  (spec §8.4 residual). See the audit for the full residual list.

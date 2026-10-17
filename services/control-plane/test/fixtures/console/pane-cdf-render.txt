@@ -1,0 +1,17 @@
+❯ A1
+  ⎿  UserPromptSubmit operation blocked by hook:
+     Pending question (.claude/pending-approval.json):
+     Commit the staged example change?
+       A1 — Commit the staged change [approves committing the staged change below]
+       A2 — Hold - do not commit [approves nothing]
+     Recommended: A1
+     Staged change:
+       services/control-plane/test/fixtures/console/README.md | 40 ++++++++++++++++++++
+       1 file changed, 40 insertions(+)
+     Hooks that will run at commit: pre-commit
+     Reply with the option id again (for example: A1) to confirm. Any other reply leaves the question open.
+
+────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle)

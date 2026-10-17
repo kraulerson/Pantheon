@@ -77,3 +77,27 @@ Build the Maestro Console as a new tab inside pantheon-harness (C), reading sess
 - **Secrets custody:** a dedicated Telegram bot key provisioned into the same file-custody class as the SSH key, rotation added to `docs/token-rotation-runbook.md`.
 - **Process:** each feature runs the Build Loop (tests first, RED verified, implement, security audit, docs, record); one adversarial review per PR at max effort; UAT sessions 6–8 as scheduled in spec §11; after every deploy the build header is checked against the commit.
 - **Later:** after F1 proves the feed, the "send your TL;DR to @Maestro" lines in `CLAUDE.md` files become redundant (D15) — removing them is Karl's call. Track 2 (hooks in the karl-workflow plugin) is a separate spec and repository.
+
+## Follow-up 2026-10-17
+
+The decisions above and rulings R1–R6 are unchanged. Two things changed while F1 was built.
+
+1. **State palette and console look** (Karl's choice in the Console Style Lab, relayed by Maestro on
+   2026-10-17; applied in plan Task 11).
+   - **States:** spec §6.2's red / yellow / blue top edges became needs-you **orange `#ff9f40`, solid
+     edge** · working **grey `#a8a8a8`, dashed edge** · idle **blue `#5aa9ff`, solid edge**. The
+     edge is 6 px, and the style difference is a second, non-colour cue. Every state is still a glyph +
+     a word (`!` NEEDS YOU, `⟳` WORKING, `✓` IDLE …), never colour alone (CC1).
+   - **Deep navy tokens:** background `#152035`, surface `#1b2943`, surface2 `#233350`, border
+     `#435a80`, text `#e9f0f8`, secondary `#bfcde0`.
+   - **Type:** Lexend 18 px / 1.45, **self-hosted**. Two WOFF2 files are vendored unmodified,
+     SIL OFL 1.1, with text and SHA-256 digests in `THIRD_PARTY_NOTICES.md`. The control-plane checks
+     the digests at startup, and the browser never requests Google Fonts. The code face is the
+     harness mono stack (Roboto Mono → Menlo/Consolas).
+   - **Scope:** the change applies to the console only; the rest of the harness keeps the LibreChat
+     theme.
+2. **One commit for all of F1** (Karl ruling A1, 2026-10-16). F1 lands as a single commit after its
+   security audit and documentation, not one commit per task. Tasks 1–11 each ended in a reviewed
+   checkpoint patch instead. This is because the framework's commit check blocks a commit that stages
+   source until the first five Build Loop steps are marked. The plan's "Execution deviations" section
+   lists every ruling that changed the plan's text.

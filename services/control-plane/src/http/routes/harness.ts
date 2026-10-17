@@ -17,6 +17,8 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import type { FastifyInstance } from "fastify";
+import { createHash } from "node:crypto";
+import { CONSOLE_FONT_ASSETS } from "../console-page.js";
 import { renderHarnessFrame } from "../harness-frame.js";
 import { renderTerminalTab, type TerminalTabModel } from "../terminal-tab.js";
 import type { DevMachine } from "../../registry/types.js";
@@ -45,8 +47,23 @@ const XTERM_CLIPBOARD_JS = readFileSync(nodeRequire.resolve("@xterm/addon-clipbo
 // window, which is what "characters appear late" is (same report). Falls back silently if unavailable.
 const XTERM_WEBGL_JS = readFileSync(nodeRequire.resolve("@xterm/addon-webgl/lib/addon-webgl.js"), "utf8");
 
+// The Console's self-hosted text face (Lexend, SIL OFL 1.1 — THIRD_PARTY_NOTICES.md; Maestro Console F1,
+// Task 11). Read once at startup from the committed `assets/fonts/` folder, resolved relative to this module
+// like the user guide (identical from `src/` and `dist/`), and checked against the pinned digest: a missing,
+// corrupted or swapped file is a startup fault, never a silently different font served to the browser.
+const FONT_DIR = new URL("../../../assets/fonts/", import.meta.url);
+const CONSOLE_FONTS: ReadonlyArray<{ readonly path: string; readonly bytes: Buffer }> = CONSOLE_FONT_ASSETS.map((a) => {
+  const bytes = readFileSync(new URL(a.file, FONT_DIR));
+  const digest = createHash("sha256").update(bytes).digest("hex");
+  if (digest !== a.sha256) throw new Error(`console font ${a.file}: SHA-256 ${digest} does not match the pinned ${a.sha256}`);
+  return { path: a.path, bytes };
+});
+
 /** Public asset paths (added to the app's guard exemption set). */
-export const HARNESS_ASSET_PATHS: readonly string[] = ["/assets/xterm.js", "/assets/xterm.css", "/assets/xterm-addon-fit.js", "/assets/xterm-addon-clipboard.js", "/assets/xterm-addon-webgl.js", THEME_ASSET_PATH];
+export const HARNESS_ASSET_PATHS: readonly string[] = [
+  "/assets/xterm.js", "/assets/xterm.css", "/assets/xterm-addon-fit.js", "/assets/xterm-addon-clipboard.js", "/assets/xterm-addon-webgl.js", THEME_ASSET_PATH,
+  ...CONSOLE_FONT_ASSETS.map((a) => a.path)
+];
 
 export interface HarnessRoutesDeps {
   readonly registry: {
@@ -82,6 +99,12 @@ export function registerHarnessRoutes(app: FastifyInstance, deps: HarnessRoutesD
   app.get(THEME_ASSET_PATH, async (_req, reply) => {
     reply.type("text/css").send(HARNESS_THEME_CSS);
   });
+  // Console text face (public like the rest; cacheable — the page links it with the build suffix).
+  for (const font of CONSOLE_FONTS) {
+    app.get(font.path, async (_req, reply) => {
+      reply.type("font/woff2").send(font.bytes);
+    });
+  }
 
   // ---- Harness frame (guarded) ----
   app.get("/harness", async (req, reply) => {

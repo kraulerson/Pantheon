@@ -22,6 +22,7 @@ import { registerChatCompletionsRoute } from "./routes/chat-completions.js";
 import { registerInspectorRoute } from "./routes/inspector.js";
 import { registerApprovalsRoutes, registerApprovalsInbox, type ApprovalsBackend } from "./routes/approvals.js";
 import { registerHarnessRoutes, HARNESS_ASSET_PATHS, type TmuxLister } from "./routes/harness.js";
+import { registerConsoleRoutes, type ConsoleWiring } from "./routes/console.js";
 import { SessionStore } from "./auth/session.js";
 import { operatorGuard, registerAuthRoutes, AUTH_PUBLIC_PATHS } from "./auth/operator-auth.js";
 import { USER_GUIDE_HTML, USER_GUIDE_PATH } from "./user-guide.js";
@@ -93,6 +94,12 @@ export interface AppOptions {
    * the keycard door alongside this host's Peta (`peta`, labelled "Pantheon"). Readers only.
    */
   readonly approvalSources?: readonly ApprovalSource[];
+  /**
+   * Maestro Console (F1, ADR-0010): the console store, its read-only poller, the loaded settings, the
+   * custody-bound remote run for on-demand expand, and the masker. When provided, `GET /console` and its two
+   * JSON routes are mounted behind the operator guard (never public — TM-011). Omit → not mounted.
+   */
+  readonly console?: ConsoleWiring;
 }
 
 /**
@@ -113,8 +120,9 @@ const CONFIG_PAGE_NOTICES: Readonly<Record<string, string>> = {
 /**
  * Public, non-admin routes (identity-gated, fail-closed in their own handlers). The admin guard
  * is NOT applied to these: LibreChat is not an admin, it presents an operator identity header.
+ * Exported read-only so a test can prove that mounting a surface added nothing to it.
  */
-const PUBLIC_PATHS: ReadonlySet<string> = new Set([
+export const PUBLIC_PATHS: ReadonlySet<string> = new Set([
   "/v1/chat/completions",
   ...HARNESS_ASSET_PATHS,
   ...AUTH_PUBLIC_PATHS,
@@ -424,6 +432,12 @@ export function buildApp(opts: AppOptions): FastifyInstance {
 
   // ---- Harness UI (frame + xterm.js terminal tabs + public xterm assets) — ADR-0005 §9 C.1/C.6 ----
   registerHarnessRoutes(app, { registry, loginEnabled, ...(opts.tmux ? { tmux: opts.tmux } : {}), ...(opts.chatUrl !== undefined ? { chatUrl: opts.chatUrl } : {}) });
+
+  // ---- Maestro Console (F1, ADR-0010): page + state + on-demand expand, all behind the guard above; nothing
+  // here joins PUBLIC_PATHS, so a keycard bearer meets the admin guard's 403 (TM-011). Mounted only when wired. ----
+  if (opts.console) {
+    registerConsoleRoutes(app, { ...opts.console, registry, loginEnabled });
+  }
 
   // ---- Approval stores (BUGS #42): this host's Peta first (READER only — the decide verb is
   // structurally out of reach of the inbox and the door), then every configured extra source. ----

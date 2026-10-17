@@ -109,6 +109,16 @@ describe("renderHarnessFrame — Help", () => {
   });
 });
 
+describe("renderHarnessFrame — Console link (Maestro Console F1, plan Task 11)", () => {
+  it("the header links to the Console under the base path", () => {
+    for (const [base, href] of [["/harness", "/harness/console"], ["", "/console"]] as const) {
+      const html = renderHarnessFrame({ devMachines: [machine({})], base });
+      const header = html.slice(html.indexOf("<header>"), html.indexOf("</header>"));
+      expect(header, base).toContain(`<a href="${href}" data-nav="console">Console</a>`);
+    }
+  });
+});
+
 describe("renderHarnessFrame — logout control (BUGS #20)", () => {
   it("renders a logout form posting to /logout when operator login is enabled", () => {
     const html = renderHarnessFrame({ devMachines: [], loginEnabled: true });

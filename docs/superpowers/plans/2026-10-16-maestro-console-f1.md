@@ -19,7 +19,7 @@
 - Expected side effect of the ruling: while F1 is in progress the CDF stop hook reports "Uncommitted source changes" once per session (then stays silent for the same set). That is the ruled state — never a reason to commit early, to mark a Build Loop step that was not performed, or to delete work.
 - Strict TS (`exactOptionalPropertyTypes` style: spread optionals as `...(x ? { x } : {})`), `eslint` clean, `tsc` clean, suite green (`npm test` in `services/control-plane`). Exact-pinned deps only; **no new dependency**.
 - F1 **acts on no session**: no `send-keys`, no `paste-buffer`, no `load-buffer`, no `kill`, no writes under `~/.claude` on any dev machine. The only remote commands are the two minted here (probe, expand) and both are read-only.
-- One SSH dial per machine per poll, at most one probe in flight per machine; `maxOutputBytes` 2 MiB for the probe only (spec §5); default 64 KiB everywhere else.
+- Amended 2026-10-17: at most 4 SSH dials per machine per tick, 1 main probe plus up to 3 catch-up probes. An oversize retry counts as a catch-up, not an extra; typically 1 per tick. At most one probe is in flight per machine; `maxOutputBytes` 2 MiB for the probe only (spec §5); default 64 KiB everywhere else.
 - Store **only** the masked card face (`tldr_masked` ≤ 1 KiB) and pointers; no full text, reasoning or tool output is ever written to SQLite (R1). Masking runs before storage, before display, over complete lines only.
 - Probe reads only `~/.claude/sessions/*.json` (never `*.key`), and of those only `pid, sessionId, cwd, name, status, waitingFor, tmux, procStart, version, kind`; never `bridgeSessionId` or `messagingSocketPath`.
 - Every state shown as colour **+ glyph + word** (CC1): `!` NEEDS YOU · `⟳` WORKING · `✓` IDLE · `$` IN SHELL · `?` UNKNOWN STATUS ‹value› · `✕` UNREACHABLE · `⚠` CAN'T READ · `○` ENDED. Unknown `status` is never mapped to IDLE.
@@ -373,3 +373,108 @@ Inputs the spec implies but no F1 row tests by name — each pinned to its ownin
 - Deviation to record in the audit: the probe extracts allow-listed `sessions/*.json` fields **on the machine** with `grep -o`, so the forbidden fields never cross the wire; a nested or multi-line JSON value in those files would be missed (read as CAN'T READ, not misread).
 - Type names are consistent across tasks (`ProbeSessionFile`, `ProbePane`, `Turn`, `CardFace`, `ConsoleCardRow`, `SessionState`, `NeedsKind`, `ConsoleSettings`, `RemoteExec`).
 - Proportion: the plan fixes names, signatures, allow-lists, regexes and test names; bodies are left to the implementer except the remote script's record grammar, which the tests depend on.
+
+---
+
+## Execution deviations (2026-10-16/17)
+
+Every ruling during execution that changed this plan's text, one line each with its reason. The
+source is the execution ledger `.superpowers/sdd/2026-10-16-maestro-console-f1/progress.md` (rulings,
+findings and carries). Minor deferred items and audit residuals are not repeated here; they are in the
+ledger and the audit document.
+
+**Process**
+- **One commit for all of F1** (ruling A1): Tasks 1–11 ended in reviewed checkpoint patches, not commits. Reason: `--check-commit-ready` blocks a source commit until five Build Loop steps are marked.
+- **Built on `main` in the main tree, no worktree or branch.** Reason: the repo's direct-push workflow, with the single commit gated by Karl's design-B approval.
+- **Task 11 ran before Task 10** (R-pre-5). Reason: Task 10's `GET /console` serves `renderConsolePage`, and this repo allows no stubs.
+- **Task 4 fixtures** came from real captures where possible (14 captured, 5 synthetic, each synthetic one labelled in the README), plus an added `sessions-2.1.302.json`. Reason: menus that would need a driven Claude session were modelled on the exact on-screen wording.
+
+**Task 1 — settings**
+- Unknown keys inside a project entry or in `retention` are refused, and `null` is refused for `glyph` / `border` / `hidden`. The effective `allTabAreas` (default included) is validated against `areas`. Reason: no silent fallbacks.
+
+**Task 2 — masking (three bounds, then four later changes)**
+- `cloudflare` look-behind `[\s:=]+` → `[\s:=]{1,8}`. Reason: the unbounded run was quadratic on whitespace (a `Bearer` followed by 100k spaces stalled the loop for 9–16 s).
+- `gitea_hex` look-behind `[\s:=]+` → `[\s:=]{1,8}`. Reason: the same quadratic shape.
+- `high_entropy_in_context` `\s*` → `\s{0,8}`. Reason: measured 7.25 s on `Bearer` plus 100k spaces.
+- `env_secret` name runs `[A-Z0-9_]*` → `[A-Z0-9_]{0,32}`, and the look-behind now ends `=["']?`. Reasons: a quadratic shape, and quoted values were missed.
+- `jwt` `\beyJ` → `(?<![A-Za-z0-9_-])eyJ`. Reason: quadratic on `eyJ` floods.
+- `high_entropy_in_context` keyword widened to `_`/`-`-joined compound names (`access_token`) with bounded runs. Reason: compound names were missed; adopted only after measuring linear time.
+- `private_key_block` body `[\s\S]*?` → `[\s\S]{0,16384}?`. Reason: bounded work on a header flood.
+- The mutation guard uses per-pattern-unique samples. Reason: overlapping patterns made "every pattern bites" unsatisfiable otherwise.
+- Card faces are masked over the COMPLETE turn text; `maskCompleteLines` serves only streams and pane tails. Reason: a secret split across a line boundary.
+
+**Task 3 — probe**
+- The transcript-offset reset on `size < offset` belongs to the poller (Task 8), not Task 6 (R-pre-1). Reason: `cards.ts` has no offset interface.
+- The remote script is fed to `/bin/sh` through a quoted heredoc after the `PATH` prefix. Reason: zsh's `nomatch` would abort on an unmatched glob.
+- `currentCommand` loses its trailing newline, and a forged `sessions/*.json` basename is dropped. Reason: review findings fixed before Tasks 6 and 8 consumed the module.
+
+**Task 5 — transcript turns**
+- **Turn completion:** a turn ends at the earliest of the next turn-starting user line or a `system` line with `subtype: "turn_duration"` that follows at least one assistant text line. An open turn is not consumed (`SplitResult.openTurnStart?`). Reason: under the plan's rule the latest reply would not surface until the NEXT prompt.
+- `splitTurns(..., { closeOpenTurn })` closes an open turn that has assistant text. The poller passes it only when the session is `idle` and its transcript size is unchanged since the previous poll. Reason: a finished turn with no turn marker would otherwise wait for the next prompt.
+- **Non-human triggers:** assistant text outside a turn starts one, attributed to the nearest preceding user line. Reason: replies after background-task notifications are the ones the operator must see (spec §6.4: one card per reply).
+  - The turn records `promptSource: "human" | "system" | "meta" | "tool"` (plus `openTurnSource?`).
+  - A `tool_result`-only line joins a pending non-human prompt.
+  - Orphan assistant lines are counted.
+  - `promptText` drops `<system-reminder>` blocks.
+- The carry is capped at `MAX_LINE_BYTES` (dropped and counted, resynced at the next newline). Reason: a bounded carry.
+- `extractTldr` accepts `**TL;DR**` with or without the colon and uses the LAST marker. It gains an additive `fallbackChars` option (default 280). Reasons: both marker forms occur in real replies, and the option supports the mask-before-cut order below.
+
+**Task 6 — cards and menu anchors**
+- **Menu anchors rewritten to the real captures** (FINDING T4). Reason: the plan's anchors did not match Claude Code 2.1.29x–2.1.302.
+  - Real prompts are indented by ONE space (0–3 accepted).
+  - The trust prompt is unnumbered (`❯ No, exit` / `Yes, I trust this folder`), with the footer `Enter to confirm · Esc to cancel`.
+  - The permission footer may end with the busy tail ` · ctrl+x ctrl+k twice to stop background agents`.
+  - `AskUserQuestion` draws its menu at column 0.
+  - `1 to review · 2 to send · 0 to dismiss` was never observed and stays plan-asserted.
+- **Fence rule:** lines inside an open triple-backtick fence never count, and fences are tracked CommonMark-style by length. Reason: a pasted menu inside a code block must not raise NEEDS YOU (Review Focus 4).
+- **Cursor-independent option lines:** option lines match with or without the `❯ ` cursor. A menu counts only when a menu line is followed by its footer, below it and within 24 lines. A bare `❯ ` input line after a pair voids the pair as a stale frame. Matching is one pass. Reasons: arrowing down must not hide a menu, and a hostile tail must not stall the loop (pairing was quadratic).
+- **`detectNeedsYou` returns `{ signals, problems }`.** Reason: unparseable sentinels are surfaced as problems, not hidden.
+- **`pickLiveSession` returns `{ live, ended }`.** Reason: the dead file of a shared pane is reported as ended, never merged (Review Focus 2).
+- **`kindFor(needs)` is new.** `buildCardFaces` gives every face the kind `reply`, and the poller applies `kindFor` to the session's latest card. Reason: the plan had no path from a per-session signal to a per-turn kind.
+- **A v1 sentinel is not a `CardFace.kind`** (R-pre-2). It yields a `sentinel` NeedsYou with the "cannot be answered until … schema 2" detail.
+- **`projectKeyFor` fallback:** `<cwd basename>@<machine>`, not reachable, when the `tmux` field is absent or invalid; it prefers the probed pane's session name. Reason: the probe reports no process tree, so a pid-chain match was unimplementable.
+- **Mask before cut:** `tldrMasked = extractTldr(mask(reply), { fallbackChars: Infinity })` → one line → mask → cut to 1024; titles are masked first too. Reason: a cut placed before or between masks left fragments of a token unmasked (proved on seven shapes).
+
+**Task 7 — store**
+- `ConsoleSessionRow` gains `transcriptSize`. Reason: the poller needs the "no new bytes since the previous poll" test for `closeOpenTurn`.
+- `ConsoleSessionRow` gains `reachable` (a Task 8 ruling). Reason: no hidden empty-`paneId` encoding.
+- New store methods `clearNeedsYou(now)`, `latestCard`, `setCardNeeds(…, kind)` and `close()`. Reason: stale needs-you flags and kinds are cleared or refreshed each tick, and the store closes cleanly on shutdown.
+- `CHECK (length(tldr_masked) <= 1024)`, `CHECK (length(title) <= 120)`, and indexes on `created_at` and `(machine, project_key)`. Reason: enforce R1's size limits in the schema; no database was deployed yet.
+- The card id hashes `session_id + "\n" + turn_uuid`. Reason: without a separator, ("ab","c") and ("a","bc") collide.
+- `purgeExpired` normalises `now` through `toISOString()` (it throws on garbage), and the limits are validated. Reason: a malformed `now` silently deleted every card.
+
+**Task 8 — poller**
+- `skippedTicks` is `ConsolePoller.skippedTicks()` (R-pre-3), and `stop()` returns `Promise<void>`, awaiting the tick in flight. Reason: the store must not close under a running tick.
+- **Budget:** slices are sized so tails plus base64 (×4/3) fit the 2 MiB cap: `max(16 KiB, min(256 KiB, floor(min(1.2 MiB, (1.4 MiB − tails) × 3/4) / slices)))`. An oversize open turn gets one retry slice at the full room (~1 MiB), and that retry counts as one of the 3 catch-ups. Reason: three 1 MiB slices overflowed the capture.
+- **Offsets:** each tick re-reads from `consumedBytes`; when `size < offset`, the offset resets to 0. Reason: open turns are re-read until closed (Task 5).
+- **Final turn on exit:** a dead or ABSENT session gets one last slice with `closeOpenTurn` before `markEnded`. Both same-tick exit races are closed (R1/R2). Reason: a clean exit removes the session file, so the final reply was lost.
+- **Per-machine in-flight guard:** a slow machine never blocks the others. Reason: isolation.
+- **`pending` health state:** seeded until a machine's first poll finishes. `lastOkAt` is set on any ok report, and problems appear in health. Reason: fail visible, never "all quiet".
+- **Other changes:** a `log` dependency (pino-shaped) is injected, and `sh-*` sessions are re-keyed as not reachable (the F2 shell ruling). Reason: structured logging, and the name is reserved for F2 machine shells.
+
+**Task 9 — expand**
+- `expandCard` takes an already-bound `exec`. The route sizes `maxOutputBytes` from the card's byte range (+4 KiB) with a 4 s timeout. Reason: `RemoteExec` carries no options.
+- `ok` requires the turn's uuid AND exact span AND `toolCallCount` / `thinkingChars` to match the card. A truncated slice (the transcript shrank) is `changed`, not `failed`. Reasons: a partial or shifted range returned `ok`, and a shrunken transcript is a data condition.
+- A `changed` result is HTTP 200 with the labelled body (R-pre-4). Reason: fail-visible data state, not a server error.
+
+**Task 10 — routes and wiring**
+- Logging goes to a pino-shaped JSON logger on stderr. Reason: `app.log` is a no-op under `logger: false`.
+- The poller starts after the server listens, and `onClose` awaits `poller.stop()` before `store.close()`. Reason: no SSH dial ever happens under `inject`.
+- An empty `PANTHEON_CONSOLE_SETTINGS` means unset; the default is `console-settings.json` in the folder of `PANTHEON_DB`. Reason: the shipped `.env.local.example` line is empty.
+
+**Task 11 — page**
+- NEEDS YOU comes from the SESSION row; card flags only pin a card, and the kind label follows `needsKind` while it is set. Reason: one source of truth per session.
+- A session row with `endedAt` renders `○ ENDED` whatever its stored state. Reason: an ended row may still carry `needs_you`.
+- `sh-*` sessions are handled only by the poller's re-keying; the client has no `sh-` special case. Reason: they must still show (with NEEDS YOU) under "not reachable".
+- **Stable live regions:**
+  - The heartbeat sits outside the live region.
+  - Banner nodes are reused.
+  - Fold state carries across polls.
+  - Focus is restored with `preventScroll`.
+  Reason: polls re-announced and scrolled every 5 s.
+- A health state `pending` reads "… no data yet".
+- A no-marker face (up to 1024 chars) is clipped visually to six lines.
+- The console look follows Karl's Style Lab choice (ADR-0010 follow-up). Lexend is served from `routes/harness.ts` with a startup SHA-256 check. **Open terminal ↗** links to the Terminals tab, because no deep link exists.
+
+**Task 12 — documentation numbering**
+- The console page is Bible §9 **C.9**, because C.7 and C.8 already exist. The F2 additions are spec **§14**, because §12 is "Prerequisites and governance".

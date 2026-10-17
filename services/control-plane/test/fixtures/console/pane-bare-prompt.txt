@@ -1,0 +1,8 @@
+⏺ The fixtures are written and the README lists each one.
+
+  **TL;DR:** The test fixtures are in place. Nothing is waiting on you.
+
+────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle)

@@ -1,0 +1,24 @@
+{
+  "pid": 4111,
+  "sessionId": "00000000-0000-4000-8000-000000021284",
+  "cwd": "/Users/karl/Documents/Claude Projects/Pantheon/pantheon-harness",
+  "startedAt": 1790693706542,
+  "procStart": "Tue Sep 29 14:55:05 2026",
+  "version": "2.1.284",
+  "peerProtocol": 1,
+  "peerFeatures": [
+    "notify_idle",
+    "reply_across_default_dirs",
+    "artifact_yield"
+  ],
+  "kind": "interactive",
+  "entrypoint": "cli",
+  "pidDomain": "darwin",
+  "tmux": "Pantheon:@14.%14",
+  "name": "pantheon-harness-284",
+  "nameSource": "user",
+  "nameSince": 1791376278605,
+  "updatedAt": 1792201395982,
+  "status": "idle",
+  "statusUpdatedAt": 1792201395982
+}

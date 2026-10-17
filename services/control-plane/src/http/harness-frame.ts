@@ -512,6 +512,7 @@ ${pageHead(base)}
   <!-- Configuration lives in the page chrome, NOT inside the empty-state message: it used to
        appear only when the registry was empty, so registering the first machine removed the
        operator's only route back to the page that provisions it (BUGS #16). -->
+  <a href="${withBase(base, "/console")}" data-nav="console">Console</a>
   <a href="${withBase(base, "/admin/config")}" data-nav="config">Configuration</a>
   <a href="${withBase(base, "/admin/approvals")}" data-nav="approvals">Approvals</a>
   <a href="${withBase(base, "/help")}" data-nav="help">Help</a>

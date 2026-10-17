@@ -32,7 +32,7 @@
 
 <h1>Pantheon Harness — User Guide</h1>
 <p class="subtitle">How the harness works, what every option does, and how to run it.
-Last updated 2026-08-19.</p>
+Last updated 2026-10-17.</p>
 
 <div class="warn">
   <strong>Read this first: the harness is half-built.</strong>
@@ -178,6 +178,9 @@ sidebar — hiding it gives the terminal the full width — and the page remembe
           chat page inside the harness (only when the harness was opened from the chat address —
           from the admin address it offers a link instead, because a browser will not sign you in
           inside a page from a different address).</td></tr>
+  <tr><td><strong>Console</strong></td>
+      <td>Opens the Console: every Claude session on every machine, as cards, read-only — see
+          <a href="#console">The Console</a>.</td></tr>
   <tr><td><strong>Configuration</strong></td>
       <td>Opens the Configuration page, where everything is registered and set up.</td></tr>
   <tr><td><strong>Help</strong></td><td>Opens this guide.</td></tr>
@@ -329,6 +332,139 @@ can never leak anything and can never be tricked into running anything.</p>
 
 <p><strong>Deciding</strong> is not on this page yet: the approve / reject buttons arrive with the
 M2 approval surface. Until then the page is a read-only inbox.</p>
+
+<h3 id="console">The Console (Maestro Console, first step)</h3>
+
+<p>The <strong>Console</strong> link at the top of the harness page opens one page that shows every
+Claude Code session running in tmux on every registered dev machine. Nothing has to be installed or
+set up on the machines: the harness looks every few seconds over the same SSH access the terminals
+use, so a new session appears by itself.</p>
+
+<h4>What it shows</h4>
+<ul>
+  <li><strong>Two rows of tabs.</strong> The first lists the machines (<strong>◎ All machines</strong>,
+      then one per machine) with the most urgent state on that machine and a count per state, for
+      example <em>! 2 NEED YOU · ⟳ 1</em>. The second lists that machine's projects, one per tmux
+      session, with the name, symbol and border style you chose in the settings file.</li>
+  <li><strong>One card per Claude reply</strong>, newest first, with anything that needs you pinned on
+      top. A card shows the project, what kind of item it is (for example
+      <em>! MENU ON SCREEN</em>), the session's state, its age, the reply's TL;DR (or its first lines when
+      it has none), and how many tool calls it made.</li>
+  <li><strong>▸ full text · ▸ why · ▸ what it did</strong> under each card. These are read from the
+      machine when you press them, shown once, and never saved by the harness. If the machine cannot be
+      reached you see <em>Can't load the full text now</em> and the card itself stays.</li>
+  <li><strong>Open terminal ↗</strong> takes you to the Terminals tab, where you attach to that
+      session to answer it.</li>
+</ul>
+
+<h4>What it never does (in this first step)</h4>
+<ul>
+  <li><strong>It cannot send anything to a session.</strong> There is no reply box, no Submit and no
+      answer button. Every question, permission prompt or approval is answered in the terminal.</li>
+  <li><strong>It never answers a menu for you</strong> — not a permission prompt, not a "trust this
+      folder" prompt, not a multiple-choice question. It only shows that one is waiting.</li>
+  <li><strong>It does not keep a copy of your sessions.</strong> It saves only each card's short
+      summary, with anything that looks like a password, token or key replaced by
+      <code>[masked]</code>. A masked value cannot be shown again on this page; the terminal shows the
+      real text. Cards are deleted after 90 days (adjustable in the settings file).</li>
+</ul>
+
+<h4>States: symbol and word, never colour alone</h4>
+<table>
+  <tr><th>You see</th><th>It means</th></tr>
+  <tr><td><strong>! NEEDS YOU</strong> (orange, solid edge)</td>
+      <td>The session is waiting for you: Claude asked for input, a menu is on its screen (even while
+          it is still working in the background), or it left an approval waiting. The card says
+          which.</td></tr>
+  <tr><td><strong>⟳ WORKING</strong> (grey, dashed edge)</td><td>Claude is busy.</td></tr>
+  <tr><td><strong>✓ IDLE</strong> (blue, solid edge)</td><td>Claude finished and is waiting at its prompt.</td></tr>
+  <tr><td><strong>$ IN SHELL</strong></td><td>The session is at a shell, not inside Claude.</td></tr>
+  <tr><td><strong>? UNKNOWN STATUS</strong> <em>value</em></td>
+      <td>Claude reported a status this harness does not know (it may have been updated). It is shown
+          as-is and never treated as idle.</td></tr>
+  <tr><td><strong>○ ENDED</strong></td><td>The session has stopped. Its cards are kept.</td></tr>
+  <tr><td><strong>… no data yet</strong></td>
+      <td>The page has not finished its first look at that machine (just after a restart). Wait a few
+          seconds.</td></tr>
+  <tr><td><strong>✕ UNREACHABLE since</strong> <em>HH:MM</em></td>
+      <td>The machine did not answer. Its last known cards stay on the page and the harness keeps
+          trying every few seconds. Check that the machine is on and on the network.</td></tr>
+  <tr><td><strong>⚠ CAN'T READ — format changed</strong> (<em>N lines</em>)</td>
+      <td>The machine answered, but Claude's files were not in the shape this harness expects —
+          usually after a Claude Code update. What could be read is still shown; the listed problems
+          say what could not. Report it; it needs a harness update, not anything on your side.</td></tr>
+  <tr><td><strong>⚠ PROBE FAILED</strong> / <strong>✕ NOT CONNECTABLE</strong></td>
+      <td>The check ran but failed on the machine / the machine is disabled or not provisioned (see
+          <a href="#config">section 5</a>). Text from the machine itself is labelled
+          <em>machine said: "…"</em>.</td></tr>
+  <tr><td><em>not reachable — start it in tmux</em></td>
+      <td>A Claude session that is not running inside tmux (or runs in a tmux session whose name starts
+          with <code>sh-</code>, which is kept for machine shells). Its cards are shown, but the
+          console cannot point a terminal at it. Start Claude inside a named tmux session to fix
+          this.</td></tr>
+  <tr><td><em>new — not set up</em></td>
+      <td>A project the settings file does not mention yet. It works; it just has no chosen name,
+          symbol or border.</td></tr>
+  <tr><td><em>✕ signed out — reload to sign in</em></td><td>Your sign-in lapsed; the page stopped
+      checking. Reload the page.</td></tr>
+  <tr><td><em>⚠ Console disabled — the console settings entry</em> <code>…</code> <em>is invalid</em></td>
+      <td>The settings file has a mistake. The banner names the entry (never its value). Only the
+          Console is switched off; terminals, approvals and the rest of the harness keep working. Fix
+          the file and restart the harness.</td></tr>
+</table>
+<p>The browser tab's title shows how many items need you, for example <em>(2) Console</em>.</p>
+
+<h4 id="console-settings">The console settings file</h4>
+<p>The Console works with no settings file at all. To name and style your projects, put a file
+called <code>console-settings.json</code> in the same folder as the harness's registry database, or
+point the <code>PANTHEON_CONSOLE_SETTINGS</code> setting (<a href="#settings">section 8</a>) at a file
+elsewhere. The harness reads it once, when it starts: <strong>after editing it, restart the
+harness.</strong> Every field is optional; anything you leave out uses the default.</p>
+<table>
+  <tr><th>Field</th><th>What it does</th><th>Allowed / default</th></tr>
+  <tr><td><code>pollSeconds</code></td><td>How often the Console looks at the machines.</td>
+      <td>2 to 60; default 5</td></tr>
+  <tr><td><code>retention.cardsDays</code></td><td>How long cards are kept.</td><td>1 to 3650; default 90</td></tr>
+  <tr><td><code>areas</code></td><td>The list of area names that projects and skills can use.</td>
+      <td>lowercase letters, digits and <code>-</code>; default
+          <code>gate-safety</code>, <code>delivery</code>, <code>homelab-ops</code>,
+          <code>fleet-sessions</code>, <code>memory-hygiene</code>, <code>learning-recovery</code>,
+          <code>general</code></td></tr>
+  <tr><td><code>projects.</code><em>name</em></td>
+      <td>One entry per project; <em>name</em> is the tmux session name.</td>
+      <td>a valid tmux session name</td></tr>
+  <tr><td>&nbsp;&nbsp;<code>display</code></td><td>The name shown on the tab and cards.</td>
+      <td>1–40 letters, digits, space, <code>.</code> <code>_</code> <code>-</code>; default the tmux name</td></tr>
+  <tr><td>&nbsp;&nbsp;<code>glyph</code></td><td>A symbol that sets the project apart without colour.</td>
+      <td>one or two visible characters; default <code>·</code></td></tr>
+  <tr><td>&nbsp;&nbsp;<code>border</code></td><td>The border style of its tab and cards.</td>
+      <td><code>solid</code>, <code>dashed</code>, <code>double</code>, <code>dotted</code> or
+          <code>thick-left</code>; default <code>solid</code></td></tr>
+  <tr><td>&nbsp;&nbsp;<code>areas</code></td><td>Which areas the project uses.</td>
+      <td>names from <code>areas</code>; default none</td></tr>
+  <tr><td>&nbsp;&nbsp;<code>hidden</code></td><td>Leave the project out of the Console.</td>
+      <td><code>true</code> or <code>false</code>; default <code>false</code></td></tr>
+  <tr><td><code>allTabAreas</code></td><td>The areas for the All-machines tab.</td>
+      <td>names from <code>areas</code>; default <code>fleet-sessions</code>, <code>general</code></td></tr>
+  <tr><td><code>skills</code></td><td>Which areas each skill belongs to.</td>
+      <td>skill name → list of areas</td></tr>
+</table>
+<p>The areas and skills are checked now but not shown yet — they drive the suggestions and cheat sheet
+of a later step. A project entry with a field this list does not have is refused (so a typo is
+caught, not ignored); extra top-level sections such as <code>reminders</code> are accepted and
+ignored until the step that uses them. An example:</p>
+<pre><code>{
+  "pollSeconds": 5,
+  "retention": { "cardsDays": 90 },
+  "projects": {
+    "lancache": { "display": "lancache", "glyph": "⬢", "border": "solid",  "areas": ["gate-safety", "delivery", "homelab-ops", "general"] },
+    "solo":     { "display": "solo",     "glyph": "▲", "border": "dashed", "areas": ["gate-safety", "delivery", "general"] },
+    "pantheon": { "display": "pantheon", "glyph": "◆", "border": "thick-left", "areas": ["gate-safety", "delivery", "general"] },
+    "Dogfood":  { "hidden": true }
+  },
+  "allTabAreas": ["fleet-sessions", "general"],
+  "skills": { "handoff": ["general"], "change-card": ["general"] }
+}</code></pre>
 
 <h2 id="config">5. The Configuration page — every field</h2>
 
@@ -550,6 +686,11 @@ sudo systemctl restart pantheon-admin@pantheon</code></pre>
   <tr><td>Registry (backends, machines, endpoints)</td>
       <td><code>services/control-plane/data/control-plane.db</code> — owner-only</td></tr>
   <tr><td>Harness SSH key</td><td>A locked, owner-only directory on the harness machine. The exact path is in the deploy notes in the repository, not here.</td></tr>
+  <tr><td>Console cards (masked summaries only) and the sessions it has seen</td>
+      <td>the same database file as the registry, in two tables of their own</td></tr>
+  <tr><td>Console project names, symbols and areas</td>
+      <td><code>console-settings.json</code> beside the registry database (see
+          <a href="#console-settings">the console settings file</a>)</td></tr>
   <tr><td>Console settings and secrets</td><td><code>services/control-plane/.env.local</code> — owner-only, never committed</td></tr>
   <tr><td>Container settings and secrets</td><td><code>deploy/.env</code> — owner-only, never committed</td></tr>
   <tr><td>Chat history and accounts</td><td>the Mongo container's storage</td></tr>
@@ -569,6 +710,10 @@ restart the piece it belongs to.</p>
   <tr><td><code>PANTHEON_SECURE_COOKIES</code></td><td><code>true</code> when served over HTTPS (it is).</td></tr>
   <tr><td><code>PANTHEON_DB</code> / <code>PANTHEON_KEY_DIR</code></td><td>Where the registry and the SSH key live.</td></tr>
   <tr><td><code>PANTHEON_KEY_HANDLE</code></td><td>Which stored key the harness uses. Default <code>harness</code>.</td></tr>
+  <tr><td><code>PANTHEON_CONSOLE_SETTINGS</code></td>
+      <td>Where the Console's settings file is. Empty or unset: <code>console-settings.json</code> in
+          the same folder as the registry database. A missing file means the defaults. See
+          <a href="#console-settings">the console settings file</a>.</td></tr>
   <tr><td><code>PORT</code> / <code>HOST</code></td><td>Where the console listens. It is bound to the container bridge so that <strong>only</strong> the reverse proxy can reach it — never to the whole network.</td></tr>
   <tr><td><code>PETA_URL</code> / <code>PETA_ADMIN_TOKEN</code></td><td>Peta connection — set during step 2.</td></tr>
   <tr><td><code>GITEA_*</code>, <code>BRIDGE_MCP_*</code></td><td>Connections to Gitea and the Alden bridge.</td></tr>
@@ -619,6 +764,11 @@ restart the piece it belongs to.</p>
   <tr><td>Approve / reject buttons on the Approvals page</td>
       <td>The inbox shows what is waiting on you (added 2026-08-26) but cannot decide it yet.</td>
       <td>M2 approval surface (C.3)</td></tr>
+  <tr><td>Answering from the Console</td>
+      <td>The Console (added 2026-10-17) shows every session and what waits on you, but cannot send a
+          reply, press an answer button or start a session yet — answer in the terminal. Reminders
+          (page banner, Telegram), suggestions and "Ask Maestro" come later.</td>
+      <td>Console steps F2–F5</td></tr>
   <tr><td>Checking a machine is really itself</td>
       <td>The harness does not yet verify a machine's identity before connecting (bug #17).</td>
       <td>Bug fix, pending</td></tr>
@@ -641,6 +791,13 @@ restart the piece it belongs to.</p>
       <td>The machine must be both provisioned <em>and</em> enabled. Check both words on its row.</td></tr>
   <tr><td>A button does nothing</td>
       <td>If it is Edit or Remove, that is bug #19 — not your fault, not yet built.</td></tr>
+  <tr><td>The Console says <em>Console disabled</em></td>
+      <td>The console settings file has a mistake; the banner names the entry. Fix it, then restart
+          the harness. Everything else keeps working meanwhile.</td></tr>
+  <tr><td>A session is missing from the Console, or sits under <em>not reachable</em></td>
+      <td>The Console lists Claude sessions on registered, provisioned and enabled machines. A session
+          outside tmux, or in a tmux session named <code>sh-…</code>, is listed as not reachable; start
+          Claude inside a named tmux session.</td></tr>
 </table>
 
 <p>Known problems are tracked in <code>BUGS.md</code>, decisions in <code>APPROVAL_LOG.md</code>, and

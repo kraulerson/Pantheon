@@ -19,6 +19,99 @@ for handoff clarity. Categories are ordered by impact severity.
 
 ## [Unreleased]
 
+<!-- Maestro Console F1 (Feature 15, Build Loop `maestro-console-f1`; ADR-0010; spec
+     docs/superpowers/specs/2026-10-16-maestro-console-design.md; plan docs/superpowers/plans/2026-10-16-maestro-console-f1.md) -->
+
+### Security
+- 2026-10-17 **Maestro Console F1 reads sessions without acting on them, and masks before it stores or
+  shows anything** (audit `docs/security-audits/maestro-console-f1-security-audit.md`).
+  - **Masking (spec §8.4):** 16 patterns (`src/console/masking.ts`) run before storage and before display.
+    A card face is masked over the turn's complete text, masked again after whitespace is flattened, and
+    cut to 1 KiB only after the last mask, so a cut can never split a secret past the masker. Every
+    look-behind is bounded, so a hostile pane or transcript (a long run of spaces after `Bearer`, a flood
+    of `eyJ`) cannot stall the event loop; the guards measure linear time. Masking has no unmask.
+  - **Read-only probe:** the only remote commands are the probe and the expand reader, both minted by
+    the allow-listing builder in `src/console/probe-command.ts` (the branded `RemoteCommand` type).
+    A test pins that neither contains `send-keys`, `paste-buffer`, `load-buffer` or any `kill` other
+    than the `kill -0` liveness check. Every value put into a command passes its own regex and is
+    single-quoted. The `sessions/*.json` fields are cut
+    to an allow-list ON the machine, so `bridgeSessionId`, `messagingSocketPath` and `*.key` files never
+    cross the wire. Each machine gets at most 4 SSH dials per poll: 1 main probe plus up to 3 catch-up
+    probes when a transcript has more to read. An oversize retry counts as a catch-up, not an extra.
+    Typically 1 per poll, and never more than one in flight per machine (2 MiB output cap per probe,
+    4 s timeout).
+  - **Guard coverage:** `GET /console`, `GET /console/api/state` and `GET /console/api/cards/:id/expand`
+    sit behind the operator guard. Nothing joins `PUBLIC_PATHS` (a test proves it), a keycard bearer
+    gets 403 (TM-011), JSON answers are `no-store`, a malformed card id gets 400 with a fixed message, and
+    an SSH error names the machine's logical name, never `user@host`. A session's `cwd` never leaves the
+    server.
+  - **Untrusted text on the page:** the client builds every element with `textContent`. A spy test
+    with hostile payloads proves no state text reaches `innerHTML`. The machine's own stderr is shown
+    as labelled `machine said:` text.
+  - **Fonts integrity check:** the two vendored Lexend files are checked against pinned SHA-256
+    digests at startup. A missing or swapped file is a startup fault, never a different font served
+    to the browser. The browser never requests Google Fonts.
+
+### Data Model
+- 2026-10-17 **Two additive tables in the control-plane SQLite file** (ruling A: `CREATE TABLE IF NOT
+  EXISTS`, no migration, nothing existing altered). `console_session` holds one row per observed Claude
+  session, keyed `(machine, session_id)`, with its state, transcript offset and size, and `reachable`.
+  `console_card` holds one row per reply. It stores the masked TL;DR (`CHECK length ≤ 1024`), the
+  masked title (`≤ 120`), byte pointers into the transcript and counts. Its id is the first 32 hex
+  characters of `sha256(session_id "\n" turn_uuid)`, and it carries `UNIQUE (session_id, turn_uuid)`.
+  **No column holds reply text, reasoning, tool output or a prompt** (R1). Cards are purged after
+  `retention.cardsDays` (default 90), checked at most once an hour. Full columns: PROJECT_BIBLE §5.
+
+### Added
+- 2026-10-17 **Console tab: one read-only page for every Claude session on every machine**
+  (`/console`, linked **Console** in the harness header; Feature 15).
+  - **Tab rows:** the first row lists the machines, each with its worst state and per-state counts
+    (`! 2 NEED YOU · ⟳ 1`). The second row lists that machine's projects, with the glyph and border
+    from the settings file.
+  - **Cards:** one card per Claude reply, with the masked TL;DR, its age and its tool-call count.
+    NEEDS YOU cards are pinned on top. **▸ full text · ▸ why · ▸ what it did** are read live over SSH
+    on demand and never stored.
+  - **NEEDS YOU signals:** the session says `waiting`; a permission, trust or `AskUserQuestion` menu
+    is on screen (even while the session is `busy`); or a pending-approval file exists. Menus and
+    approvals are shown read-only, with **Open terminal ↗**.
+  - **Labelled states:** every state and failure is a glyph plus a word (UNREACHABLE, CAN'T READ, no
+    data yet, ENDED, UNKNOWN STATUS ‹value›). The tab title carries the NEEDS YOU count.
+  - **No send path:** F1 has no reply box, no Submit and no answer buttons.
+- 2026-10-17 **Console settings file** (`src/console/settings.ts`, spec §7). It sets the poll interval
+  (2–60 s, default 5), card retention (1–3650 days, default 90), the areas vocabulary, and each project's
+  display name, glyph, border and `hidden` flag, plus the All-tab areas and the skill → area map.
+  Everything is validated when the service starts. A bad entry disables **the console only**, with
+  a banner naming the entry (never its value); terminals, approvals and the rest of the harness keep
+  running. A missing file means the defaults.
+- 2026-10-17 **Lexend, self-hosted, as the console's text face.** Regular and SemiBold WOFF2 files are
+  vendored unmodified from `googlefonts/lexend` @ `7894f02b` (SIL OFL 1.1; text and digests in
+  `THIRD_PARTY_NOTICES.md`) and served at `/assets/lexend-regular.woff2` and
+  `/assets/lexend-semibold.woff2`. The console uses the "Deep navy" palette with orange, grey and blue
+  state edges (ADR-0010 follow-up 2026-10-17); the rest of the harness theme is unchanged.
+
+### Changed
+- 2026-10-17 **The harness header gains a Console link** (before Configuration). The
+  `services/control-plane/.env.local.example` file gains a `PANTHEON_CONSOLE_SETTINGS=` line; empty
+  means the default path. The `src/devmachine/connection.ts` comment now names both modules that may
+  mint a `RemoteCommand`.
+
+### Infrastructure
+- 2026-10-17 **`PANTHEON_CONSOLE_SETTINGS`**: the path of the console settings file. When unset or
+  empty, the service uses `console-settings.json` in the same folder as `PANTHEON_DB`. The file is read
+  once at startup, so a change needs a service restart. A refused file leaves the poller stopped and
+  logs `console.poller_not_started` with the entry name. The poller starts only after the server
+  listens, and it stops before the store closes on shutdown. Deploy notes: `deploy/README.md`.
+
+### Documentation
+- 2026-10-17 **Maestro Console F1 documented.**
+  - Updated: FEATURES.md Feature 15; PROJECT_BIBLE §5 (`console_session`, `console_card`) and §9 C.9
+    (Console page); user guide §4 "The Console"; `deploy/README.md` (settings file, env var, and the
+    GitHub-master ruling: the VM pulls from GitHub, and the Gitea copy is being archived read-only).
+  - Plan: an "Execution deviations" section.
+  - Spec: §14, with F2 addition 1 (the new-session flow) and decision 18 revised (the machine shell
+    drawer).
+  - ADR-0010: a follow-up for the state palette and the one-commit cadence.
+
 ### Changed
 - 2026-09-01 **tmux mouse mode enabled on the dev machine, so the wheel scrolls the session**
   (operator report). With tmux not asking for mouse events, a terminal in the alternate screen

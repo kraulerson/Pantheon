@@ -123,6 +123,67 @@ when the file was edited in place. Either way it — a reload closes live termin
 up -d librechat` to apply. The admin service needs `PANTHEON_CHAT_URL` in its `.env.local` for the
 Chat tab on the admin site. The admin site (`:8443`) is a root mount and needs nothing else.
 
+## Source of truth: GitHub (ruling 2026-10-17)
+
+For Pantheon, **GitHub is the master**: `https://github.com/kraulerson/Pantheon.git`. Gitea stays the
+master only for the Alden projects.
+
+- **VM 1093:** the deploy checkout at `/opt/pantheon/pantheon-harness` pulls from GitHub, so a
+  change must be uploaded to GitHub before the VM can deploy it.
+- **Uploads:** they go to the GitHub remote (`origin`) only.
+- **Gitea:** the Gitea copy (`gitea.ferrumcorde.com/kraulerson/Pantheon`) is being archived
+  read-only by the homelab side. A working clone may still list it as a second remote. Leave that
+  remote in place unless Karl asks; `git fetch --all` will warn about it once it is archived.
+
+To check the VM's checkout before a deploy:
+
+```bash
+git -C /opt/pantheon/pantheon-harness remote get-url origin   # expect https://github.com/kraulerson/Pantheon.git
+git -C /opt/pantheon/pantheon-harness pull --ff-only
+```
+
+## Maestro Console settings file (2026-10-17)
+
+The Console (`/harness/console`, Feature 15) reads one JSON settings file when the admin service
+starts.
+
+- **Where:** the path is set by `PANTHEON_CONSOLE_SETTINGS` in `services/control-plane/.env.local`.
+  The shipped `.env.local.example` line is empty. **Unset or empty** means `console-settings.json` in
+  the same folder as `PANTHEON_DB`. With the install script's `PANTHEON_DB`
+  (`services/control-plane/data/control-plane.db`), that is
+  `/opt/pantheon/pantheon-harness/services/control-plane/data/console-settings.json` on VM 1093.
+- **Missing file:** the defaults apply (5 s poll, 90-day cards, the seven standard areas, no project
+  styling). Nothing fails.
+- **Contents:** the schema and an example are in the user guide (§4 "The console settings file") and
+  spec §7. The file holds no secret, but it must be readable by the service user.
+- **When it is read:** once, at startup, so restart the admin service after any edit.
+- **A refused file** disables the Console module only. The page shows a banner naming the bad entry,
+  and the service log gets `console.poller_not_started` with the entry name, never the value.
+  Terminals, approvals and the rest of the harness keep running.
+- **Data:** the Console's two tables (`console_session`, `console_card`) are created in the same
+  SQLite file as the registry on first start (additive, no migration). Only masked card faces are
+  stored; full text is read from the machine on demand.
+- **Load:** the poller sends each ready machine one read-only probe per poll (4 s timeout, at most
+  one in flight per machine). When a transcript has more to read than one probe carries, it sends up
+  to 3 catch-up probes in the same poll; an oversize retry counts as one of them. That is at most 4
+  SSH dials per machine per poll, typically 1. It starts only after the service is listening and stops
+  before the database closes on shutdown.
+
+**Which entry point runs.** The console is wired only in `dist/server.js`.
+- The live VM unit `pantheon-admin@pantheon` carries a drop-in that overrides `ExecStart` to
+  `/usr/bin/node dist/server.js`. This was verified read-only on 2026-10-17.
+- The repo's `deploy/systemd/pantheon-admin.service` still names `dist/server-admin.js`, from the
+  template written before the two-service split. That file has no source, so a fresh install from
+  the template would never start the console.
+- Before any deploy, confirm the unit and its drop-in:
+
+```bash
+systemctl cat pantheon-admin@pantheon   # expect a drop-in with ExecStart=/usr/bin/node dist/server.js
+```
+
+After a deploy, check the build stamp (below), then open `/harness/console` signed in. A machine
+shows "… no data yet" until its first poll finishes, then its sessions.
+
 ## Which build is live?
 
 `curl -sI https://pantheon.ferrumcorde.com/harness/assets/harness.css | grep -i x-pantheon-build`

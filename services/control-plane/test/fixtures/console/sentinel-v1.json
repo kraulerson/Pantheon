@@ -1,0 +1,9 @@
+{
+  "question": "Pick the example option.",
+  "options": [
+    "A1: First example option",
+    "A2: Second example option"
+  ],
+  "recommendation": "A1",
+  "offered_at": "2026-10-17T08:00:00Z"
+}

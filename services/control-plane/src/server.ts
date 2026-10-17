@@ -11,6 +11,8 @@
  *   PANTHEON_KEY_DIR (~/.pantheon/keys)        — harness SSH key custody dir
  *   PANTHEON_SESSION_DB (= PANTHEON_DB)        — session-metadata SQLite path read by `sessions:read` keycards
  *   PETA_URL + PETA_ADMIN_TOKEN  (optional)    — Peta admin API for MCP-server registration
+ *   PANTHEON_CONSOLE_SETTINGS (= console-settings.json beside PANTHEON_DB) — Maestro Console settings file
+ *                                              (JSON, spec §7); an absent file means the defaults
  *   PORT (8088) / HOST (0.0.0.0)
  *
  * Terminal sessions connect key-only via the custodied harness key (TM-020/#14b); the key never
@@ -19,9 +21,15 @@
  */
 
 import { fileURLToPath } from "node:url";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "./http/app.js";
+import { maskSecrets } from "./console/masking.js";
+import { createConsolePoller, createProbeExec, type PollerLogger } from "./console/poller.js";
+import { DEFAULT_CONSOLE_SETTINGS, loadConsoleSettings, type ConsoleSettingsResult } from "./console/settings.js";
+import { SqliteConsoleStore } from "./console/store.js";
 import { SqliteRegistry, seedDefaults } from "./registry/sqlite-repository.js";
 import { RegistryService } from "./registry/service.js";
 import { McpRegistrationService, type PetaServerAdmin } from "./registry/mcp-registration.js";
@@ -73,8 +81,56 @@ export interface ServerConfig {
   readonly keyHandle: string;
   /** Session-metadata SQLite path for `sessions:read` keycards (PANTHEON_SESSION_DB; default = dbPath). */
   readonly sessionDbPath?: string;
+  /** Maestro Console settings file (PANTHEON_CONSOLE_SETTINGS; default `console-settings.json` beside the DB). */
+  readonly consoleSettingsPath?: string;
   /** Injected fetch for the Peta client (tests). */
   readonly fetchFn?: typeof fetch;
+}
+
+/** `console-settings.json` beside the registry DB — the documented default. */
+const defaultConsoleSettingsPath = (dbPath: string): string => resolve(dirname(dbPath), "console-settings.json");
+
+/** The settings loader's file port: an absent file means "the defaults"; any other I/O failure is thrown to the caller. */
+function readTextIfPresent(path: string): string | undefined {
+  try {
+    return readFileSync(path, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw err;
+  }
+}
+
+/**
+ * Load the console settings file. A file that exists but cannot be read (EISDIR, EACCES, …) disables the console
+ * module only, like a refused entry (ADR-0010; final review M2) — it must not stop the control-plane. Only the
+ * error code is logged, never the error text.
+ */
+function readConsoleSettings(path: string, log: PollerLogger): ConsoleSettingsResult {
+  let raw: string | undefined;
+  try {
+    raw = readTextIfPresent(path);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code ?? "unknown";
+    log.error({ event: "console.settings_unreadable", code, settingsPath: path }, "console settings file could not be read: console disabled");
+    return { ok: false, entry: "(file)", message: "(file) could not be read" };
+  }
+  return loadConsoleSettings(path, () => raw);
+}
+
+/**
+ * Structured stderr logger for the console wiring, pino-shaped (`{ level, time, ...bindings, ...fields, msg }`,
+ * one JSON line per entry) so it satisfies the poller's `PollerLogger` port and `app.log.child(...)` can take
+ * its place the day Fastify logging is switched on — today `buildApp` runs with `logger: false`, whose
+ * `app.log` is a no-op that would swallow every entry.
+ */
+function stderrLogger(bindings: Readonly<Record<string, string>>): PollerLogger {
+  const line =
+    (level: "info" | "warn" | "error") =>
+    (a: object | string, msg?: string): void => {
+      const fields = typeof a === "string" ? { msg: a } : { ...a, ...(msg !== undefined ? { msg } : {}) };
+      process.stderr.write(`${JSON.stringify({ level, time: new Date().toISOString(), ...bindings, ...fields })}\n`);
+    };
+  return { info: line("info"), warn: line("warn"), error: line("error") };
 }
 
 /** A PetaServerAdmin that fails clearly when Peta isn't configured (the Config page shows a banner). */
@@ -113,6 +169,24 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   const keycards = new KeycardService(new SqliteKeycardStore(cfg.dbPath));
   const sessionLedger = new SqliteSessionStore(cfg.sessionDbPath ?? cfg.dbPath);
 
+  // Maestro Console (F1, ADR-0010): the settings file beside the DB (absent → defaults; a refused entry, or a file
+  // that cannot be read — entry "(file)" — keeps the poller stopped and the page shows the entry — terminals,
+  // approvals and the rest run on), additive tables in the harness DB, and a READ-ONLY poller over the same
+  // custody-bound SSH path the terminal uses.
+  const consoleLog = stderrLogger({ module: "console", correlationId: randomUUID() });
+  const consoleSettingsPath = cfg.consoleSettingsPath ?? defaultConsoleSettingsPath(cfg.dbPath);
+  const consoleSettings = readConsoleSettings(consoleSettingsPath, consoleLog);
+  const consoleStore = new SqliteConsoleStore(cfg.dbPath);
+  consoleLog.info({ event: "console.store_opened", dbPath: cfg.dbPath }, "console store opened");
+  const consolePoller = createConsolePoller({
+    registry,
+    exec: createProbeExec({ custody }),
+    store: consoleStore,
+    settings: consoleSettings.ok ? consoleSettings.settings : DEFAULT_CONSOLE_SETTINGS,
+    mask: maskSecrets,
+    log: stderrLogger({ module: "console-poller" })
+  });
+
   const app = buildApp({
     adminToken: cfg.adminToken,
     registry,
@@ -127,7 +201,35 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
     }),
     ...(cfg.operatorPassword ? { operatorPassword: cfg.operatorPassword } : {}),
     ...(cfg.secureCookies !== undefined ? { secureCookies: cfg.secureCookies } : {}),
-    ...(cfg.chatUrl !== undefined ? { chatUrl: cfg.chatUrl } : {})
+    ...(cfg.chatUrl !== undefined ? { chatUrl: cfg.chatUrl } : {}),
+    console: {
+      store: consoleStore,
+      poller: consolePoller,
+      settings: consoleSettings,
+      // The expand route caps each dial to the card's own range, so the options are its to set.
+      exec: (target, handle, command, opts) => runRemoteCommand(target, handle, command, { custody }, opts),
+      mask: maskSecrets
+    }
+  });
+  consoleLog.info({ event: "console.routes_mounted", settingsPath: consoleSettingsPath, settingsOk: consoleSettings.ok }, "console routes mounted");
+
+  // Console lifecycle: the poller starts only once the server listens (never under inject, so no test dials
+  // anything) and only with accepted settings; on close it drains before the store closes, so a poll still in
+  // flight never writes to a closed database.
+  app.addHook("onClose", async () => {
+    await consolePoller.stop();
+    consoleStore.close();
+  });
+  app.addHook("onListen", async () => {
+    if (!consoleSettings.ok) {
+      consoleLog.warn(
+        { event: "console.poller_not_started", entry: consoleSettings.entry, detail: consoleSettings.message, settingsPath: consoleSettingsPath },
+        "console poller not started: the settings file was refused"
+      );
+      return;
+    }
+    consolePoller.start();
+    consoleLog.info({ event: "console.poller_started", pollSeconds: consoleSettings.settings.pollSeconds, settingsPath: consoleSettingsPath }, "console poller started");
   });
 
   // Terminal modality (ADR-0005): key-only SSH brokered server-side from custody. `command` is the
@@ -159,9 +261,12 @@ export function configFromEnv(env: Record<string, string | undefined>): ServerCo
     env["PETA_URL"] && env["PETA_ADMIN_TOKEN"]
       ? { url: env["PETA_URL"], token: env["PETA_ADMIN_TOKEN"] }
       : undefined;
+  const dbPath = env["PANTHEON_DB"] ?? resolve("data/control-plane.db");
   return {
     adminToken,
-    dbPath: env["PANTHEON_DB"] ?? resolve("data/control-plane.db"),
+    dbPath,
+    // An empty value (`.env.local.example` ships `PANTHEON_CONSOLE_SETTINGS=`) is "unset", as for every optional path here.
+    consoleSettingsPath: env["PANTHEON_CONSOLE_SETTINGS"] || defaultConsoleSettingsPath(dbPath),
     keyDir: env["PANTHEON_KEY_DIR"] ?? defaultKeyDir(),
     keyHandle: env["PANTHEON_KEY_HANDLE"] ?? "harness",
     ...(env["PANTHEON_SESSION_DB"] ? { sessionDbPath: env["PANTHEON_SESSION_DB"] } : {}),

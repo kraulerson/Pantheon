@@ -263,6 +263,19 @@ describe("Harness UI routes (frame + terminal tab + public assets)", () => {
       expect(res.headers["content-type"], path).toMatch(/javascript/);
       expect(res.body, path).toContain(marker);
     }
+    // The Console's self-hosted text face (Lexend, SIL OFL 1.1; Maestro Console F1, Task 11) is a public
+    // asset like the rest — served from our origin, cacheable (build-versioned URL), no Google Fonts request.
+    for (const path of ["/assets/lexend-regular.woff2", "/assets/lexend-semibold.woff2"]) {
+      const res = await app.inject({ method: "GET", url: path });
+      expect(res.statusCode, path).toBe(200);
+      expect(res.headers["content-type"], path).toMatch(/^font\/woff2/);
+      expect(res.rawPayload.subarray(0, 4).toString("latin1"), path).toBe("wOF2");
+      // Policy today: static assets carry no Cache-Control of their own (only console HTML is no-store); the
+      // ?b=<build> suffix does the versioning. An explicit `public, max-age, immutable` header for build-versioned
+      // assets is a residual for Task 12 — until then the header is absent or, if one is ever set, public.
+      const cacheControl = res.headers["cache-control"];
+      expect(cacheControl === undefined || String(cacheControl).startsWith("public"), `${path}: Cache-Control ${String(cacheControl)}`).toBe(true);
+    }
   });
 });
 

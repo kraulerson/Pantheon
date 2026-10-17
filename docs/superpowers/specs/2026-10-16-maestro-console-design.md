@@ -4,6 +4,8 @@
 - **Date:** 2026-10-16 · **Drafted by:** Maestro session · **To be committed by:** the pantheon-harness session (D16 — one writer per repo).
 - **Decision record:** D1–D16, S3, R1–R6 — each stored in Qdrant `dev-memory` (project `pantheon-harness`, session `2026-10-16-maestro-console-brainstorm`). Mockups: `layout-v2.html`, `machines.html` (brainstorm companion, Maestro scratchpad).
 - **Companion spec:** `2026-10-16-karl-workflow-hooks-design.md` (Track 2).
+- **Amended 2026-10-17:** §14. It adds two F2 additions approved after F1 planning, and notes that
+  F1's state colours replace §6.2's (ADR-0010 follow-up).
 
 ## 1. Intent
 
@@ -78,7 +80,7 @@ Inside the existing control-plane service (ADR-0002: Node/TypeScript/Fastify; se
 
 | Component | Purpose | Reuses |
 |---|---|---|
-| **Machine probe** | **One allow-listed remote script per machine per poll** (new branded command builder beside `tmux.ts`; ≤ 1 SSH dial per machine per 5 s). Emits a sentinel-framed report: tmux panes; each `sessions/<pid>.json` (allow-listed fields only); per session the transcript bytes after the stored offset (capped per file, catch-up loop when capped); `capture-pane -p -J` tail per Claude pane; existence + content of `<cwd>/.claude/pending-approval.json`. Per-call cap raised to 2 MiB for this builder only. | DevMachine registry, SSH custody (Features 1–2). |
+| **Machine probe** | **One allow-listed remote script per machine per poll** (new branded command builder beside `tmux.ts`). Bound as built (F1, amended 2026-10-17): at most 4 SSH dials per machine per tick, 1 main probe plus up to 3 catch-up probes. An oversize retry counts as a catch-up, not an extra. Typically 1 per tick, and each probe's output cap stays 2 MiB. Emits a sentinel-framed report: tmux panes; each `sessions/<pid>.json` (allow-listed fields only); per session the transcript bytes after the stored offset (capped per file, catch-up loop when capped); `capture-pane -p -J` tail per Claude pane; existence + content of `<cwd>/.claude/pending-approval.json`. Per-call cap raised to 2 MiB for this builder only. | DevMachine registry, SSH custody (Features 1–2). |
 | **Card builder** | Parses the report: turns → card faces (§6.4), state (§6.2), needs-you (§6.3). Masks before anything is stored. Partial trailing JSONL lines wait for the next poll. | — |
 | **On-demand reader** (R1) | On expand: one SSH call that reads the turn's lines by offset from the transcript, masks, renders full text / why / what it did; nothing persisted. | Same builder. |
 | **Console store** | Card faces + pointers, sessions, reminders, submit log (§7). | Ruling A. |
@@ -215,7 +217,7 @@ No full text, reasoning or tool output is stored (R1). Size: card faces only (�
 
 Pantheon Build Loop per feature (tests first, RED verified; implement; security audit; docs; `--record-feature`), UAT every 2 features, one adversarial review per PR at max effort.
 
-- **F1:** real (masked) transcript fixtures: turn boundaries per §6.4 (multiple assistant lines per message id, `tool_result` user lines, `isMeta`, `promptSource: system`), TL;DR extraction, empty thinking, unknown line types counted not failed, partial trailing lines; `sessions/*.json` fixtures from each observed Claude version, every `status` value incl. unknown; pane fixtures: trust prompt, permission prompt (incl. background-agent prompt while busy), `AskUserQuestion` menu, CDF render (must NOT match), bare `❯` prompt (must NOT match); masking against every §8.4 pattern with mutation tests; probe budget (≤ 1 dial per machine per poll) and catch-up when capped; on-demand expand stores nothing; failure states §9.
+- **F1:** real (masked) transcript fixtures: turn boundaries per §6.4 (multiple assistant lines per message id, `tool_result` user lines, `isMeta`, `promptSource: system`), TL;DR extraction, empty thinking, unknown line types counted not failed, partial trailing lines; `sessions/*.json` fixtures from each observed Claude version, every `status` value incl. unknown; pane fixtures: trust prompt, permission prompt (incl. background-agent prompt while busy), `AskUserQuestion` menu, CDF render (must NOT match), bare `❯` prompt (must NOT match); masking against every §8.4 pattern with mutation tests; probe budget, amended 2026-10-17 to the implemented bound: at most 4 SSH dials per machine per tick, 1 main probe plus up to 3 catch-up probes. An oversize retry counts as a catch-up, not an extra. Typically 1 per tick, with a 2 MiB output cap per probe. Also: catch-up when capped; on-demand expand stores nothing; failure states §9.
 - **F2:** hostile input refused or delivered as plain text: `$(…)`, backticks, `;`, `|`, quotes, tmux key names, ESC, Ctrl-C/Ctrl-D bytes, leading `!`, `/`, `#`, `@` (prove what Claude Code does with each when pasted); multi-line arrives as one message and Enter is not swallowed; `target_changed` (pid gone, `sessionId` changed by `/clear`, `procStart` differs, pane now a shell); `menu_visible`; write-ahead + result rows, never updated; idempotent replay; step-up required and expiring; cross-site POST refused; commit-approval two-step flow end to end against CDF 4.4.5 in a test project.
 - **F3:** deferral + 07:00 digest; 15 min from first seen; DST (2026-11-01); no card text in payload; link previews disabled; failure banner; Kuma monitor.
 - **F4:** tag filtering; untagged visible; project-local skills only on their tab; "not installed".
@@ -253,3 +255,48 @@ Pantheon Build Loop per feature (tests first, RED verified; implement; security 
 | O5 | `sessions/*.json` is undocumented | permanent residual; covered by CAN'T READ / UNKNOWN STATUS |
 | O6 | Optional sturdier signal: a Track 2 `Notification` hook (`permission_prompt`, `idle_prompt`, `elicitation_dialog`, `agent_needs_input`) writing a state file the probe reads (pull, consistent with D9) | after F1 data, if pane fixtures prove brittle |
 | O7 | Answering terminal menus from the page (compare-and-select protocol) | post-v1, separate design (R5) |
+
+## 14. Additions approved after F1 planning (2026-10-17)
+
+These were relayed by the Maestro session and approved by Karl. They go into the F2 plan; F1 does
+not build them. The source notes are
+`.superpowers/sdd/2026-10-16-maestro-console-f1/f2-new-session-flow-maestro-2026-10-17.md`.
+
+**Note — state colours (§6.2).** F1 shipped with needs-you orange (solid edge), working grey (dashed)
+and idle blue (solid), always with glyph + word, replacing the red / yellow / blue in §6.2. See the
+ADR-0010 follow-up 2026-10-17.
+
+### 14.1 F2 addition 1 — new-session flow (Karl approved: "new-session flow: yes in F2, empty folder")
+
+Why: the harness "+ New Session" opens only a shell, so Karl has to cd and start claude by hand.
+
+Flow, inside the console:
+1. "+ New session" on the machine row → pick a machine (DevMachine registry).
+2. The console lists that machine's projects: every folder under the machine's projects root, plus one level deeper where a folder contains a git repo (Mac example: Pantheon/pantheon-harness); projects with a running Claude session show "running — open it" instead of starting a duplicate; hidden sessions from settings are excluded.
+3. Pick a project → create a tmux session named after the folder (sanitise to tmux-legal; suffix -2 on collision), with -c set to that folder, running claude. Insert the tab immediately; don't wait for the 5 s poll.
+4. "New project" → name (letters, digits, space, - _ . only; no slash, no leading dot; the resolved path must stay inside the root) → mkdir an EMPTY folder (no git init) → same tmux + claude.
+
+Settings: a per-machine projectsRoot. Mac-Mini "/Users/karl/Documents/Claude Projects" (32 folders; nested projects exist). Linux-Dev "/development/Claude Projects" (verified 2026-10-17, 6 projects). Both contain a space. A rename to Claude_Projects is planned after F1 ships, so the roots must come from settings, never code.
+
+Safety, same rules as Submit: R4 step-up; one allow-listed remote script; names travel base64, never shell-interpolated; append-only audit row (created_session / created_project + refusals). A brand-new folder triggers Claude Code's "trust this folder" prompt; it must surface as a read-only menu card (R5) with Open terminal; never auto-answer it. Unverified: whether the existing harness dialog's "Claude CLI (terminal)" path can be reused (it opens only a shell).
+
+*Settings impact:* the console settings file (§7) needs per-machine entries (`projectsRoot`). F1's
+settings schema accepts unknown top-level keys, so the F2 key can be added without breaking an F1 file.
+
+### 14.2 Decision 18 (revised 2026-10-17) — machine shell drawer (Karl: "drawer settled — send it to Pantheon for F2")
+
+This replaces the earlier drawer text (one terminal per session), which was held on 2026-10-17 and is
+not to be planned from. Mock: artifact `GuCSoGZ1KqdmZM7rKT3Pnj` v2 (source copied to
+`console-drawer-mock.html` in the F1 workspace).
+
+1. ONE shared shell per machine: plain shell, tmux session `sh-<machine>`, started in that machine's projectsRoot; the SAME shell (cwd and history) whichever project tab on that machine is selected; each machine has its own shell, intact when switching back; sh-* excluded from project discovery, never shown as project tabs.
+2. Drawer pinned to the bottom of the console: minimise/restore via the bar button, Ctrl+`, and Esc from inside the shell; minimised = slim bar "Shell · <machine>" + current folder; resizable by dragging the top edge plus ArrowUp/ArrowDown on the focused grip; height remembered per viewer (Karl tested 241 px).
+3. Each project tab has a view switch "Cards" | "Claude session": the latter is Pantheon's existing LIVE interactive terminal (xterm over SSH→PTY→WebSocket broker, BUGS #48 clipboard fix) attached to that project's tmux session, filling the main area, full read/write like the Terminals tab; the machine shell drawer stays available beneath both views.
+4. Card buttons "Open Claude session" (incl. menu cards, R5) switch to that view in place; nothing navigates to another browser tab; R5 menus are answered in the Claude session view on the same page.
+5. Access = today's Terminals tab (operator sign-in, no extra step-up: Karl types directly); Submit and New Session keep the R4 step-up; audit row when a machine shell is created.
+6. Desktop only (D11). Tests: Ctrl+` toggles even with focus inside xterm (or document the exception); switching project tabs keeps the same shell; switching machines swaps shells; reload re-attaches both; sh-* never appear as project tabs.
+
+**What F1 already does about this.** F1 never makes a tmux session named `sh-*` a project tab. The
+poller files such a session under `<cwd basename>@<machine>` as not reachable, so the name stays
+reserved for these shells. F1's card button stays **Open terminal ↗** to the Terminals tab; F2 renames
+it and switches the view in place.

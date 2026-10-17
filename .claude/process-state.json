@@ -1,6 +1,6 @@
 {
   "build_loop": {
-    "feature": "bugs-48-tmux-clipboard-osc52",
+    "feature": "maestro-console-f1",
     "step": 5,
     "steps_completed": [
       "tests_written",
@@ -9,7 +9,7 @@
       "security_audit",
       "documentation_updated"
     ],
-    "started_at": "2026-10-16T18:41:19Z"
+    "started_at": "2026-10-17T05:08:21Z"
   },
   "uat_session": {
     "session_id": 5,

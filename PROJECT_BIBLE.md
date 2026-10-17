@@ -278,7 +278,7 @@ Known gaps accepted: Frontend/UI, Database, Accessibility, and Performance are *
 ---
 
 ## 3. Architecture Decision Record
-<!-- Last Updated: 2026-10-16 -->
+<!-- Last Updated: 2026-10-17 -->
 
 **Selected Architecture:** Three-layer harness — **ADOPT LibreChat** (UI/auth/multi-session/search) + **ADOPT Peta-core hardened** (`dunialabs/peta-core`, ELv2 — the MCP trust core: per-tool authz, durable HITL write approval, credential vault) + **BUILD the control-plane "glue"** (Node 20 LTS + TypeScript 5 + Fastify 5: grounding/`trusted:false` taint engine, identity/backend-binding registry, Peta admin driver, Obsidian/filesystem MCP server). Driven by the priority hierarchy — security first (adopt validated boundary code over hand-rolled), correctness (the glue is pure, unit-testable logic), solo-maintainability (build only the irreducibly novel part). The Peta adoption was validated live on real hardware (`ALDEN-HARNESS-CLI-HANDOFF.md` § RESULTS): A1–A4 functional assertions passed, red-team R1–R6 contained, no critical flaw in vault/policy/OAuth — ADOPT, conditional on a hardening checklist (ADR-0003).
 
@@ -343,7 +343,7 @@ PostgreSQL 15+ (Prisma) is consumed transitively as **Peta's** datastore. The co
 **Status:** Accepted · 2026-07-09 (decision G). The control-plane deploys as **two services from one codebase**: the **admin service** (Configuration page, approvals, terminal gateway — operator auth) and the **Facade** (the `/v1/chat/completions` grounding/taint pipeline — session + machine auth). Operator chose the full split over the recommended structured-monolith to match the ratified control-plane ≠ data-plane separation; an admin-surface failure must not take down live conversations. Full record: `docs/ADR documentation/ADR-0007-admin-and-facade-as-separate-services.md`.
 
 ### ADR-0010 — Maestro Console inside the harness: read-only feed first, step-up Submit, no bulk copy of session content
-**Status:** Accepted · 2026-10-16 (new MVP scope, Track 1; spec `docs/superpowers/specs/2026-10-16-maestro-console-design.md`, ADR `docs/ADR documentation/ADR-0010-maestro-console-inside-the-harness.md`). One page inside the harness shows every Claude Code session on every registered machine (two tab rows: machines, then that machine's projects), finds what needs Karl, expands any card to the full reply / why / what-it-did, and lets him answer. **Decided:** a new tab in pantheon-harness, not a separate app and not the parked chat-pane pivot (D1); Pantheon **pulls** transcripts, `sessions/*.json` and pane tails over its existing SSH access with one allow-listed script per machine per 5 s poll — nothing installed on dev machines (D9); **only masked card faces are stored**, full text is fetched live on expand and never persisted (R1 — satisfies A-1 / TP-7); **Submit** (typing into a live session) is operator I/O (C.6) behind a **passphrase step-up with a 15-minute window** (R4 — the first D6 consumer, BUGS #36), validated server-side (refuse, never strip), target re-verified on the machine, delivered as one bracketed paste, recorded in an **append-only** audit (R6, D8); terminal menus (permission / trust / `AskUserQuestion`) are shown **read-only** with "Open terminal" in v1 (R5); "Check this" / "Ask Maestro" are inbound relays through the **ADR-0009 dispatcher** (R2, XC-6); the TP-4 task board stays planned and is complemented, not replaced (R3); cheat-sheet filtering comes from one settings file (D8); a malformed settings file disables the console module only, loudly (recorded deviation from M15/D10). Build order F1 (read-only, with a real-use period) → F2 (Submit) → UAT-6 → F3 (banner + Telegram) → F4 (suggestions) → UAT-7 → F5 (Maestro bridge + phone view) → UAT-8. Threats TM-025/026/027 (§4). Nothing a session wrote is ever sent back into a session (TM-020).
+**Status:** Accepted · 2026-10-16 (new MVP scope, Track 1; spec `docs/superpowers/specs/2026-10-16-maestro-console-design.md`, ADR `docs/ADR documentation/ADR-0010-maestro-console-inside-the-harness.md`). One page inside the harness shows every Claude Code session on every registered machine (two tab rows: machines, then that machine's projects), finds what needs Karl, expands any card to the full reply / why / what-it-did, and lets him answer. **Decided:** a new tab in pantheon-harness, not a separate app and not the parked chat-pane pivot (D1); Pantheon **pulls** transcripts, `sessions/*.json` and pane tails over its existing SSH access with one allow-listed script per machine per 5 s poll — nothing installed on dev machines (D9); **only masked card faces are stored**, full text is fetched live on expand and never persisted (R1 — satisfies A-1 / TP-7); **Submit** (typing into a live session) is operator I/O (C.6) behind a **passphrase step-up with a 15-minute window** (R4 — the first D6 consumer, BUGS #36), validated server-side (refuse, never strip), target re-verified on the machine, delivered as one bracketed paste, recorded in an **append-only** audit (R6, D8); terminal menus (permission / trust / `AskUserQuestion`) are shown **read-only** with "Open terminal" in v1 (R5); "Check this" / "Ask Maestro" are inbound relays through the **ADR-0009 dispatcher** (R2, XC-6); the TP-4 task board stays planned and is complemented, not replaced (R3); cheat-sheet filtering comes from one settings file (D8); a malformed settings file disables the console module only, loudly (recorded deviation from M15/D10). Build order F1 (read-only, with a real-use period) → F2 (Submit) → UAT-6 → F3 (banner + Telegram) → F4 (suggestions) → UAT-7 → F5 (Maestro bridge + phone view) → UAT-8. Threats TM-025/026/027 (§4). Nothing a session wrote is ever sent back into a session (TM-020). **Follow-up 2026-10-17 (in the ADR):** the console's state colours changed to needs-you orange (solid edge), working grey (dashed) and idle blue (solid), always with glyph + word; the console uses the console-scoped Deep navy palette and a self-hosted Lexend; F1 was built as one commit (ruling A1). F1 built: §5 ConsoleSession / ConsoleCard, §9 C.9.
 
 ### ADR-0009 — Session waker: promotion to product behind deterministic guardrails (TP-1, TP-5 partial, XC-6)
 **Status:** Accepted · 2026-08-31 (M1 task 4). The `cli-channel-loop` spike becomes product in two stages: the decision layer first (`src/waker/` — deny-by-default directional allowlist, per-pair sliding-window rate cap, light-context wake, hold-until-idle dispatcher), the channel runner second (research-preview protocol + live bridge, acceptance by live smoke test). Every wake passes one gate in order: configured -> allowlisted -> rate cap -> idle. No model call takes part in an admissibility decision (CC3). WAKE-NOT-BODY and idle-only delivery are preserved; TP-5's cadence-backoff lever is not implemented (ruling: wake when needed). Full record: `docs/ADR documentation/ADR-0009-session-waker-promotion-and-deterministic-guardrails.md`.
@@ -358,7 +358,7 @@ PostgreSQL 15+ (Prisma) is consumed transitively as **Peta's** datastore. The co
 ---
 
 ## 4. Threat Model & Risk/Mitigation Matrix
-<!-- Last Updated: 2026-10-16 -->
+<!-- Last Updated: 2026-10-17 -->
 <!-- STRIDE analysis. TM-IDs are permanent; Phase 3 validation tests reference them directly. Do not renumber; only append. -->
 
 **Scope:** LibreChat (UI/auth) + Peta `dunialabs/peta-core` (gateway: per-tool authz, HITL approval, credential vault) + control-plane glue (provisioning orchestrator, grounding/`trusted:false` taint engine, backend-binding registry, per-session→Peta token wiring, Obsidian MCP). Single operator, LAN/Tailscale-only, no public ingress.
@@ -393,7 +393,7 @@ PostgreSQL 15+ (Prisma) is consumed transitively as **Peta's** datastore. The co
 | **TM-020** | Claude-CLI SSH terminal — key-custody leak + remote-command-execution surface (I/E) | SEV-1 | DevMachine SSH key stays in **vault custody only**, resolved server-side at connect time, **never in session/terminal context** (#14b, Principle 1); harness #9 auth gates terminal-tab access (D6 where privileged); dev machine bound by **logicalName** not raw IP (#14a, no rebind); the Claude-CLI agent on the box can run commands, so any `trusted:false` content reaching it is an **RCE path** — Claude Code's own permission model is the inner guard and terminal sessions are operator-driven (interactive, not auto-fed recalled content) | P2 (terminal modality, ADR-0005) | Phase 3: docs/test-results/threat-validation.md#TM-020 |
 | **TM-024** | One browser origin for chat + console (ruling 2026-08-27, accepted residual): script on the LibreChat page (XSS, inline-served upload, self-hosted artifact sandbox) reaches the console — terminals included — with the operator session | SEV-2 (accepted) | Cookie scoped to `/harness`; Sec-Fetch-Site check incl. WebSocket handshakes; `frame-ancestors 'self'` + frame-bust; `ALLOW_REGISTRATION=false`; `SANDPACK_BUNDLER_URL` never on a household host; uploads never inline; BUGS #36 step-up gates mint/config when it lands. Origin separation impossible today (edge Host rewrite; cross-site embed breaks LibreChat sign-in) | Accepted (APPROVAL_LOG 2026-08-27) |
 | **TM-025** | **Console send path (Tampering / Elevation, ADR-0010 F2):** a stolen operator session, a cross-site request, a replayed request or a hostile card face causes text the operator did not mean to send to be typed into a live Claude Code session's tmux pane — including a wrong option into a permission or commit prompt | SEV-1 | R4 passphrase step-up (15-min elevated window — first D6 consumer, BUGS #36); existing Sec-Fetch-Site refusal; idempotency key per Submit; server validation **refuses, never strips** C0/C1 controls, ESC, invalid UTF-8, > 4 KiB; target re-verified on the machine at send time (`sessionId` + `procStart` + pid alive + pane process chain) and refused if a menu is on screen; base64 transport + one bracketed paste; commit approvals are never a button; buttons send only option ids or copy a letter into the visible reply box (nothing a session wrote is sent back — TM-020); write-ahead + result audit rows, append-only (R6). **Residual:** sub-second race between the menu check and the paste; prompts raised by background agents are not reflected in `status` | Phase 2 F2 | ADR-0010; spec §6.6, §8.2; F2 hostile-input and target-changed tests |
-| **TM-026** | **Machine probe (Information disclosure, ADR-0010 F1):** transcripts, pane tails and `sessions/*.json` read over SSH carry secrets (the 2026-10-09 leaked tokens are in transcripts) that could land in the VM store, on screen or in Telegram; a hostile transcript line rendered as HTML; the probe amplifying SSH dials | SEV-2 | R1 store only masked card faces — full text fetched live on expand and never persisted (satisfies A-1 / TP-7); masking of every string before store, display and Telegram (patterns in spec §8.4, mutation-tested); allow-listed `sessions/*.json` fields only, never `*.key`, `bridgeSessionId`, `messagingSocketPath`; one allow-listed remote script per machine per poll (≤ 1 dial / 5 s, 2 MiB cap); cards rendered as escaped text / sanitised Markdown, links show their target. **Residual:** an unrecognised secret format reaches the face and the live expand view only | Phase 2 F1 | ADR-0010; spec §5, §8.3–8.4; F1 masking mutation tests, probe-budget test |
+| **TM-026** | **Machine probe (Information disclosure, ADR-0010 F1):** transcripts, pane tails and `sessions/*.json` read over SSH carry secrets (the 2026-10-09 leaked tokens are in transcripts) that could land in the VM store, on screen or in Telegram; a hostile transcript line rendered as HTML; the probe amplifying SSH dials | SEV-2 | R1 store only masked card faces — full text fetched live on expand and never persisted (satisfies A-1 / TP-7); masking of every string before store, display and Telegram (patterns in spec §8.4, mutation-tested); allow-listed `sessions/*.json` fields only, never `*.key`, `bridgeSessionId`, `messagingSocketPath`; one allow-listed remote script per machine per poll. Bound as built (F1, amended 2026-10-17): at most 4 SSH dials per machine per tick, 1 main probe plus up to 3 catch-up probes. An oversize retry counts as a catch-up, not an extra. Typically 1 per tick, with a 2 MiB output cap per probe; cards rendered as escaped text / sanitised Markdown, links show their target. **Residual:** an unrecognised secret format reaches the face and the live expand view only | Phase 2 F1 | ADR-0010; spec §5, §8.3–8.4; F1 masking mutation tests, probe-budget test |
 | **TM-027** | **Telegram reminders (Information disclosure / Spoofing, ADR-0010 F3):** card text leaking to a third-party service; bot token exposure; a forged or replayed reminder | SEV-3 | S3: posts carry kind · project · card id and a LAN/NetBird-only link, never card text, link previews off; dedicated bot, key provisioned into the same file-custody class as the SSH key, rotation in `docs/token-rotation-runbook.md`; one-way posts only (no inbound commands accepted from Telegram); failure visible (page banner + Kuma push monitor) | Phase 2 F3 | ADR-0010; spec §6.7, §8.6; F3 payload tests |
 
 **Config-surface note (M15/D10):** the Configuration / Service Registry page (C.5) is the GUI over the TM-002 (backend-rebind) and TM-011 (gateway-management-from-session) attack surfaces, so it inherits both mitigations directly — privileged step-up only (D6), **never reachable from a session or session tool** (TM-011), backend `endpoint` editable but **existing-identity binding immutable** (#14a, TM-002), and all writes validate + fail closed with no partial persist. It adds no new threat ID; it is the privileged surface those two SEV-1 controls already assume.
@@ -415,7 +415,7 @@ PostgreSQL 15+ (Prisma) is consumed transitively as **Peta's** datastore. The co
 ---
 
 ## 5. Data Model
-<!-- Last Updated: 2026-08-28 -->
+<!-- Last Updated: 2026-10-17 -->
 
 ### Principles (binding on every entity)
 1. **Custody invariant (highest priority — #14b, D8).** Raw HMAC signing keys and raw Peta tokens live **only in gateway custody** (Peta encrypted vault). They MUST NEVER be stored, mirrored, or referenced-by-value in the control-plane DB, session memory, transcripts, prompts, model inputs, audit entries, UI, or error output. The control-plane stores only an **opaque handle** (a custody reference; never the secret).
@@ -457,6 +457,70 @@ Notation: `PK` primary key, `FK` foreign key, `[imm]` immutable after create, `[
 **Keycard** — a scoped, read-only *machine* credential a Claude-CLI session presents at the harness's keycard door (`/keycard/v1/*`; ADR-0008, §7 tier 4, M1 task 2 / TP-3): `id` PK [imm]; `principal` (free label for the holder, allow-list charset — NOT an Identity, NOT the operator, never mapped to a Peta user or identity token); `scopes` (a **closed enum** `usage:read | approvals:read | sessions:read` — there is no write or management scope to grant, TM-011); `createdAt`, `updatedAt` (Principle 3 — bumped by every mutation), `expiresAt` (always set: default 90 days, max 365), `revokedAt` (set once; fails closed on the next call), `lastUsedAt`, `useCount` (requests actually served), `denyCount` (wrong scope, replay after revoke/expiry, rate-limited — deny-by-default is only trustworthy if denies are visible). Stored scopes are validated on read: anything but a JSON array of known scopes reads as `[]`, and a card with no scopes is **invalid**, never unscoped-but-live. **Custody (Principle 1):** the store holds only `SHA-256(token)`; the raw `pk1_…` token is shown once at mint on the D6 admin surface and is never a field, never listed, never logged. Minting/listing/revoking are admin-surface only (D6). *(Additive auth entity, separate from the 8 core orchestration entities; carries no recalled content.)*
 
 **ApprovalSource (config, not persisted; BUGS #42, 2026-08-28)** — the approval stores the inbox and the keycard door read: this host's Peta (label `Pantheon`) plus each `PANTHEON_APPROVAL_SOURCES` entry `{ label, url, token }` (the household's identities run behind Alden's capability gateway, which has its own Peta). Read-only, reference-only (D8), all stores in parallel; a store that fails is named, never silently dropped; a malformed list stops the service at startup.
+
+**ConsoleSession** (`console_session`; Maestro Console F1, ADR-0010, built 2026-10-17). This table has
+one row per Claude Code session the console poller has seen on a dev machine. It lives in the
+control-plane SQLite file (`PANTHEON_DB`) under ruling A: additive DDL `CREATE TABLE IF NOT EXISTS`
+at startup, with no migration. The poller upserts only sessions it currently sees alive; an ended
+session gets `ended_at` and keeps its cards. **No content column:** `cwd` stays on the server (the
+state API projects it out), and nothing a session wrote is stored here. PK `(machine, session_id)`.
+Index `idx_console_session_machine_project (machine, project_key)`. *(Additive observer entity:
+no recalled content, no `trusted` column, no secret.)*
+
+| Column | Type | Meaning |
+|---|---|---|
+| `machine` | TEXT NOT NULL | DevMachine `logicalName` |
+| `session_id` | TEXT NOT NULL | Claude `sessionId` (UUID) |
+| `tmux_session` | TEXT NOT NULL | tmux session name from the session file's `tmux` field (`""` when none) |
+| `pane_id` | TEXT NOT NULL | `%<n>` pane id (`""` when none) |
+| `claude_pid` | INTEGER NOT NULL | Claude process id on the machine |
+| `proc_start` | TEXT NOT NULL | process start as reported by the session file |
+| `cwd` | TEXT NOT NULL | working directory (masked); never sent to the browser |
+| `project_key` | TEXT NOT NULL | tmux session name, or `<cwd basename>@<machine>` when not reachable |
+| `reachable` | INTEGER NOT NULL DEFAULT 1 | 1 only when the session sits in a probed tmux pane the console may target; 0 for no pane and for `sh-*` sessions (reserved for F2 machine shells) |
+| `status` | TEXT NOT NULL | raw `status` from the session file (`busy`/`idle`/`waiting`/`shell`/other) |
+| `waiting_for` | TEXT | `waitingFor` (masked), when present |
+| `state` | TEXT NOT NULL | `needs_you` / `working` / `idle` / `shell` / `unknown` (an unknown stored value reads back as `unknown`) |
+| `state_reason` | TEXT | why NEEDS YOU (masked, short) |
+| `transcript_offset` | INTEGER NOT NULL DEFAULT 0 | next transcript byte to read (reset to 0 when the file shrank) |
+| `transcript_size` | INTEGER NOT NULL DEFAULT 0 | transcript size at the last poll (the "no new bytes since the previous poll" test for closing an open turn) |
+| `last_seen_at` | TEXT NOT NULL | ISO UTC |
+| `ended_at` | TEXT | ISO UTC; set when the process is gone (`markEnded`) |
+| `version` | INTEGER NOT NULL DEFAULT 1 | bumped on every update |
+| `created_at`, `updated_at` | TEXT NOT NULL | ISO UTC |
+
+**ConsoleCard** (`console_card`; same feature). This table has one row per Claude reply (a "turn").
+It holds the reply's **masked face only (R1)**: no column holds reply text, reasoning, tool output or
+a prompt, and a test checks `PRAGMA table_info` for that. The full text is re-read from the machine
+on expand, by byte range, and never persisted. `id` = the first 32 hex characters of
+`sha256(session_id + "\n" + turn_uuid)`. Rows are deleted by `purgeExpired` once `purge_after` has
+passed (`retention.cardsDays`, default 90; checked at most once an hour). Indexes:
+`idx_console_card_turn` UNIQUE `(session_id, turn_uuid)`,
+`idx_console_card_machine_project (machine, project_key)`, `idx_console_card_purge (purge_after)`
+and `idx_console_card_created (created_at)`. *(Additive observer entity: masked, no `trusted` column,
+no secret.)*
+
+| Column | Type | Meaning |
+|---|---|---|
+| `id` | TEXT PRIMARY KEY | 32-hex digest (above); the expand route accepts only `^[0-9a-f]{32}$` |
+| `session_id` | TEXT NOT NULL | Claude `sessionId` |
+| `turn_uuid` | TEXT NOT NULL | `uuid` of the turn's final assistant line |
+| `machine` | TEXT NOT NULL | DevMachine `logicalName` |
+| `project_key` | TEXT NOT NULL | as on `console_session` |
+| `kind` | TEXT NOT NULL | `reply` / `commit_approval` / `menu`; set from the live signal on the session's latest card (`kindFor`), historical otherwise |
+| `title` | TEXT NOT NULL CHECK `length(title) <= 120` | masked one-line title |
+| `tldr_masked` | TEXT NOT NULL CHECK `length(tldr_masked) <= 1024` | masked TL;DR, or the reply's start when it has no TL;DR marker; cut after the last mask |
+| `byte_start`, `byte_end` | INTEGER NOT NULL | the turn's byte range `[start, end)` in the transcript (expand pointer) |
+| `tool_call_count` | INTEGER NOT NULL DEFAULT 0 | tool calls in the turn (expand checks it still matches) |
+| `thinking_chars` | INTEGER NOT NULL DEFAULT 0 | non-empty thinking characters (expand checks it still matches) |
+| `needs_you` | INTEGER NOT NULL DEFAULT 0 | 1 while a live signal pins this card |
+| `needs_kind` | TEXT | `waiting` / `menu_on_screen` / `sentinel` |
+| `dismissed_at` | TEXT | reserved for F2 Dismiss; F1 never sets it |
+| `purge_after` | TEXT NOT NULL | ISO UTC; compared as text, so always written via `toISOString()` |
+| `version` | INTEGER NOT NULL DEFAULT 1 | bumped on every update |
+| `created_at`, `updated_at` | TEXT NOT NULL | ISO UTC (`created_at` = the turn's end time) |
+
+The spec's `console_submit_log` (append-only, R6) and `console_reminder` arrive with F2 and F3.
 
 **UsageEvent** — the R18 usage/cost ledger seed, hand-built at the Facade (decision F restored 2026-07-09 after Bifrost non-adoption; household-converged schema 2026-07-10, bus msgs 1102/1104; walking-skeleton scope item 6): `id` PK [imm]; `at` (**server-authoritative** — never caller-supplied); `identitySlug` (the identity **class**, so per-identity cost aggregates stay meaningful); `sessionId`; `threadId`; `brainSlug`; `brainClassification` (`local | cloud_ok` — recorded **at time of call**, the audit key for metered-brain questions, R14); `promptTokens`; `completionTokens`; `totalTokens`; `cost` (nullable — null for local brains); `rateVersion` (a later price change never rewrites history); `trigger` (`interactive | wake | quiet_loop | consolidation` — distinguishes operator-talk from unattended spend; the oscillator budget-governance key); `identityStateHash` (the Profile hash active at time of call — which version of the identity made the spend, §4.3 arbitration evidence). **Append-only. `threadId`+`trigger`+`at` are first-class indexed columns (arbitration joins). NEVER stores prompt or response content — a schema invariant, not a convention.** *P6 amendments (dsh study, 2026-07-11):* `anchor` (turn/step or completion-seq; replace-not-add on the same anchor — idempotent retry de-dupe); disjoint token buckets `inputTokens` (uncached only) / `cacheReadTokens` / `cacheWriteTokens` / `outputTokens` (reasoning ⊂ output; billed input = sum of three); `provider` + `model` (rate audit); failed/aborted completions recorded. Retention: kept long as audit evidence; excluded at source from bus-sweep memory input (operational telemetry, not identity memory). The ledger is itself an **ADR-0006 projection target**: rate tables / budget caps are read from `alden-infra` and boot-verified against the Profile hash. Single accounting authority (P4 — no second ledger may ever exist; Bifrost NOT adopted, APPROVAL_LOG 2026-07-09). *(Additive telemetry entity, separate from the 8 core orchestration entities; carries no recalled content.)*
 
@@ -552,7 +616,7 @@ is never "allow everything", and each adapter carries a negative test proving th
 ---
 
 ## 9. UI Component Specifications
-<!-- Last Updated: 2026-08-28 -->
+<!-- Last Updated: 2026-10-17 -->
 
 **Cross-cutting acceptance criteria on EVERY component (hard, non-negotiable):**
 - **CB — Colorblind-safe (CC1, hard AC):** every signal/state/control distinguished by **shape, position, text label, or icon — never color alone.** A color-only cue is a SEV-2 defect.
@@ -645,6 +709,64 @@ A **persistent xterm.js SSH-terminal tab** to a selected DevMachine, opened from
 - **Success:** rows; "More approvals are waiting than this page shows" when a walk stopped early; resolved / unidentified items counted, never listed.
 
 **The harness under the chat address (ruling 2026-08-27; Feature 11).** The console is served at `https://pantheon.ferrumcorde.com/harness/…` (VM Caddy `handle_path /harness/*` → admin service with `X-Forwarded-Prefix: /harness`; the service builds every link/redirect/asset/socket URL from that validated prefix; the admin address stays a root mount). LibreChat's footer reads **Terminals | Configuration**; Help opens `/harness/help`. Every console page shares `/assets/harness.css` — LibreChat v0.8.7's own token values — and follows LibreChat's `color-theme` (dark/light/system); terminals stay on the dark surface in both themes. The harness's **Chat** tab embeds the chat page (same-origin iframe) under the chat address and is a labelled link on the admin address. Registration stays on the Configuration page. Resolves step-08 item 5 for the terminal plane; the chat half (starting a persona conversation from the harness) waits for M2.
+
+### C.9 Maestro Console page — read-only session feed (ADR-0010, F1; built 2026-10-17)
+*(Numbered C.9 because C.7 and C.8 are taken.)*
+
+**Route and access.** `GET /console` (linked **Console** in the harness header) with its JSON
+`GET /console/api/state` and `GET /console/api/cards/:id/expand`. All three sit behind the operator
+guard (a keycard bearer gets 403, TM-011), are served `no-store` and are mounted under the `/harness`
+prefix like every console page.
+
+**Layout and states.**
+- **Machine row:** **◎ All machines**, then one tab per registered DevMachine (a disabled or
+  unprovisioned one is never dialled and reads NOT CONNECTABLE) showing its **worst** state
+  plus per-state counts as glyph + number + word (`! 2 NEED YOU · ⟳ 1`).
+- **Project row:** the selected machine's projects (key = tmux session name), each with the glyph,
+  display name and border style from the console settings file. An unconfigured key reads
+  "new — not set up"; hidden projects are omitted; sessions with no tmux pane (and `sh-*` sessions)
+  sit in a labelled "not reachable — start it in tmux" group.
+- **Cards:** newest first, with NEEDS YOU cards pinned on top. Each card shows the project glyph +
+  name, a kind label (`! WAITING FOR YOU` / `! MENU ON SCREEN` / `! PENDING APPROVAL` /
+  `! COMMIT APPROVAL` / `REPLY`), the session's state chip, its age and tool-call count, the masked
+  title and the masked TL;DR (clipped to six lines). Below that come **▸ full text · ▸ why · ▸ what it
+  did** and **Open terminal ↗** (opens the Terminals tab).
+- **States (CB):** each state is a glyph + a word, with a coloured top edge whose STYLE also differs.
+  `!` NEEDS YOU (orange, solid) · `⟳` WORKING (grey, dashed) · `✓` IDLE (blue, solid) · `$` IN SHELL ·
+  `?` UNKNOWN STATUS ‹value› (never mapped to IDLE) · `○` ENDED (an ended row overrides any stored
+  state). A legend on the page spells them out.
+- **Text face and palette:** console-scoped Lexend (self-hosted) on the Deep navy palette; the rest of
+  the harness theme is unchanged (ADR-0010 follow-up).
+- **Read-only (R5, F1):** no reply box, no Submit, no answer button. A NEEDS YOU card says "Answer it in
+  the terminal — this page is read-only".
+
+**Four states.**
+- **Empty:** "no Claude sessions found on ‹machine›" when a machine answered with none, and
+  "no sessions" in a machine tab's counts.
+- **Loading:** "… no data yet" (the first poll for that machine has not finished) as a polite status,
+  not an alert. A heartbeat line shows the last refresh outside the live region, so screen readers are
+  not re-told every poll.
+- **Error (all text + glyph, FS):**
+  - `✕ UNREACHABLE since HH:MM — ‹machine›`: the last known cards are kept and the poller retries every
+    poll.
+  - `⚠ CAN'T READ — format changed (N lines)`: the problems behind it are listed in a fold.
+  - `⚠ PROBE FAILED`: the probe ran but failed.
+  - `✕ NOT CONNECTABLE`: the machine is disabled or unprovisioned.
+  - Expand: "✕ Can't load the full text now — ‹reason›", or "⚠ changed — …" when the transcript no
+    longer matches the card.
+  - A refused settings file: "⚠ Console disabled — the console settings entry ‹entry› is invalid …"
+    (entry named, value never shown). The page stops polling; the rest of the harness keeps running.
+  - A 401/403: "✕ signed out — reload to sign in", and polling stops.
+  - The machine's own stderr is labelled `machine said: "…"` (trusted:false).
+- **Success:** the tab rows and cards render. The browser tab title carries the NEEDS YOU count.
+  Expand fetches once per card and renders the three sections as text (Markdown is not rendered in
+  F1). Focus and open folds survive each poll.
+
+**Invariants.**
+- Every element is built with `textContent`; state text never reaches `innerHTML`.
+- Nothing on the page sends anything to a session.
+- Polling runs at `pollSeconds` from the settings (2–60, default 5), and on focus with a throttle.
+- `window.__console` exposes `refresh`, `select` and `expand` for tests.
 
 ---
 
