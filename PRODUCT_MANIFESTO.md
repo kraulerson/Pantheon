@@ -229,6 +229,30 @@ Binding. Full rulings: `APPROVAL_LOG.md` (2026-08-20 rows), decisions ledger
   engine; CH-4 frontier Compare via **subscription CLIs** in bare sessions only (A-4);
   XC-8 startup secrets from the household Vaultwarden.
 
+### Amendment — 2026-10-16: Maestro Console (Track 1) promoted above the cutline; chat-pane pivot parked
+
+Binding. Rulings: `APPROVAL_LOG.md` (2026-10-16 rows); spec
+`docs/superpowers/specs/2026-10-16-maestro-console-design.md` (v2, approved after one adversarial
+review and rulings R1–R6); ADR-0010.
+
+- **Promoted above the cutline (new MVP scope by explicit Orchestrator ruling):** the **Maestro
+  Console** — one tab inside the harness showing every Claude Code session on every registered
+  machine, what needs Karl, the full detail behind any summary, and a way to answer. Built as
+  **F1** machine probe + card feed + tabs + on-demand expand + settings (**read-only, with a
+  real-use period before anything acts on a session**); **F2** step-up + reply box + Submit +
+  audit + read-only menu cards; **F3** in-page banner + Telegram reminders; **F4** suggestions +
+  tag-filtered cheat sheet; **F5** "Ask Maestro" / "Check this" through the ADR-0009 dispatcher +
+  phone decision view. UAT after F2, F4 and F5.
+- **TP-4 cross-project task board stays above the line** and is complemented, not replaced (R3).
+- **Chat-pane pivot PARKED:** the 2026-09-01 "hand-built chat plane replacing LibreChat"
+  assessment received no design input (design sheet unchanged); LibreChat remains the chat
+  modality and the console is "not folded into the stalled chat-pane pivot" (Karl, 2026-10-16).
+  Un-parking needs a new ruling.
+- **Binding shapes:** only masked card faces are stored (R1 — A-1 / TP-7 satisfied by not storing
+  content); Submit is operator I/O (C.6) behind a passphrase step-up (R4, first D6 consumer);
+  Submit audit append-only (R6, D8); terminal menus read-only in v1 (R5); nothing a session wrote
+  is ever sent back into a session.
+
 ### Resolved Decisions
 
 Each decision below resolves an open question or ambiguity surfaced in the Phase 0 artifacts. These are binding on Phase 1+.

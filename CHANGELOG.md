@@ -291,6 +291,15 @@ for handoff clarity. Categories are ordered by impact severity.
   `24.x`; deployed via `npm ci` (prebuilt binary) — three restart cycles: up in 2 s, 0 crashes.
 
 ### Documentation
+- 2026-10-16 **Maestro Console approved as Track 1 (new MVP scope); chat-pane pivot parked.** Spec
+  `docs/superpowers/specs/2026-10-16-maestro-console-design.md` (v2, after one adversarial review and
+  rulings R1–R6); **ADR-0010** `docs/ADR documentation/ADR-0010-maestro-console-inside-the-harness.md`
+  (new tab in the harness, pull over existing SSH, masked card faces only, passphrase step-up on
+  Submit, read-only menus in v1, relays via the ADR-0009 dispatcher, append-only audit, TP-4 kept,
+  one settings file); PRODUCT_MANIFESTO §5 amendment; APPROVAL_LOG rows (spec, R1, R2, R4, R6, pivot
+  parked); Bible §3 ADR-0010 entry + ADR-0001 status note, §4 threats TM-025 (send path), TM-026
+  (machine probe), TM-027 (Telegram); BUGS #36 extended (Submit first step-up route). No product code
+  before Karl approves the Track 1 implementation plan.
 - 2026-09-01 **Code-lifting rule + repository licence recorded** (APPROVAL_LOG; Bible §10; `LICENSE` all rights reserved; `THIRD_PARTY_NOTICES.md` with the LibreChat MIT theme-token lift; `"license": "UNLICENSED"`). **Design sheet added:** `docs/design/pantheon-design-sheet.html`, an interactive architecture mockup (drag/resize/rewire/annotate modules, workflows, Markdown brief, JSON in/out, shared-store persistence) seeded with the proposed hand-built chat plane, for Karl to mark up before any architecture or language is chosen.
 - 2026-08-25 **Data-model doctrine ruling A** — PROJECT_BIBLE §5 Principle 3 gains a ratified
   exception for the control-plane's single-operator SQLite tables (forward-only additive DDL at
