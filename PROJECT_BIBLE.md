@@ -16,7 +16,7 @@
 
 ## 1. Product Manifesto
 <!-- Last Updated: 2026-06-13 -->
-<!-- Full text from Phase 0 PRODUCT_MANIFESTO.md, embedded verbatim. Governing constraint for all later sections. -->
+<!-- Full text from Phase 0 PRODUCT_MANIFESTO.md as embedded on 2026-06-13. Governing constraint for all later sections. The live manifesto carries two later §5 amendments NOT mirrored here: the cross-project task board (TP-4) promoted above the cutline (2026-08-20) and the Maestro Console (Track 1, F1–F5) promoted above the cutline with the chat-pane pivot parked (2026-10-16) — read PRODUCT_MANIFESTO.md §5 for the cutline of record (noted by the 2026-10-18 health check). -->
 
 # Product Manifesto — Pantheon Harness
 
@@ -558,7 +558,9 @@ ToolClassification (server,tool) → governs which calls are writes/gated
 ---
 
 ## 6. Data Migration Plan
-<!-- Last Updated: 2026-06-13 -->
+<!-- Last Updated: 2026-10-18 -->
+
+**Schema changes to the control-plane's own SQLite (ruling A, 2026-08-25, APPROVAL_LOG; §5 Principle 3):** forward-only additive DDL at startup (`CREATE TABLE IF NOT EXISTS`, additive `ALTER TABLE ADD COLUMN`); any destructive change (drop, rename, retype, narrowed constraint) needs a numbered migration script and a backup taken first. Tables as built on 2026-10-17: `backend_registry`, `session`, `dev_machine`, `keycard`, `service_endpoint`, `console_session`, `console_card`.
 
 **No legacy database migration.** Pantheon Harness has no prior schema or system to convert. The only import path is the minimal **register-an-existing-identity** flow (MVP enabler D1), described briefly below — it is a *registration*, not a bulk legacy migration.
 
@@ -944,7 +946,7 @@ Competency gaps (Manifesto Appendix B) and the automated tooling that compensate
 ---
 
 ## 16. Context Management Plan
-<!-- Last Updated: 2026-06-13 -->
+<!-- Last Updated: 2026-10-18 -->
 
 **Project size class: MEDIUM (30–100 files expected).** The control-plane glue is modular (Fastify plugins: proxy, grounding, taint, admin-driver, registry, mcp-host) plus tests, deploy config, and docs — putting it in the 30–100 file band rather than small.
 
@@ -960,6 +962,10 @@ Competency gaps (Manifesto Appendix B) and the automated tooling that compensate
 ### Context health check — 2026-08-28 (features 9–12)
 
 **Built since the last check:** `tmux-aware-launcher` (F8), `scoped-session-keycard` (F9, ADR-0008), `pending-approvals-inbox` (F10, multi-source after UAT-4), `harness-under-chat-address` (F11) + fixes #39 (terminal fit) and #42 (approval stores). UAT-3 (22/23) and UAT-4 (16/20; #14 → #42 fixed; #16/#19 not reproducible) closed. **Remaining (M1):** machines sidebar (next; Karl 2026-08-28), session-waker promotion + guardrails (task 4), cross-project task board (task 5), `pantheon doctor` (folded into M2 acceptance). **Data model:** unchanged tables (registry, session, keycard — additive-DDL ruling A); ApprovalSource is env config. **Known issues:** BUGS #17, #24–#30, #34–#38, #40, #41 open (SEV-3/4); TM-024 accepted; Alden gateway approval source pending a token from the Alden infra side (`docs/handoffs/2026-08-28-prompt-for-alden-infra-approval-source.md`). Bible sections 4, 5, 7, 9, 11 updated in this check.
+
+### Context health check — 2026-10-18 (features 12, 13, 15)
+
+**Built since the last check:** `machines-sidebar` (F12, 2026-08-28), `session-waker-guardrails` (F13 stage 1, ADR-0009, 2026-08-31), `maestro-console-f1` (F15, ADR-0010; committed c58750c and deployed to VM 1093 on 2026-10-17; read-only trial day 1 of ≥ 3; settings file placed 2026-10-18) + fixes #43–#48 (sidebar affordance + no-store HTML, build header and asset versioning, xterm scroll corruption, selection/copy, renderer latency, tmux copy to the clipboard). UAT-5 closed 2026-10-16 (10 pass / 1 fail → #48 fixed / 2 skipped by ruling / 5 not run → UAT-6); #49 deferred (SEV-4). Suite 961 passed / 5 skipped. Feature number 14 was never assigned (FEATURES.md runs 13 → 15). **Remaining:** console F2 (reply box + Submit; starts after the trial and Karl's O1 ruling) → UAT-6 → F3 → F4 → UAT → F5 → UAT (manifesto §5 amendment 2026-10-16); waker stage 2 (channel runner); cross-project task board (TP-4, kept above the line, R3); `pantheon doctor` (M2). The chat/gateway half of the cutline (Peta identities, write-approval resolution C.3, grounding, cross-session search, mailbox, Obsidian MCP, Facade + UsageEvent, network test) is M2 and unbuilt; the chat-pane pivot is parked. **Data model:** 7 SQLite tables as built — `backend_registry`, `session`, `dev_machine`, `keycard`, `service_endpoint` + `console_session`, `console_card` (F15; additive DDL per ruling A); §5 matches the code. The §5 Stores table's "Control-plane DB" row still names the designed entities (Identity, ToolClassification, GroundingSourceState, AuditEntry), none of which exists in code yet — design intent, not drift. **Known issues:** BUGS #17, #24–#30, #34–#38, #40, #41, #49 open (SEV-3: #17, #25, #26, #36; the rest SEV-4). #29 appears addressed in code since 7dc2c93 (2026-08-27; `frame-ancestors` is sent from `app.ts`) — re-triage pending Karl. #34 still holds (`logger: false`; the console logs through a pino-shaped stderr shim in `src/server.ts`, §8 status note still accurate). F1 audit residuals: `docs/security-audits/maestro-console-f1-security-audit.md`. Trial finding (2026-10-18): every card face shows a 6-line TL;DR, which reads as "everything expanded" — fold-to-title carried to F2 planning. TM-024 accepted. Framework defects outside this repo: Solo's commit gate exempt list lacks `.jsonl` (Solo BL-354); the project settings file calls a `session-mcp-gate.sh` that never existed (solo-orchestrator generator); the CDF stop hook reports untracked folders as uncommitted source. **Verdict:** no contradiction between this summary and the Bible's §3, §5 or §9 — no fresh session needed. Drift fixed in this check: §1 claimed the embedded manifesto was verbatim while PRODUCT_MANIFESTO.md carries two later amendments (now noted), and §6 lacked the ruling-A pointer and the as-built table list (added). Bible sections 1, 6, 16 updated in this check.
 
 ## Capability-gap study & adoptions (2026-08-20)
 
