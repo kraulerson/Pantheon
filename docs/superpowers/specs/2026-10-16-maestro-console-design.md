@@ -113,7 +113,7 @@ Inside the existing control-plane service (ADR-0002: Node/TypeScript/Fastify; se
 0. **`status == "waiting"`** in `sessions/<pid>.json` (covers `AskUserQuestion`, elicitation and dialogs).
 1. **Menu on screen while `busy`** (prompts raised by background agents leave `status` busy) — pane tail matches a captured fixture. Fixtures anchor on real menu strings: `❯ 1. `, `Enter to select · ↑/↓ to navigate · Esc to cancel`, `Do you want to proceed?`, `Esc to cancel · Tab to amend`, `1 to review · 2 to send · 0 to dismiss`. The bare `❯` prompt glyph and the CDF render text ("Reply with the option id again … to confirm") must **not** match.
 2. **Pending-approval sentinel** present.
-3. **Reply-borne question** (O1): rule fixed from F1's read-only data, approved by Karl before F2.
+3. **Reply-borne question** (O1, **fixed 2026-10-18, Karl A1**, from 654 reply turns across 39 transcripts / 15 projects + 500 console card faces; evidence in the F1 ledger "O1 SURVEY"): the card NEEDS YOU when the reply's TL;DR block contains a "waiting on you" / "waiting on Karl" clause whose following words do not start with *nothing*, *none*, *no*, *not*, *only your* or *your usual*; a reply with no TL;DR marker is scanned whole. The TL;DR block is the paragraph after the last marker, where the marker accepts `**TL;DR**`, `**TL;DR:**`, an optional parenthetical before the closing bold (`**TL;DR (plain English):**`) and an unbolded or heading-style `TL;DR` at line start (F2 widens F1's marker, which 132 of 654 replies — 20.2 % — did not match). Answer buttons come from two or more **lettered** option lines (`A1`/`A2`, `Option A`/`B`, `(A)`/`(B)`); numbered lists never count. A sentinel for the session wins (signal 2). Measured: recall 0.64 against Karl's option-id answers, 0.80 with option lines, every miss a sentinel question; hand-labelled precision 23 of 30 (3 false: lettered lines quoting another session's options, a numbered completion list). A trailing `?` is not a signal (recall 0). Accepted false positives: quoted lettered options; a "waiting on you" that names an action rather than a question (that is needs-you by this console's definition).
 
 Leaving the queue: signal 0/1/2 items leave only when the signal disappears (a sentinel only when its file is deleted — never on Submit). Signal-3 items leave on Submit or **Dismiss**. Dismiss on a signal 0/1/2 item marks it "dismissed" but keeps it listed while the signal persists.
 
@@ -228,7 +228,7 @@ Pantheon Build Loop per feature (tests first, RED verified; implement; security 
 
 | Step | Feature | Acts on sessions? | Exit |
 |---|---|---|---|
-| F1 | Machine probe + card builder + store + tabs + cards with on-demand expand + state + settings | **No — read-only** | tests green; deployed; read-only real-use period ≥ 3 days (proposed; section 4 said "a few days"); O1 rule fixed from that data and approved by Karl |
+| F1 | Machine probe + card builder + store + tabs + cards with on-demand expand + state + settings | **No — read-only** | tests green; deployed; read-only real-use period ≥ 3 days (proposed; section 4 said "a few days"); O1 rule fixed from that data and approved by Karl. **Exit met 2026-10-18:** Karl approved F1 at trial day 1 ("good for the features that have been implemented") and the O1 rule (A1); trial findings 1–6 recorded (0 code defects). |
 | F2 | Step-up + reply box + Submit + buttons + delivery script + audit + read-only menu cards + Open terminal | Yes | tests green |
 | UAT | session 6 | | gate passed |
 | F3 | Banner + Telegram | No | tests green |
@@ -249,7 +249,7 @@ Pantheon Build Loop per feature (tests first, RED verified; implement; security 
 
 | # | Item | When resolved |
 |---|---|---|
-| O1 | Rule for reply-borne questions (§6.3 signal 3) | end of F1 real-use period, Karl approves |
+| O1 | ~~Rule for reply-borne questions (§6.3 signal 3)~~ — closed 2026-10-18: rule and evidence in §6.3 signal 3 (Karl A1); the widened TL;DR marker ships with F2 | — |
 | O3 | ~~Delivery mechanism~~ — closed: base64 + bracketed paste (§6.6) | — |
 | O4 | Which suggested skills exist yet (`/merge-gate`, `/secret-intake` are proposals) | F4; missing → "not installed" |
 | O5 | `sessions/*.json` is undocumented | permanent residual; covered by CAN'T READ / UNKNOWN STATUS |
