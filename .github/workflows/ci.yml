@@ -10,14 +10,23 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # CI builds, tests and audits services/control-plane only; services/obsidian-mcp, peta-eval/harness
+    # and prototypes/cli-channel-loop have their own lockfiles and are not covered here. Governance
+    # steps override this to run at the repository root.
+    defaults:
+      run:
+        working-directory: services/control-plane
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: 'lts/*'
           cache: 'npm'
+          cache-dependency-path: services/control-plane/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -55,6 +64,7 @@ jobs:
 
       - name: Governance - Approval log integrity
         if: hashFiles('APPROVAL_LOG.md') != ''
+        working-directory: .
         run: |
           if git diff origin/main...HEAD -- APPROVAL_LOG.md 2>/dev/null | grep -qE '^\-[^-]'; then
             echo "::error::APPROVAL_LOG.md has deleted or modified lines. This file is append-only."
@@ -63,6 +73,7 @@ jobs:
 
       - name: Governance - Approval author verification
         if: hashFiles('APPROVAL_LOG.md') != ''
+        working-directory: .
         run: |
           if git diff --name-only origin/main...HEAD 2>/dev/null | grep -q 'APPROVAL_LOG.md'; then
             COMMIT_AUTHOR=$(git log --format='%an' origin/main...HEAD -- APPROVAL_LOG.md 2>/dev/null | head -1)
@@ -77,6 +88,7 @@ jobs:
 
       - name: Governance - Phase gate check
         if: hashFiles('.claude/phase-state.json') != ''
+        working-directory: .
         run: |
           if [ ! -f scripts/check-phase-gate.sh ]; then
             echo "::error::Phase gate check script missing. Framework integrity compromised."
@@ -85,12 +97,14 @@ jobs:
           bash scripts/check-phase-gate.sh
 
       - name: Governance - Changelog check
+        working-directory: .
         run: bash scripts/check-changelog.sh 2>/dev/null || true
         # Tier 1.5: warning only. Set SOIF_STRICT_CHANGELOG=true to block.
         # env:
         #   SOIF_STRICT_CHANGELOG: "true"
 
       - name: Governance - Session state check
+        working-directory: .
         run: bash scripts/check-session-state.sh 2>/dev/null || true
         # Tier 1.5: warning only. Set SOIF_STRICT_SESSION=true to block.
         # env:

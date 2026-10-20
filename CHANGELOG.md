@@ -19,6 +19,18 @@ for handoff clarity. Categories are ordered by impact severity.
 
 ## [Unreleased]
 
+<!-- CI fix (BUGS #54, Karl A1 2026-10-20) -->
+
+### Infrastructure
+- 2026-10-20 **CI runs from `services/control-plane`** (BUGS #54). The job's run steps default to the
+  package directory, `actions/setup-node` caches from `services/control-plane/package-lock.json`, checkout
+  fetches full history for the gitleaks scan, and the governance steps stay at the repository root. CI now
+  reaches its gitleaks step for the first time. Its Semgrep step runs but loads no rules and still passes
+  (BUGS #56). CI is expected to fail next at `npm audit --audit-level=high`, which counts production and
+  dev dependencies: it stays red until the production update (BUGS #55, before the F2 deploy) and a
+  dev-tool update land, and the governance steps fail after that (BUGS #58). CI covers
+  `services/control-plane` only; `services/obsidian-mcp` has its own advisories (BUGS #57).
+
 <!-- Maestro Console F2 (Feature 16, Build Loop `maestro-console-f2`; ADR-0010; spec
      docs/superpowers/specs/2026-10-16-maestro-console-design.md; plan docs/superpowers/plans/2026-10-18-maestro-console-f2.md) -->
 
@@ -128,7 +140,7 @@ for handoff clarity. Categories are ordered by impact severity.
 ### Infrastructure
 - 2026-10-20 **No new environment variable and no new CI step.** GitHub CI is still failing on every run
   because the repository root has no lockfile for `actions/setup-node`'s npm cache, so the CI Semgrep
-  and gitleaks steps have never run on a pushed commit (BUGS #54; fixed in its own `ci:` commit right after this one, Karl A1, 2026-10-20). The F2
+  and gitleaks steps have never run on a pushed commit (BUGS #54; fixed in its own `ci:` commit after this one, Karl A1, 2026-10-20). The F2
   scans were run locally (gitleaks on the staged changes: no leaks found; Semgrep with the same two
   configs as CI's step, `p/owasp-top-ten` and `p/security-audit`, on `src`: 0 findings).
 - 2026-10-20 **A tmux server cold-started by the console's create script has no locale** (ruling T8-6).
