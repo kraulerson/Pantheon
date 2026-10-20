@@ -63,6 +63,48 @@ describe("createServer", () => {
     expect((await app.inject({ method: "GET", url: "/terminal/mac-studio" })).statusCode).toBe(401);
   });
 
+  it("ruling T11-3 (F-1): with login on, the production terminal socket refuses a bearer-only upgrade (403) and opens for the operator's cookie session", async () => {
+    // The production loggers write to stderr: swallowed for the whole test (the output stays clean), then checked.
+    const lines: string[] = [];
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(((chunk: unknown) => {
+      lines.push(...String(chunk).split("\n"));
+      return true;
+    }) as never);
+    const frames: string[] = [];
+    try {
+      keyDir = mkdtempSync(join(tmpdir(), "pantheon-srv-keys-"));
+      app = await createServer({ adminToken: TOKEN, dbPath: ":memory:", keyDir, keyHandle: "harness", operatorPassword: "correct horse" });
+      await app.ready();
+      const ws = app as FastifyInstance & { injectWS: (path: string, ctx?: { headers?: Record<string, string> }, opts?: { onInit?: (s: { on: (e: string, cb: (d: unknown) => void) => void }) => void }) => Promise<{ close: () => void }> };
+      await expect(ws.injectWS("/terminal/mac-studio", { headers: auth })).rejects.toThrow(/403/);
+      await expect(ws.injectWS("/terminal/mac-studio")).rejects.toThrow(/401/);
+      const login = await app.inject({ method: "POST", url: "/login", headers: { "content-type": "application/x-www-form-urlencoded" }, payload: "password=correct%20horse" });
+      const cookie = String(login.headers["set-cookie"]).split(";")[0]!;
+      // The cookie session reaches the route: its first frame is the gateway's labelled refusal for an unknown machine,
+      // and the production logger writes one warn line for the failed open (triage 14).
+      let got: (() => void) | undefined;
+      const first = new Promise<void>((resolve) => (got = resolve));
+      const socket = await ws.injectWS("/terminal/mac-studio", { headers: { cookie } }, { onInit: (s) => s.on("message", (d) => { frames.push(String(d)); got?.(); }) });
+      await first;
+      socket.close();
+    } finally {
+      stderr.mockRestore();
+    }
+    expect(JSON.parse(frames[0]!)).toEqual({ t: "e", m: "no dev machine with logicalName 'mac-studio'" });
+    // Ruling T11-23 (m3): only lines that parse as JSON objects are log lines — other stderr output is skipped, never fatal.
+    const events = lines.flatMap((l): Record<string, unknown>[] => {
+      if (!l.startsWith("{")) return [];
+      try {
+        return [JSON.parse(l) as Record<string, unknown>];
+      } catch {
+        return [];
+      }
+    });
+    const warn = events.find((l) => l["event"] === "terminal.open_failed");
+    expect(warn).toMatchObject({ level: "warn", module: "terminal-route", machine: "mac-studio", shell: false, reason: "refused", errName: "TerminalError" });
+    expect(JSON.stringify(warn)).not.toContain("no dev machine");
+  });
+
   it("requires an admin token (throws if missing)", async () => {
     keyDir = mkdtempSync(join(tmpdir(), "pantheon-srv-keys-"));
     await expect(createServer({ adminToken: "", dbPath: ":memory:", keyDir })).rejects.toThrow();

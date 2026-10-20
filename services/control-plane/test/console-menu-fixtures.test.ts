@@ -15,6 +15,17 @@ describe("menuOnScreen — positive captures", () => {
   it("pane-trust-prompt.txt → trust", () => {
     expect(menuOnScreen(pane("pane-trust-prompt.txt"))).toBe("trust");
   });
+  // F2 Task 8 (ruling T8-1): the prompt a freshly made project folder shows, captured on Claude 2.1.304.
+  it("pane-trust-prompt-new-folder.txt → trust", () => {
+    expect(menuOnScreen(pane("pane-trust-prompt-new-folder.txt"))).toBe("trust");
+  });
+  // Triage 4 (DI-7): the commit publishes this file, so its workspace line names a neutral placeholder, never the
+  // capturing session's local scratch path (uid, user, project path, session id).
+  it("pane-trust-prompt-new-folder.txt carries no local scratch path, only the neutral placeholder on its workspace line", () => {
+    const text = pane("pane-trust-prompt-new-folder.txt");
+    expect(text).not.toMatch(/\/private\/tmp\/|scratchpad|claude-501/);
+    expect(text.split("\n")[3]).toBe(" /Users/karl/scratch/new-folder");
+  });
   it("pane-permission-prompt.txt → permission", () => {
     expect(menuOnScreen(pane("pane-permission-prompt.txt"))).toBe("permission");
   });
@@ -57,8 +68,10 @@ describe("menuOnScreen — cursor moved off option 1 (synthesized from the real 
   });
 
   it("trust prompt with the cursor on Yes → trust", () => {
-    const moved = moveCursor(pane("pane-trust-prompt.txt"), " ❯ No, exit\n", "   No, exit\n", "   Yes, I trust this folder\n", " ❯ Yes, I trust this folder\n");
-    expect(menuOnScreen(moved)).toBe("trust");
+    for (const f of ["pane-trust-prompt.txt", "pane-trust-prompt-new-folder.txt"]) {
+      const moved = moveCursor(pane(f), " ❯ No, exit\n", "   No, exit\n", "   Yes, I trust this folder\n", " ❯ Yes, I trust this folder\n");
+      expect(menuOnScreen(moved), f).toBe("trust");
+    }
   });
 });
 

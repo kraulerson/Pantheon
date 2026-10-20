@@ -91,9 +91,10 @@ export const TERMINAL_CLIPBOARD_JS = `
     } catch (e) {}
     pantheonCopyFallback(text);
   }
-  function pantheonWireClipboard(term, host) {
+  function pantheonWireClipboard(term, host, before) {
     if (term.attachCustomKeyEventHandler) term.attachCustomKeyEventHandler(function (e) {
       if (e.type !== 'keydown') return true;
+      if (before && before(e) === false) return false; // the host claimed this key (the console drawer's own keys)
       var key = String(e.key || '').toLowerCase();
       var copyChord = (e.metaKey && !e.ctrlKey && !e.altKey) || (e.ctrlKey && e.shiftKey && !e.metaKey);
       if (key === 'c' && copyChord) {
@@ -106,5 +107,74 @@ export const TERMINAL_CLIPBOARD_JS = `
       var sel = term.getSelection ? term.getSelection() : '';
       if (sel) pantheonCopy(sel); // copy on select; an empty selection never clobbers the clipboard
     });
+  }
+`;
+
+/**
+ * `pantheonOpenTerminal(host, wsUrl, hooks)` — the one bootstrap every hosted xterm goes through (harness tabs, and
+ * the console's Claude-session view and shell drawer): construct the Terminal with the shared options, load the fit
+ * and the optional addons, wire the clipboard, open the socket and bridge frames. It needs the clipboard and addon
+ * snippets above in the same scope. Returns `{ term, ws, ro, fit, close }`; `term` stays null when the engine failed
+ * to load (nothing is dialled then, and `hooks.status` has said so).
+ *
+ * hooks: `label` (shown in the connected text), `status(state, text)` (state: connected | disconnected | error —
+ * every text starts with a glyph, CC1), `hidden()` (optional; a hidden host measures 0×0 and must not be fitted),
+ * `keyFilter(e)` (optional; returning false claims the key before the clipboard handler and xterm see it),
+ * `onReady(id)` (the broker's reconnect id), `onTitle(title)` (the PTY's window title).
+ */
+export const TERMINAL_OPEN_JS = `
+  function pantheonOpenTerminal(host, wsUrl, hooks) {
+    var h = { term: null, ws: null, ro: null, fit: null };
+    var term; var fit; var state = '';
+    function say(st, text) { state = st; hooks.status(st, text); }
+    try {
+      term = new window.Terminal(${TERMINAL_OPTIONS_JS});
+      fit = new window.FitAddon.FitAddon();
+      term.loadAddon(fit);
+      term.open(host);
+    } catch (e) {
+      // Fail closed AND labeled: no engine → no socket, and the host says why.
+      say('error', '[!] terminal engine failed to load — reload the page');
+      return h;
+    }
+    h.term = term;
+    // Size the grid to the host (operator report 2026-08-27: xterm's 80×24 default filled ~60% of the
+    // width and never grew). Only while visible — a hidden panel measures 0×0 and would shrink the PTY.
+    var renderer = pantheonLoadAddons(term); // OSC-52 clipboard + GPU renderer (operator report 2026-08-30)
+    if (host.setAttribute) host.setAttribute('data-renderer', renderer);
+    pantheonWireClipboard(term, host, hooks.keyFilter); // selection + ⌘C / Ctrl+Shift+C (operator report 2026-08-29)
+    h.fit = function () { if (!(hooks.hidden && hooks.hidden())) fit.fit(); };
+    h.fit();
+    if (window.ResizeObserver) { h.ro = new window.ResizeObserver(function () { h.fit(); }); h.ro.observe(host); }
+    var ws = new WebSocket(wsUrl); h.ws = ws;
+    ws.onmessage = function (ev) {
+      var f; try { f = JSON.parse(ev.data); } catch (e) { return; }
+      if (f.t === 'ready') {
+        say('connected', '[✓] connected to ' + hooks.label + (renderer === 'software' ? PANTHEON_SOFTWARE_NOTE : ''));
+        // The first fit ran before the socket was open, so tell the PTY the size explicitly now.
+        h.fit();
+        if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'r', c: term.cols, r: term.rows }));
+        if (hooks.onReady && typeof f.id === 'string') hooks.onReady(f.id); // never replay ?session=undefined
+      }
+      else if (f.t === 'o') { term.write(f.d); }
+      else if (f.t === 'x') { say('disconnected', '[x] disconnected — close tab to dismiss'); }
+      else if (f.t === 'e') { say('error', typeof f.m === 'string' ? '[!] ' + f.m : '[!] connection error'); }
+    };
+    ws.onclose = function () {
+      // A dropped socket must be SAID, not just attributed — but never over the error that explains it.
+      if (state !== 'error') say('disconnected', '[x] disconnected — close tab to dismiss');
+    };
+    ws.onerror = function () { say('error', '[!] connection failed'); };
+    term.onData(function (d) { if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'i', d: d })); });
+    if (term.onResize) term.onResize(function (s) { if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'r', c: s.cols, r: s.rows })); });
+    if (hooks.onTitle && term.onTitleChange) term.onTitleChange(function (t) { hooks.onTitle(t); });
+    // The host leaves for good: end the broker-side terminal, drop the socket, free the engine.
+    h.close = function () {
+      if (h.ro) h.ro.disconnect();
+      try { if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'c' })); } catch (e) {}
+      try { ws.close(); } catch (e) {}
+      try { if (term.dispose) term.dispose(); } catch (e) {}
+    };
+    return h;
   }
 `;

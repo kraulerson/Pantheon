@@ -612,3 +612,28 @@ describe("TL;DR marker cost (final review I1)", () => {
     expect(extractTldr("x **TL;DR** first\n\ny **TL;DR:** last")).toBe("last");
   });
 });
+
+// F2 Task 1: widened marker forms.
+describe("TL;DR widened marker (F2 task 1)", () => {
+  it("extracts the TL;DR after a parenthetical marker", () => {
+    const t = "Body.\n\n**TL;DR (plain English):** The push landed.\n\nTrailer.";
+    expect(extractTldr(t)).toBe("The push landed.");
+  });
+  it("extracts an unbolded line-start marker and a heading marker", () => {
+    expect(extractTldr("Body.\n\nTL;DR: one line\n")).toBe("one line");
+    expect(extractTldr("Body.\n\n## TL;DR\n\nParagraph after.\n\nMore.")).toBe("Paragraph after.");
+  });
+  it("ignores TL;DR mentioned mid-sentence", () => {
+    expect(extractTldr("I will add a TL;DR later. Done.")).toBe("I will add a TL;DR later. Done.");
+  });
+  it("takes the last marker of any form", () => {
+    const t = "**TL;DR:** first\n\nTL;DR: second\n";
+    expect(extractTldr(t)).toBe("second");
+  });
+  it("stays linear on a hostile marker flood", () => {
+    const hostile = "**TL;DR (" + " ".repeat(100_000) + "\n" + "**TL;DR".repeat(20_000);
+    const t0 = performance.now();
+    extractTldr(hostile);
+    expect(performance.now() - t0).toBeLessThan(200);
+  });
+});

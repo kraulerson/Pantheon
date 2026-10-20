@@ -358,7 +358,7 @@ PostgreSQL 15+ (Prisma) is consumed transitively as **Peta's** datastore. The co
 ---
 
 ## 4. Threat Model & Risk/Mitigation Matrix
-<!-- Last Updated: 2026-10-17 -->
+<!-- Last Updated: 2026-10-20 -->
 <!-- STRIDE analysis. TM-IDs are permanent; Phase 3 validation tests reference them directly. Do not renumber; only append. -->
 
 **Scope:** LibreChat (UI/auth) + Peta `dunialabs/peta-core` (gateway: per-tool authz, HITL approval, credential vault) + control-plane glue (provisioning orchestrator, grounding/`trusted:false` taint engine, backend-binding registry, per-session→Peta token wiring, Obsidian MCP). Single operator, LAN/Tailscale-only, no public ingress.
@@ -390,9 +390,9 @@ PostgreSQL 15+ (Prisma) is consumed transitively as **Peta's** datastore. The co
 | **TM-017** | Provisioning partial-failure / orphaned identity (E) | SEV-2 | Saga w/ compensating actions; identity selectable only after all steps verified; fail closed, no partial registry entry | P2 (D1 register-existing) / Post-MVP (#5 new) | Phase 3: docs/test-results/threat-validation.md#TM-017 |
 | **TM-018** | Compromised downstream MCP pivots/over-reads (T/I) | SEV-2 | Admin-only registration (#10a); per-downstream server-side secret injection; non-root/no-socket remote-only (F1); least-tool grants; results stay `trusted:false` | P2 (deploy + registration) | Phase 3: docs/test-results/threat-validation.md#TM-018 |
 | **TM-019** | SSRF via OAuth metadata + Tailscale flag (I) | SEV-3 | SSRF guard rejects private IPs (R5); keep `ALLOW_FAKE_IP` off / narrowly scoped; re-test internal-host block | P2 (deploy config) | Phase 3: docs/test-results/threat-validation.md#TM-019 |
-| **TM-020** | Claude-CLI SSH terminal — key-custody leak + remote-command-execution surface (I/E) | SEV-1 | DevMachine SSH key stays in **vault custody only**, resolved server-side at connect time, **never in session/terminal context** (#14b, Principle 1); harness #9 auth gates terminal-tab access (D6 where privileged); dev machine bound by **logicalName** not raw IP (#14a, no rebind); the Claude-CLI agent on the box can run commands, so any `trusted:false` content reaching it is an **RCE path** — Claude Code's own permission model is the inner guard and terminal sessions are operator-driven (interactive, not auto-fed recalled content) | P2 (terminal modality, ADR-0005) | Phase 3: docs/test-results/threat-validation.md#TM-020 |
+| **TM-020** | Claude-CLI SSH terminal — key-custody leak + remote-command-execution surface (I/E) | SEV-1 | DevMachine SSH key stays in **vault custody only**, resolved server-side at connect time, **never in session/terminal context** (#14b, Principle 1); harness #9 auth gates terminal-tab access (D6 where privileged); dev machine bound by **logicalName** not raw IP (#14a, no rebind); the Claude-CLI agent on the box can run commands, so any `trusted:false` content reaching it is an **RCE path** — Claude Code's own permission model is the inner guard and terminal sessions are operator-driven (interactive, not auto-fed recalled content). **Status (F2 audit 2026-10-20): Mitigated for the console mint sites.** Deliver, list-projects, create-session and machine-shell are allow-listed and single-quoted, and text travels as base64; the start directory refuses `#`, C1 controls, lone surrogates and bidi controls (the F2 SEV-1 IV-1, fixed); Submit feeds a session only Karl's text and option ids of at most 8 characters, on an explicit click. **Open residuals:** BUGS #17 (no host-key pinning; F2 adds three paths to that transport) and the admin bearer's static credential (BUGS #36; its reach to the terminal WebSocket is closed while login is enabled, the F2 SEV-1 F-1, fixed) | P2 (terminal modality, ADR-0005) | Phase 3: docs/test-results/threat-validation.md#TM-020 |
 | **TM-024** | One browser origin for chat + console (ruling 2026-08-27, accepted residual): script on the LibreChat page (XSS, inline-served upload, self-hosted artifact sandbox) reaches the console — terminals included — with the operator session | SEV-2 (accepted) | Cookie scoped to `/harness`; Sec-Fetch-Site check incl. WebSocket handshakes; `frame-ancestors 'self'` + frame-bust; `ALLOW_REGISTRATION=false`; `SANDPACK_BUNDLER_URL` never on a household host; uploads never inline; BUGS #36 step-up gates mint/config when it lands. Origin separation impossible today (edge Host rewrite; cross-site embed breaks LibreChat sign-in) | Accepted (APPROVAL_LOG 2026-08-27) |
-| **TM-025** | **Console send path (Tampering / Elevation, ADR-0010 F2):** a stolen operator session, a cross-site request, a replayed request or a hostile card face causes text the operator did not mean to send to be typed into a live Claude Code session's tmux pane — including a wrong option into a permission or commit prompt | SEV-1 | R4 passphrase step-up (15-min elevated window — first D6 consumer, BUGS #36); existing Sec-Fetch-Site refusal; idempotency key per Submit; server validation **refuses, never strips** C0/C1 controls, ESC, invalid UTF-8, > 4 KiB; target re-verified on the machine at send time (`sessionId` + `procStart` + pid alive + pane process chain) and refused if a menu is on screen; base64 transport + one bracketed paste; commit approvals are never a button; buttons send only option ids or copy a letter into the visible reply box (nothing a session wrote is sent back — TM-020); write-ahead + result audit rows, append-only (R6). **Residual:** sub-second race between the menu check and the paste; prompts raised by background agents are not reflected in `status` | Phase 2 F2 | ADR-0010; spec §6.6, §8.2; F2 hostile-input and target-changed tests |
+| **TM-025** | **Console send path (Tampering / Elevation, ADR-0010 F2):** a stolen operator session, a cross-site request, a replayed request or a hostile card face causes text the operator did not mean to send to be typed into a live Claude Code session's tmux pane — including a wrong option into a permission or commit prompt | SEV-1 | R4 passphrase step-up (15-min elevated window — first D6 consumer, BUGS #36); existing Sec-Fetch-Site refusal; idempotency key per Submit; server validation **refuses, never strips** C0/C1 controls, ESC, invalid UTF-8, > 4 KiB; target re-verified on the machine at send time (`sessionId` + `procStart` + pid alive + pane process chain) and refused if a menu is on screen; base64 transport + one bracketed paste; commit approvals are never a button; buttons send only option ids or copy a letter into the visible reply box (nothing a session wrote is sent back — TM-020); write-ahead + result audit rows, append-only (R6). **Residual:** sub-second race between the menu check and the paste; prompts raised by background agents are not reflected in `status`. **Status (F2 audit 2026-10-20): Mitigated with accepted residuals.** Every control above is met by the Submit route and was verified; the terminal WebSocket now refuses a bearer-only caller while login is enabled (F-1, fixed), the script also refuses a pane in copy mode (F-3, fixed), and a replayed key is bound to its card and text. **Accepted residuals:** a stolen cookie types through the terminal view with no step-up, and the 15-minute window is shared by any holder of that cookie (F-2, Karl's decision 18, 2026-10-17); a stale session file whose pid was recycled passes the liveness check (F-4, BUGS #52); concurrent sends are not serialised at the pane (F-5); no passphrase attempt throttle (F-9) | Phase 2 F2 | ADR-0010; spec §6.6, §8.2; F2 hostile-input and target-changed tests |
 | **TM-026** | **Machine probe (Information disclosure, ADR-0010 F1):** transcripts, pane tails and `sessions/*.json` read over SSH carry secrets (the 2026-10-09 leaked tokens are in transcripts) that could land in the VM store, on screen or in Telegram; a hostile transcript line rendered as HTML; the probe amplifying SSH dials | SEV-2 | R1 store only masked card faces — full text fetched live on expand and never persisted (satisfies A-1 / TP-7); masking of every string before store, display and Telegram (patterns in spec §8.4, mutation-tested); allow-listed `sessions/*.json` fields only, never `*.key`, `bridgeSessionId`, `messagingSocketPath`; one allow-listed remote script per machine per poll. Bound as built (F1, amended 2026-10-17): at most 4 SSH dials per machine per tick, 1 main probe plus up to 3 catch-up probes. An oversize retry counts as a catch-up, not an extra. Typically 1 per tick, with a 2 MiB output cap per probe; cards rendered as escaped text / sanitised Markdown, links show their target. **Residual:** an unrecognised secret format reaches the face and the live expand view only | Phase 2 F1 | ADR-0010; spec §5, §8.3–8.4; F1 masking mutation tests, probe-budget test |
 | **TM-027** | **Telegram reminders (Information disclosure / Spoofing, ADR-0010 F3):** card text leaking to a third-party service; bot token exposure; a forged or replayed reminder | SEV-3 | S3: posts carry kind · project · card id and a LAN/NetBird-only link, never card text, link previews off; dedicated bot, key provisioned into the same file-custody class as the SSH key, rotation in `docs/token-rotation-runbook.md`; one-way posts only (no inbound commands accepted from Telegram); failure visible (page banner + Kuma push monitor) | Phase 2 F3 | ADR-0010; spec §6.7, §8.6; F3 payload tests |
 
@@ -415,7 +415,7 @@ PostgreSQL 15+ (Prisma) is consumed transitively as **Peta's** datastore. The co
 ---
 
 ## 5. Data Model
-<!-- Last Updated: 2026-10-17 -->
+<!-- Last Updated: 2026-10-20 -->
 
 ### Principles (binding on every entity)
 1. **Custody invariant (highest priority — #14b, D8).** Raw HMAC signing keys and raw Peta tokens live **only in gateway custody** (Peta encrypted vault). They MUST NEVER be stored, mirrored, or referenced-by-value in the control-plane DB, session memory, transcripts, prompts, model inputs, audit entries, UI, or error output. The control-plane stores only an **opaque handle** (a custody reference; never the secret).
@@ -514,13 +514,43 @@ no secret.)*
 | `tool_call_count` | INTEGER NOT NULL DEFAULT 0 | tool calls in the turn (expand checks it still matches) |
 | `thinking_chars` | INTEGER NOT NULL DEFAULT 0 | non-empty thinking characters (expand checks it still matches) |
 | `needs_you` | INTEGER NOT NULL DEFAULT 0 | 1 while a live signal pins this card |
-| `needs_kind` | TEXT | `waiting` / `menu_on_screen` / `sentinel` |
-| `dismissed_at` | TEXT | reserved for F2 Dismiss; F1 never sets it |
+| `needs_kind` | TEXT | `waiting` / `menu_on_screen` / `sentinel` / `reply_question` (F2) |
+| `dismissed_at` | TEXT | set by Dismiss (F2); F1 never set it |
 | `purge_after` | TEXT NOT NULL | ISO UTC; compared as text, so always written via `toISOString()` |
 | `version` | INTEGER NOT NULL DEFAULT 1 | bumped on every update |
 | `created_at`, `updated_at` | TEXT NOT NULL | ISO UTC (`created_at` = the turn's end time) |
+| `asks_you` | INTEGER NOT NULL DEFAULT 0 | F2: 1 when the reply's own TL;DR asks you something (spec O1, `detectReplyQuestion`), whatever other signal is up; the poller re-raises an unanswered, undismissed ask on every tick |
+| `options_json` | TEXT NOT NULL DEFAULT `'[]'` | F2: the option ids the page may show as buttons, at most 12, each 1 to 8 characters of letters, digits, `.`, `_`, `-`; ids only, never option text (R1). A sentinel's ids while a sentinel is up; the reply's letters otherwise; empty when two live sessions share the sentinel's folder |
+| `answered_at` | TEXT | F2: ISO UTC; set when a Submit is `sent`, on the submitted card only when that card asks, and on the session's latest card when that card asks |
 
-The spec's `console_submit_log` (append-only, R6) and `console_reminder` arrive with F2 and F3.
+*(The three F2 columns are added by `ALTER TABLE … ADD COLUMN` guarded by `PRAGMA table_info`, so an F1 database and a fresh one take one path; ruling A.)*
+
+**ConsoleSubmitLog** (`console_submit_log`; Maestro Console F2, ADR-0010 R6, built 2026-10-20). The
+append-only audit of everything the console types into or starts on a machine. It holds two rows per
+action: an `attempted` row written **before** any dial (no row, no dial) and a `result` row after.
+`text_masked` is the only place a reply's text is kept, masked by the audit-only `maskSubmitText`;
+nothing else stores it (R1 for the card tables is unchanged). The table is never deleted from (two
+triggers abort every UPDATE and DELETE) and is backed up with the database. A unique index on
+`(idempotency_key, row_kind)` makes a second row of one kind per key impossible. *(Additive entity:
+masked, no `trusted` column, no secret.)*
+
+| Column | Type | Meaning |
+|---|---|---|
+| `id` | TEXT PRIMARY KEY | random uuid |
+| `at` | TEXT NOT NULL | ISO UTC |
+| `idempotency_key` | TEXT NOT NULL | the page's per-send uuid (a server-minted one for New Session and the machine shell) |
+| `row_kind` | TEXT NOT NULL | `attempted` or `result`; CHECK: an `attempted` row has no outcome and a `result` row has one |
+| `outcome` | TEXT | `sent`, `refused_target_changed`, `refused_menu_visible`, `failed`, `unconfirmed`, `created_session`, `created_project`, `opened_shell`, `refused_name`, `refused_root` |
+| `reason` | TEXT | a first-party reason token, masked |
+| `machine` | TEXT NOT NULL | DevMachine `logicalName` |
+| `tmux_session`, `pane_id`, `claude_pid`, `session_id`, `proc_start` | TEXT / INTEGER | the target as the console believed it (`proc_start` is the raw stored string) |
+| `status_at_send` | TEXT | the session's status at the time, masked |
+| `card_id` | TEXT | the card the Submit came from, if any; indexed |
+| `text_masked` | TEXT CHECK `length(CAST(text_masked AS BLOB)) <= 8192` | the audit copy of the reply (twice the 4,096-byte limit; masking grows text by at most 12/7) |
+| `pane_tail_hash` | TEXT | hash of the pane tail the script verified before pasting |
+| `version`, `created_at`, `updated_at` | INTEGER / TEXT | as elsewhere |
+
+The spec's `console_reminder` arrives with F3.
 
 **UsageEvent** — the R18 usage/cost ledger seed, hand-built at the Facade (decision F restored 2026-07-09 after Bifrost non-adoption; household-converged schema 2026-07-10, bus msgs 1102/1104; walking-skeleton scope item 6): `id` PK [imm]; `at` (**server-authoritative** — never caller-supplied); `identitySlug` (the identity **class**, so per-identity cost aggregates stay meaningful); `sessionId`; `threadId`; `brainSlug`; `brainClassification` (`local | cloud_ok` — recorded **at time of call**, the audit key for metered-brain questions, R14); `promptTokens`; `completionTokens`; `totalTokens`; `cost` (nullable — null for local brains); `rateVersion` (a later price change never rewrites history); `trigger` (`interactive | wake | quiet_loop | consolidation` — distinguishes operator-talk from unattended spend; the oscillator budget-governance key); `identityStateHash` (the Profile hash active at time of call — which version of the identity made the spend, §4.3 arbitration evidence). **Append-only. `threadId`+`trigger`+`at` are first-class indexed columns (arbitration joins). NEVER stores prompt or response content — a schema invariant, not a convention.** *P6 amendments (dsh study, 2026-07-11):* `anchor` (turn/step or completion-seq; replace-not-add on the same anchor — idempotent retry de-dupe); disjoint token buckets `inputTokens` (uncached only) / `cacheReadTokens` / `cacheWriteTokens` / `outputTokens` (reasoning ⊂ output; billed input = sum of three); `provider` + `model` (rate audit); failed/aborted completions recorded. Retention: kept long as audit evidence; excluded at source from bus-sweep memory input (operational telemetry, not identity memory). The ledger is itself an **ADR-0006 projection target**: rate tables / budget caps are read from `alden-infra` and boot-verified against the Profile hash. Single accounting authority (P4 — no second ledger may ever exist; Bifrost NOT adopted, APPROVAL_LOG 2026-07-09). *(Additive telemetry entity, separate from the 8 core orchestration entities; carries no recalled content.)*
 
@@ -574,7 +604,7 @@ ToolClassification (server,tool) → governs which calls are writes/gated
 ---
 
 ## 7. Auth & Identity Strategy
-<!-- Last Updated: 2026-08-28 -->
+<!-- Last Updated: 2026-10-20 -->
 
 **Identity model — one Alden identity = one Peta user.** Each Identity (persona-as-session-profile) maps 1:1 to a Peta user; the per-identity Peta access token *is* that identity at the gateway (`userId = SHA-256(token)[:32]` — token entropy is the whole of auth). There is exactly one human actor (the operator); no multi-user/RBAC beyond the operator-vs-session-vs-admin ceremony tiers below.
 
@@ -584,6 +614,8 @@ ToolClassification (server,tool) → governs which calls are writes/gated
 1. **UI auth (#9):** LibreChat login gates every session/list/privileged surface. Logged-out → 401/redirect to login, no metadata or identity names leaked. Per-device, short-lived tokens validated server-side; logout clears that device only; pending out-of-band approvals survive elsewhere.
 2. **Session call-auth:** automatic via the per-identity Peta token (above).
 3. **Privileged tier (write approvals + gateway management):** requires a **strong step-up credential — passkey/WebAuthn or equivalent re-auth.** "Remember me" must NOT bypass the step-up gate. Gateway management (#11) is reachable ONLY via a separate authenticated admin surface, NEVER via any tool exposed to a session (R6/TM-011); the session's per-identity token has no admin scope. The **Configuration / Service Registry page (C.5, M15/D10)** — CRUD over backend endpoints, MCP server registrations, and control-plane ServiceEndpoints — lives entirely on this privileged surface: it sits behind the D6 step-up, is never session-reachable (TM-011), validates + fails closed on every write, and may edit a backend's `endpoint` but never rebind an existing identity (immutable `Identity.backendId`, #14a/TM-002).
+
+**Tier-3 passphrase step-up as built (Maestro Console F2, 2026-10-20; ADR-0010 R4; the first D6 consumer, BUGS #36).** Re-entering the operator passphrase on the console page opens a **15-minute window** (`STEP_UP_TTL_MS`) held in server memory and keyed on the **cookie session id**, so two tabs on one login share it and a second login does not. Submit, New Session and New Project call `requireElevated` before anything else: a bearer-only caller is refused `step_up_cookie_only` (the admin token alone never types), and an accepted session without an open window is refused `step_up_required`. The passphrase is compared with `/login`'s timing-safe compare, is never stored or logged, and has no attempt throttle (accepted residual F-9). `GET /console/api/step-up` reports when the window closes; `POST` with `{ "revoke": true }` closes it early (the page's **Drop elevation**). Every elevate, refuse and revoke is one `console.step_up` log line carrying the hashed session id and the request id, a refusal at **warn**. Without login (no session store or no passphrase) both step-up routes and Submit answer 503 `step_up_unavailable`. Keycard mint and revoke (BUGS #36) remain the next consumers. Terminal access stays at operator sign-in only (decision 18, 2026-10-17); while login is enabled the terminal WebSocket refuses a bearer-only caller.
 
 **Tier 4 — session keycard (machine tier, ADR-0008; M1 task 2, TP-3, 2026-08-25).** A Claude-CLI session may hold a **keycard**: a narrow read-only credential (`usage:read | approvals:read | sessions:read` — a closed enum with no write/management scope to grant, TM-011) presented as a bearer ONLY to the keycard door `/keycard/v1/*`, which is its own auth domain: the operator cookie is ignored there, the admin bearer is rejected there, and a keycard is rejected everywhere else — **no endpoint accepts two tiers** (`docs/machine-auth-design.md` §4). The server stores only `SHA-256(token)`; the raw token appears once, at mint, on the D6 admin surface. Revocation and expiry fail closed on the next call; each card's uses and denies are counted and shown. Approvals read through a keycard are **reference-only** (D8). A keycard never becomes an identity credential (design §5).
 
@@ -618,7 +650,7 @@ is never "allow everything", and each adapter carries a negative test proving th
 ---
 
 ## 9. UI Component Specifications
-<!-- Last Updated: 2026-10-17 -->
+<!-- Last Updated: 2026-10-20 -->
 
 **Cross-cutting acceptance criteria on EVERY component (hard, non-negotiable):**
 - **CB — Colorblind-safe (CC1, hard AC):** every signal/state/control distinguished by **shape, position, text label, or icon — never color alone.** A color-only cue is a SEV-2 defect.
@@ -712,13 +744,17 @@ A **persistent xterm.js SSH-terminal tab** to a selected DevMachine, opened from
 
 **The harness under the chat address (ruling 2026-08-27; Feature 11).** The console is served at `https://pantheon.ferrumcorde.com/harness/…` (VM Caddy `handle_path /harness/*` → admin service with `X-Forwarded-Prefix: /harness`; the service builds every link/redirect/asset/socket URL from that validated prefix; the admin address stays a root mount). LibreChat's footer reads **Terminals | Configuration**; Help opens `/harness/help`. Every console page shares `/assets/harness.css` — LibreChat v0.8.7's own token values — and follows LibreChat's `color-theme` (dark/light/system); terminals stay on the dark surface in both themes. The harness's **Chat** tab embeds the chat page (same-origin iframe) under the chat address and is a labelled link on the admin address. Registration stays on the Configuration page. Resolves step-08 item 5 for the terminal plane; the chat half (starting a persona conversation from the harness) waits for M2.
 
-### C.9 Maestro Console page — read-only session feed (ADR-0010, F1; built 2026-10-17)
+### C.9 Maestro Console page — session feed and answer box (ADR-0010, F1 built 2026-10-17, F2 built 2026-10-20)
 *(Numbered C.9 because C.7 and C.8 are taken.)*
 
 **Route and access.** `GET /console` (linked **Console** in the harness header) with its JSON
 `GET /console/api/state` and `GET /console/api/cards/:id/expand`. All three sit behind the operator
 guard (a keycard bearer gets 403, TM-011), are served `no-store` and are mounted under the `/harness`
-prefix like every console page.
+prefix like every console page. F2 adds `GET` and `POST /console/api/step-up`, `POST
+/console/api/cards/:id/submit`, `POST /console/api/cards/:id/dismiss`, `GET
+/console/api/cards/:id/pane`, `GET /console/api/machines/:name/projects` and `POST
+/console/api/machines/:name/sessions`, behind the same guard; the four POSTs require `application/json`
+and the typing ones (Submit, New Session) require the step-up window.
 
 **Layout and states.**
 - **Machine row:** **◎ All machines**, then one tab per registered DevMachine (a disabled or
@@ -739,8 +775,9 @@ prefix like every console page.
   state). A legend on the page spells them out.
 - **Text face and palette:** console-scoped Lexend (self-hosted) on the Deep navy palette; the rest of
   the harness theme is unchanged (ADR-0010 follow-up).
-- **Read-only (R5, F1):** no reply box, no Submit, no answer button. A NEEDS YOU card says "Answer it in
-  the terminal — this page is read-only".
+- **Read-only (R5, F1 only):** F1 had no reply box, no Submit and no answer button. F2 adds them (see
+  "F2 controls" below); a menu on screen is still shown read-only, with its options and an **Open Claude
+  session** button.
 
 **Four states.**
 - **Empty:** "no Claude sessions found on ‹machine›" when a machine answered with none, and
@@ -766,9 +803,36 @@ prefix like every console page.
 
 **Invariants.**
 - Every element is built with `textContent`; state text never reaches `innerHTML`.
-- Nothing on the page sends anything to a session.
+- Nothing on the page sends anything to a session except Karl's typed reply, or an option id of a
+  sentinel he clicked, each behind the step-up (F2 amends F1's "nothing on the page sends anything").
 - Polling runs at `pollSeconds` from the settings (2–60, default 5), and on focus with a throttle.
 - `window.__console` exposes `refresh`, `select` and `expand` for tests.
+
+**F2 controls (ADR-0010 F2; built 2026-10-20).**
+- **Reply box:** a textarea per card with a byte counter (`n / 4096 bytes`) and **Submit**; Submit is
+  off when the box is empty or over 4,096 bytes. The box is disabled, with the reason, for a machine
+  shell, an ended or unreachable session, and a session showing a prompt (`waiting`).
+- **Option buttons:** on a reply question a button copies its id into the box (you press Submit); on a
+  sentinel a button sends only its id inside a step-up window; a commit approval never gets a button (D5).
+- **Dismiss:** on any card that asks and is neither dismissed nor answered, never on a commit approval.
+- **Step-up:** a header line shows "○ not elevated" or "✓ elevated until HH:MM" with **Drop
+  elevation**; the passphrase dialog ("Confirm it is you") opens on the first send and retries once
+  with the same key. The passphrase field is emptied before the request leaves.
+- **Outcomes (glyph + word, text kept in the box unless sent):** `✓` sent ("answered by you", "sent —
+  waiting for the session"), `…` queued ("queued — the session is busy"), `⚠` refused or `unconfirmed`
+  ("Could not confirm the send — check the Claude session before sending again"), `✕` failed.
+- **Idempotency key:** one per send; kept across a lost answer or a 5xx, replaced after a 2xx or 4xx.
+- **Commit-approval screen:** **Show the session's screen** reads `GET /console/api/cards/:id/pane`
+  (masked, last 60 lines or 8 KiB, held only while the view is open); after the first id is sent the
+  view opens by itself and the card says "… ‹id› sent, HH:MM — reading the session's screen" until the
+  read succeeds, then "Check the staged change above, then type ‹id› again and press Submit to confirm". Hide, a failed read or an empty capture leaves the fallback "the session's screen
+  is not shown here". Bidi controls show as `⟦U+XXXX⟧`.
+- **View switch:** **Cards | Claude session** per project (desktop widths, 900 px or more).
+- **Shell drawer:** one per machine, **Ctrl+backtick** or the bar button, resizable; Esc inside it
+  minimises it and is not forwarded, and Ctrl+backtick toggles the drawer and is not forwarded either; programs in the shell
+  (vim, less, fzf) never receive Esc. Karl kept the Esc behaviour (A1, 2026-10-20).
+- **New session:** **+ New session** on a machine lists the projects root's folders and offers **Create
+  project**; both need the step-up. A trust prompt on a new folder is answered in the Claude session.
 
 ---
 

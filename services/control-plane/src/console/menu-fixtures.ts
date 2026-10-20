@@ -55,6 +55,22 @@ export const MENU_FIXTURES: readonly MenuFixture[] = [
   { name: "review-send", role: "standalone", re: /^ ?1 to review · 2 to send · 0 to dismiss$/m },
 ];
 
+/**
+ * The literal line-start anchors behind the askuserquestion, permission, review-send and trust fixtures: the F2
+ * delivery script (deliver-command.ts) refuses to paste when one starts a line of the pane tail (≤ 3 columns in).
+ * The trust option `No, exit` is left out as too loose a prefix; its `Yes…` option and footer carry that prompt
+ * (ruling T5-3).
+ */
+export const MENU_ANCHORS: readonly string[] = [
+  "❯ 1. ",
+  "Enter to select",
+  "Do you want to proceed?",
+  "Esc to cancel · Tab to amend",
+  "1 to review · 2 to send · 0 to dismiss",
+  "Yes, I trust this folder",
+  "Enter to confirm · Esc to cancel",
+];
+
 /** Screens that look menu-like but are not. */
 export const MENU_NEGATIVE_FIXTURES: readonly { readonly name: string; readonly re: RegExp }[] = [
   // pane-bare-prompt.txt: the empty input line between two rules. Below a pair, it voids the pair.

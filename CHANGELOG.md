@@ -19,6 +19,132 @@ for handoff clarity. Categories are ordered by impact severity.
 
 ## [Unreleased]
 
+<!-- Maestro Console F2 (Feature 16, Build Loop `maestro-console-f2`; ADR-0010; spec
+     docs/superpowers/specs/2026-10-16-maestro-console-design.md; plan docs/superpowers/plans/2026-10-18-maestro-console-f2.md) -->
+
+### Security
+- 2026-10-20 **Maestro Console F2 types into live sessions only through one audited, step-up-gated path**
+  (audit `docs/security-audits/maestro-console-f2-security-audit.md`). The audit found two SEV-1s and
+  eight SEV-2s (DI-1, DI-2, DI-3, IV-2, L1, L2, L3, F-2). Nine of the ten are fixed; the SEV-2 F-2 is
+  accepted under Karl's decision 18.
+  - **SEV-1 fixed: a `#` in a start directory (IV-1).** tmux format-expands the `new-session -c`
+    directory, so a parent folder named like `#(…)` could rewrite the path or run a command on the dev
+    machine when Karl clicked the project. `remoteDirProblem` now refuses `#`, C1 controls, lone
+    surrogates and bidi controls, at the one rule that guards the create script, the machine shell and
+    the settings root. Reproduced on tmux 3.6a before the fix.
+  - **SEV-1 fixed: the admin bearer reached the terminal (F-1).** A bearer-only caller could open the
+    terminal WebSocket and type into any session or open the machine shell with no step-up and no audit.
+    While login is enabled, a bearer-only upgrade is now refused 403 `terminal_cookie_only`; the bearer
+    keeps its API reach.
+  - **Step-up (R4):** Submit, New Session and New Project need the operator passphrase, which opens a
+    15-minute window held on the server and keyed on the cookie session. A bearer-only caller cannot
+    open it. Refusals are logged at warn with the hashed session id, never the passphrase or a guess.
+  - **Re-verified delivery:** the one delivery script re-checks the session id, the raw `procStart`, the
+    pid, the pane process chain, any menu or trust prompt on screen and (after the fix wave) tmux copy
+    mode before it pastes. Text is validated server-side (refused, never stripped) and travels as base64
+    in a quoted heredoc as one bracketed paste. A buffer name is fresh per Submit.
+  - **Masking additions:** prefixed credential patterns (OpenAI `sk-` and `sk-proj-`,
+    Slack `xox…-`, Stripe `[sr]k_live|test_`, Google `AIza…`, the AWS `ASIA` prefix; F1 already masked
+    `sk-ant-` and `AKIA`) and an assignment form
+    (`password`, `passwd`, `secret`, `token`, `api_key`, `access_key` then `:` or `=` then a value of 8
+    characters or more). Every submit-log field that came from a machine or the operator (`status_at_send`,
+    `reason`, `tmux_session`) is masked before it is stored, and a listed path the mask would alter is
+    dropped from the projects list and refused on create. The stored copy of a reply uses a stronger,
+    audit-only mask (`maskSubmitText`: 40-hex runs and long mixed letter-digit runs as well).
+  - **Request bodies:** every JSON body is decoded as strict UTF-8 first (400 `invalid_utf8`; Fastify's
+    parser had replaced bad bytes with U+FFFD), the four console POST routes require `application/json`
+    (415 otherwise), and the app error handler passes Fastify's own 4xx errors through with fixed
+    bodies instead of a 500.
+  - **Audit trail:** every send is written ahead (`attempted` before any dial, `result` after) and the
+    table is append-only by two triggers. Every machine-shell open is audited write-ahead too.
+  - **Unchanged:** `.env.local.example` gains nothing; there is no new environment variable.
+
+### Data Model
+- 2026-10-20 **`console_submit_log` and three `console_card` columns, all additive** (ruling A:
+  `CREATE TABLE IF NOT EXISTS` and `ALTER TABLE … ADD COLUMN` guarded by `PRAGMA table_info`; no
+  migration, and no F1 row is changed).
+  - **`console_submit_log`:** one row per write-ahead `attempted` and one per `result`. Columns: `id`,
+    `at`, `idempotency_key`, `row_kind`, `outcome`, `reason`, `machine`, `tmux_session`, `pane_id`,
+    `claude_pid`, `session_id`, `proc_start`, `status_at_send`, `card_id`, `text_masked`,
+    `pane_tail_hash`, `version`, `created_at`, `updated_at`. A unique index on
+    `(idempotency_key, row_kind)` makes a second `attempted` or `result` row for one key impossible.
+    `text_masked` has a CHECK of 8,192 bytes (twice the 4,096-byte reply limit; masking grows text by
+    at most 12/7). A row_kind CHECK ties `attempted` to a null outcome and `result` to a stated one.
+    Two triggers abort every UPDATE and DELETE (`console_submit_log is append-only`). The table is kept
+    forever (R6) and is backed up with the database.
+  - **`console_card` gains** `asks_you` (integer, default 0), `options_json` (text, default `'[]'`; at
+    most 12 option ids of 1 to 8 characters) and `answered_at` (text, null).
+  - **Outcome vocabulary** of a `result` row: `sent`, `refused_target_changed`, `refused_menu_visible`,
+    `failed`, `unconfirmed`, `created_session`, `created_project`, `opened_shell`, `refused_name`,
+    `refused_root`. `unconfirmed` means the command was requested but its result could not be
+    confirmed; `opened_shell` records a machine-shell open (it replaces the earlier `created_shell`,
+    which no deployed database holds).
+  - **Rollback note:** an F1 binary ignores the new table and columns. Dropping the table is a manual
+    step and deletes the audit; do not.
+
+### Added
+- 2026-10-20 **Reply from a card** (Feature 16): a reply box with a byte counter (4,096 bytes at most)
+  and **Submit**. Reply questions (spec O1: a reply whose TL;DR says it is waiting on you) are raised
+  with **Dismiss**; lettered options are buttons that copy the id into the box; sentinel options are
+  buttons that send only the id; commit approvals never get a button. Every outcome is a labelled
+  message with glyph and word, including `unconfirmed`.
+- 2026-10-20 **Passphrase step-up** (`POST /console/api/step-up`, `GET /console/api/step-up`): a header
+  line shows "elevated until HH:MM" with **Drop elevation**; the page learns the window on load.
+- 2026-10-20 **Commit-approval screen** (Task 12, spec §6.4): `GET /console/api/cards/:id/pane` returns
+  the session's screen, masked and capped to its last 60 lines or 8 KiB, never stored. After the first
+  id of a commit approval the card reads it and asks for the id again. Bidi controls on the screen show
+  as `⟦U+XXXX⟧`.
+- 2026-10-20 **Claude-session view and machine shell drawer:** a **Claude session** switch per project
+  and a drawer per machine (**Ctrl+backtick**, the bar button, resizable). Esc inside the drawer
+  minimises it and is not forwarded to the shell, so vim, less and fzf never receive it. Karl kept
+  this behaviour (A1, 2026-10-20).
+- 2026-10-20 **New Session and New Project** (`GET /console/api/machines/:name/projects`, `POST
+  /console/api/machines/:name/sessions`): list the folders under the machine's projects root, start
+  Claude in one, or create a new folder and session. Both need the step-up.
+- 2026-10-20 **Settings file `machines` key** (`projectsRoot` per machine). Documented in
+  `deploy/README.md`.
+
+### Changed
+- 2026-10-20 **Every JSON body is parsed as strict UTF-8, and Fastify's own 4xx errors keep their
+  status.** A body that is not valid UTF-8 is now 400 `invalid_utf8` on every route; an empty or
+  malformed JSON body is 400 and a body over the limit is 413, all with fixed messages (they were 500).
+  Request ids are random UUIDs (`genReqId`).
+- 2026-10-20 **The poller raises reply questions and keeps them raised** until the card is answered or
+  dismissed, and stores option ids (ids only, never text) for reply questions and sentinels; a sentinel
+  shared by two live sessions in one folder stores none, so a button cannot reach the wrong session.
+- 2026-10-20 **`pantheonOpenTerminal`** is extracted in the harness frame so the console page and the
+  frame share one terminal opener. The terminal route accepts `?shell=1`, which opens the machine's one
+  shared plain shell rooted at its `projectsRoot`; the route refuses a machine shell when it has no
+  audit store, and refuses `?tmux=sh-…&create=1`.
+- 2026-10-20 **A `waiting` session has no reply box:** the page says "the session is showing a prompt —
+  answer it in the Claude session" and the route answers 409 `menu_card`.
+
+### Fixed
+- 2026-10-20 **The app-wide 404 no longer echoes the request path** (BUGS #50). Unknown paths get a
+  fixed `not_found` body with the app's `no-store` header; the JSON form is chosen for `/api/` and
+  `/console/api/` paths.
+- 2026-10-20 **A malformed JSON body is a 400, not a 500**, on every route (Task 3 minor; audit L9).
+
+### Infrastructure
+- 2026-10-20 **No new environment variable and no new CI step.** GitHub CI is still failing on every run
+  because the repository root has no lockfile for `actions/setup-node`'s npm cache, so the CI Semgrep
+  and gitleaks steps have never run on a pushed commit (BUGS #54; fixed in its own `ci:` commit right after this one, Karl A1, 2026-10-20). The F2
+  scans were run locally (gitleaks on the staged changes: no leaks found; Semgrep with the same two
+  configs as CI's step, `p/owasp-top-ten` and `p/security-audit`, on `src`: 0 findings).
+- 2026-10-20 **A tmux server cold-started by the console's create script has no locale** (ruling T8-6).
+  Start tmux from a login shell on the machine first. Linux-Dev needs tmux 3.2 or later and `claude` on
+  `$HOME/.local/bin`; both are checked at deploy.
+
+### Documentation
+- 2026-10-20 **Maestro Console F2 documented.**
+  - Added: `docs/security-audits/maestro-console-f2-security-audit.md`; FEATURES.md Feature 16.
+  - Updated: PROJECT_BIBLE §4 (TM-020 and TM-025 status), §5 (`console_submit_log`, three `console_card`
+    columns), §7 (the step-up as built), §9 C.9; user guide, the Console section; `deploy/README.md`
+    (`machines` key, submit-log table, locale note, Linux-Dev prerequisites); BUGS #36 and rows #50 to
+    #54.
+  - ADR-0010: a follow-up dated 2026-10-20. Spec: notes at §6.4, §6.6.4a and §14.1.4. Plan: an
+    "Addendum 2026-10-20" with Task 12 and the deviations.
+
 <!-- Maestro Console F1 (Feature 15, Build Loop `maestro-console-f1`; ADR-0010; spec
      docs/superpowers/specs/2026-10-16-maestro-console-design.md; plan docs/superpowers/plans/2026-10-16-maestro-console-f1.md) -->
 

@@ -9,6 +9,9 @@ import { fileURLToPath } from "node:url";
 import {
   buildCardFaces,
   detectNeedsYou,
+  detectReplyQuestion,
+  LETTERED_OPTION_RE,
+  WAIT_CLAUSE_RE,
   kindFor,
   pickLiveSession,
   projectKeyFor,
@@ -358,5 +361,72 @@ describe("pickLiveSession", () => {
     const { live: kept, ended } = pickLiveSession([stale, live, other]);
     expect(kept).toEqual([live, other]);
     expect(ended).toEqual([stale]);
+  });
+});
+
+describe("reply_question (O1)", () => {
+  const SCHEMA2 = text("sentinel-schema2.json");
+  const ask = (tldr: string, body = ""): ReturnType<typeof detectReplyQuestion> =>
+    detectReplyQuestion(`${body}\n\n**TL;DR:** ${tldr}`, maskSecrets);
+
+  it("fires on a non-negated waiting clause", () => {
+    expect(ask("Waiting on you: reply A1 to save them, or A2 to wait.")?.waiting).toMatch(/reply A1/);
+  });
+  it("does not fire when the clause is negated in its first words", () => {
+    for (const t of [
+      "Nothing is waiting on you.",
+      "Waiting on you: nothing.",
+      "Waiting on you: no commands are needed.",
+      "Waiting on you: only your glance at the console.",
+      "Waiting on you: your usual upload.",
+      "Nothing is waiting on you right now.",
+      "Nothing is waiting on you. Next step: I commit on your word.",
+      "Nothing is waiting on you; the next step is mine.",
+      "No decision is waiting on you here.",
+      "There is nothing waiting on you until the trial ends.",
+    ]) {
+      expect(ask(t)).toBeUndefined();
+    }
+  });
+  it("Review Focus 1: negation after a comma is still the first words of the clause", () => {
+    expect(ask("Waiting on you: nothing now, but reply A1 later.")).toBeUndefined();
+    expect(ask("Waiting on you: no commands, just reply A1.")).toBeUndefined();
+  });
+  it("collects lettered option ids from the body, never numbered lists", () => {
+    const body = "- **A1 (recommended):** commit\n- **A2:** hold\n1. first finding\n2. second finding";
+    expect(ask("Waiting on you: one answer.", body)?.options).toEqual(["A1", "A2"]);
+    expect(ask("Waiting on you: one answer.", "1. a\n2. b")?.options).toEqual([]);
+  });
+  it("a single lettered line is not an option set", () => {
+    expect(ask("Waiting on you: go.", "A1: only one")?.options).toEqual([]);
+  });
+  // Known residual: "What is waiting on you right now: nothing." still fires (negation follows a colon).
+  it.todo("does not fire on 'What is waiting on you right now: nothing.'");
+  it("reads the whole reply when there is no marker", () => {
+    expect(detectReplyQuestion("Waiting on you: say go.", (t) => t)?.waiting).toBe("say go.");
+  });
+  it("a trailing question mark alone is not a signal", () => {
+    expect(ask("All done. Shall I continue?")).toBeUndefined();
+  });
+  it("detectNeedsYou appends reply_question only when no other signal fired", () => {
+    const r1 = detectNeedsYou({ status: "idle", paneTail: "", replyText: "**TL;DR:** Waiting on you: reply A1." });
+    expect(r1.signals.map((s) => s.kind)).toEqual(["reply_question"]);
+    const r2 = detectNeedsYou({ status: "idle", paneTail: "", sentinelJson: SCHEMA2, replyText: "**TL;DR:** Waiting on you: reply A1." });
+    expect(r2.signals.map((s) => s.kind)).toEqual(["sentinel"]);
+  });
+  it("masks the waiting clause", () => {
+    expect(ask("Waiting on you: paste ghp_" + "a".repeat(36) + " here.")?.waiting).not.toContain("ghp_a");
+  });
+  it("caps options at 12 unique ids and dedupes", () => {
+    const body = Array.from({ length: 30 }, (_, i) => `A${i + 1}: x\nA1: again`).join("\n");
+    const o = ask("Waiting on you: pick.", body)?.options ?? [];
+    expect(o).toHaveLength(12);
+    expect(new Set(o).size).toBe(12);
+  });
+  it("hostile input stays linear", () => {
+    const t0 = performance.now();
+    "waiting on you ".repeat(6_800).replace(WAIT_CLAUSE_RE, "");
+    "A1: x\n".repeat(20_000).replace(LETTERED_OPTION_RE, "");
+    expect(performance.now() - t0).toBeLessThan(200);
   });
 });

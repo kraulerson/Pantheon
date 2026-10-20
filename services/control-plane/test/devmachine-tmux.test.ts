@@ -19,7 +19,9 @@ import { describe, it, expect, vi } from "vitest";
 import { SshConnectionError } from "../src/devmachine/connection.js";
 import {
   TMUX_LIST_SENTINEL,
+  TMUX_SESSION_NAME_MAX,
   TmuxError,
+  assertRemoteDir,
   assertTmuxSessionName,
   buildTmuxAttachCommand,
   buildTmuxListCommand,
@@ -28,6 +30,7 @@ import {
   isSafeTmuxSessionName,
   listTmuxSessions,
   parseTmuxListOutput,
+  remoteDirProblem,
   type TmuxListResult
 } from "../src/devmachine/tmux.js";
 
@@ -75,6 +78,12 @@ describe("tmux session names (allow-list, injection safety)", () => {
     expect(isSafeTmuxSessionName(["a", "b"])).toBe(false);
     expect(() => assertTmuxSessionName(undefined)).toThrow(TmuxError);
   });
+
+  it("TMUX_SESSION_NAME_MAX is the allow-list's length cap (the machine-shell prefix budget derives from it)", () => {
+    expect(TMUX_SESSION_NAME_MAX).toBe(64);
+    expect(isSafeTmuxSessionName("x".repeat(TMUX_SESSION_NAME_MAX))).toBe(true);
+    expect(isSafeTmuxSessionName("x".repeat(TMUX_SESSION_NAME_MAX + 1))).toBe(false);
+  });
 });
 
 describe("command builders", () => {
@@ -106,6 +115,85 @@ describe("command builders", () => {
       expect(() => buildTmuxAttachCommand(bad)).toThrow(TmuxError);
       expect(() => buildTmuxAttachCommand(bad, { create: true })).toThrow(TmuxError);
     }
+  });
+
+  it("create + cwd mints the machine-shell line: attach-or-create in that directory, name and directory single-quoted (F2 Task 7)", () => {
+    const cmd = buildTmuxAttachCommand("sh-Mac-Mini", { create: true, cwd: "/Users/karl/Documents/Claude Projects" });
+    expect(cmd).toContain("/opt/homebrew/bin");
+    expect(cmd.endsWith("tmux new-session -A -s 'sh-Mac-Mini' -c '/Users/karl/Documents/Claude Projects'")).toBe(true);
+    // Without cwd the create line is unchanged.
+    expect(buildTmuxAttachCommand("sh-Mac-Mini", { create: true })).not.toContain(" -c ");
+  });
+
+  it("a cwd failing the directory allow-list never reaches a command (fail closed), and cwd without create is refused", () => {
+    for (const cwd of ["relative/dir", "/a/'b", "/a/../b", "/a/\nb", ""]) {
+      expect(() => buildTmuxAttachCommand("sh-Mac-Mini", { create: true, cwd })).toThrow(TmuxError);
+    }
+    expect(() => buildTmuxAttachCommand("sh-Mac-Mini", { cwd: "/Users/karl" })).toThrow(TmuxError);
+  });
+});
+
+describe("remote directories (F2 Task 7: the allow-list for a tmux working directory)", () => {
+  const ROOT = "/Users/karl/Documents/Claude Projects";
+
+  it.each([ROOT, "/", "/a/..b", "/a/b..", "/a/./b", "/a b/c d", `/${"x".repeat(511)}`, `/${"é".repeat(255)}`, "/a/😀b", "/a/ b", "/a/‍b"])(
+    "accepts an absolute path unchanged (spaces kept, '..' inside a segment allowed, up to 512 UTF-8 bytes; an astral character, NBSP and a ZWJ are not controls): %j",
+    (dir) => {
+      expect(assertRemoteDir(dir)).toBe(dir);
+    }
+  );
+
+  it.each([
+    ["relative", "Users/karl/Projects"],
+    ["empty", ""],
+    ["a single quote", "/Users/karl/it's"],
+    ["NUL", "/a/\0b"],
+    ["a newline", "/a/\nb"],
+    ["0x1f", "/a/\x1fb"],
+    ["DEL (0x7f)", "/a/\x7fb"],
+    ["a '..' segment in the middle", "/a/../b"],
+    ["a trailing '..' segment", "/a/.."],
+    ["a bare '..'", "/.."],
+    ["513 bytes", `/${"x".repeat(512)}`],
+    ["513 bytes of multibyte characters", `/${"é".repeat(256)}`],
+    // Ruling T11-5 (IV-1): tmux expands formats in `new-session -c`, so a '#' anywhere in the path is refused.
+    ["a tmux format '#S' in a parent segment", "/Users/karl/C#Sharp/notes2"],
+    ["'##' in a parent segment", "/Users/karl/a##b/notes2"],
+    ["'#{' in a parent segment", "/Users/karl/a#{session_name}/notes2"],
+    ["'#(' in a parent segment", "/Users/karl/a#(id)/notes2"],
+    // Ruling T11-5 (IV-6): C1 controls, lone surrogates (scanned by code point) and bidi controls.
+    ["a C1 control (U+0085)", "/a/\u0085b"],
+    ["a C1 control (U+009B)", "/a/\u009bb"],
+    ["a lone high surrogate", "/a/\ud800b"],
+    ["a lone low surrogate", "/a/\udc00b"],
+    ["a high surrogate at the end", "/a/b\ud83d"],
+    ["a bidi embedding (U+202A)", "/a/\u202ab"],
+    ["a bidi override (U+202E)", "/a/\u202eb"],
+    ["a bidi isolate (U+2066)", "/a/\u2066b"],
+    ["a bidi isolate end (U+2069)", "/a/\u2069b"]
+  ])("refuses %s with a TmuxError that names the rule, never the value", (_label, dir) => {
+    expect(() => assertRemoteDir(dir)).toThrow(TmuxError);
+    let message = "";
+    try {
+      assertRemoteDir(dir);
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).toMatch(/absolute|quote|control|'\.\.'|bytes|string|'#'|surrogate|bidirectional/);
+    if (dir !== "") expect(message).not.toContain(dir);
+  });
+
+  it("names each new rule (T11-5): '#', C1 as a control character, a lone surrogate, a bidi control", () => {
+    expect(remoteDirProblem("/a/C#Sharp/b")).toBe("must not contain '#'");
+    expect(remoteDirProblem("/a/\u0085b")).toBe("must not contain control characters");
+    expect(remoteDirProblem("/a/\ud800b")).toBe("must be well-formed Unicode (no lone surrogate)");
+    expect(remoteDirProblem("/a/\u202eb")).toBe("must not contain bidirectional control characters");
+    // A well-formed surrogate pair is one astral code point, not two lone halves.
+    expect(remoteDirProblem("/a/😀")).toBeUndefined();
+  });
+
+  it("refuses non-strings", () => {
+    for (const bad of [undefined, null, 42, ["/a"], { path: "/a" }]) expect(() => assertRemoteDir(bad)).toThrow(TmuxError);
   });
 });
 

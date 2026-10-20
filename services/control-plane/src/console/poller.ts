@@ -30,7 +30,13 @@
  *   `needsYou: false` except the session's latest, which carries `kindFor` and the needs-you signal.
  *   Needs-you flags never go stale: with no signal, or when a new face arrives, the session's flagged cards
  *   are cleared first (`clearNeedsYou`, which also resets their kind to "reply"); a signal with no new face
- *   flags the session's latest stored card (`setCardNeeds`, only when flags or kind differ). Task 11 derives
+ *   flags the session's latest stored card (`setCardNeeds`, only when flags or kind differ). F2: the last turn's
+ *   reply text is asked for a `reply_question`; the latest card stores `asksYou` (reply questions only) and its
+ *   option ids (a sentinel's or the reply's — none for a sentinel in a folder two live sessions share, triage 2);
+ *   a reply question stays raised on ticks with no new face and no
+ *   signal until the card is answered or dismissed. A stored live session whose pid a live file names with
+ *   another `procStart` is ended at once (pid reuse); a busy session whose too-long open turn did not grow is
+ *   not retried. Task 11 derives
  *   the NEEDS YOU state from the SESSION ROW (`state`); card flags only pin the card the signal belongs to;
  * - stored live sessions no longer reported alive are marked ended once they are gone (as above) and their
  *   last slice this tick was read AFTER that and was whole (offsets saved first); one read only while still
@@ -66,12 +72,12 @@ import { runRemoteCommand, type TerminalDeps } from "../devmachine/connection.js
 import { resolveConnectableMachine, type ConnectableMachine } from "../devmachine/terminal-gateway.js";
 import { TMUX_SESSION_NAME_RE, type RemoteExec } from "../devmachine/tmux.js";
 import type { DevMachine } from "../registry/types.js";
-import { buildCardFaces, detectNeedsYou, kindFor, oneLine, pickLiveSession, projectKeyFor, stateFor, tmuxTarget } from "./cards.js";
+import { buildCardFaces, detectNeedsYou, detectReplyQuestion, kindFor, oneLine, pickLiveSession, projectKeyFor, stateFor, tmuxTarget, type NeedsYou, type ReplyQuestion } from "./cards.js";
 import { maskSecrets } from "./masking.js";
 import { PANE_ID_RE, PROBE_MAX_OUTPUT_BYTES, type ProbePlan } from "./probe-command.js";
 import { runProbe, type ProbePane, type ProbeReport, type ProbeResult, type ProbeSessionFile, type ProbeSliceResult } from "./probe.js";
 import type { ConsoleSettings } from "./settings.js";
-import type { ConsoleSessionRow, SqliteConsoleStore } from "./store.js";
+import type { ConsoleCardRow, ConsoleSessionRow, SqliteConsoleStore } from "./store.js";
 import { splitTurns, type Turn } from "./transcript.js";
 
 export interface MachineHealth {
@@ -113,7 +119,7 @@ export interface PollerLogger {
 }
 
 /** Default sink: one JSON line per entry on stderr (`{ level, ...fields, msg }`). */
-const STDERR_LOGGER: PollerLogger = (() => {
+export const STDERR_LOGGER: PollerLogger = (() => {
   const line =
     (level: string) =>
     (a: object | string, msg?: string): void => {
@@ -263,6 +269,8 @@ interface Ask {
 interface MachineRun {
   readonly name: string;
   readonly at: string;
+  /** The poller's mask: stored `procStart` values went through it, so file values are compared after it. */
+  readonly mask: (t: string) => string;
   readonly stored: readonly ConsoleSessionRow[];
   readonly storedById: ReadonlyMap<string, ConsoleSessionRow>;
   readonly cursors: Map<string, Cursor>;
@@ -286,10 +294,19 @@ interface MachineRun {
   sessionsUnparsed: number;
   /** Sessions marked ended this tick. */
   readonly endedNow: Set<string>;
+  /** Stored live sessions whose pid a live file now names with a different `procStart` (pid reuse): gone at once. */
+  readonly superseded: Set<string>;
 }
 
-function newRun(name: string, at: string, stored: readonly ConsoleSessionRow[], missedBefore: ReadonlyMap<string, number> = new Map()): MachineRun {
+function newRun(
+  name: string,
+  at: string,
+  stored: readonly ConsoleSessionRow[],
+  mask: (t: string) => string,
+  missedBefore: ReadonlyMap<string, number> = new Map()
+): MachineRun {
   return {
+    mask,
     name,
     at,
     stored,
@@ -309,7 +326,8 @@ function newRun(name: string, at: string, stored: readonly ConsoleSessionRow[], 
     failure: undefined,
     missedBefore,
     sessionsUnparsed: 0,
-    endedNow: new Set()
+    endedNow: new Set(),
+    superseded: new Set()
   };
 }
 
@@ -350,7 +368,7 @@ function buildPlan(run: MachineRun, ask: Ask): ProbePlan {
  */
 function goneFor(run: MachineRun, sessionId: string, listed: ReadonlySet<string>): boolean {
   if (run.sessionsUnparsed > 0) return false;
-  if (listed.has(sessionId)) return true;
+  if (run.superseded.has(sessionId) || listed.has(sessionId)) return true;
   return (run.missedBefore.get(sessionId) ?? 0) + 1 >= MISSES_TO_END;
 }
 
@@ -379,6 +397,10 @@ function readSlice(
   const split = splitTurns(slice.bytes, slice.offset, undefined, close ? { closeOpenTurn: true } : undefined);
   run.ignored += split.ignoredLines;
   if (split.cantRead) run.problems.push(`session ${short(slice.sessionId)}: transcript unreadable — ${split.cantReadWhy ?? "unknown reason"}`);
+  // F1 carry (retry starvation): a busy session whose size did not move since the last poll and whose open turn
+  // does not fit the slice would be re-sliced, retried and re-read every tick for nothing. Skip it until the
+  // file grows or the session goes idle; the offset stays, the pane is still tailed.
+  if (slice.truncated && split.consumedBytes === 0 && !retry && file?.status === "busy" && c.storedSize !== undefined && slice.size === c.storedSize) return;
   c.turns.push(...split.turns);
   let offset = slice.offset + split.consumedBytes;
   if (slice.truncated) {
@@ -407,6 +429,17 @@ function absorbReport(run: MachineRun, report: ProbeReport, retry: boolean): voi
   for (const [k, v] of report.sentinels) run.sentinels.set(k, v);
   const live = liveFiles(report.sessions);
   const listed = new Set(report.sessions.map((f) => f.sessionId));
+  // Pid reuse (F1 carry): a stored live session absent from the live files whose pid a live file now names with
+  // another `procStart` is a different process — gone now, not after the missing-tick count. Masked against
+  // masked: the stored value went through `maskThenClip`, so the file's value must take the same transform.
+  if (run.sessionsUnparsed === 0) {
+    for (const r of run.stored) {
+      if (r.endedAt !== null || live.has(r.sessionId) || r.procStart === "") continue;
+      for (const f of live.values()) {
+        if (f.pid === r.claudePid && f.procStart !== undefined && maskThenClip(run.mask, f.procStart, MAX_STORED_TEXT_CHARS) !== r.procStart) run.superseded.add(r.sessionId);
+      }
+    }
+  }
   for (const [sessionId, file] of live) run.seen.set(sessionId, { file, panes: report.panes });
   for (const slice of report.slices) readSlice(run, slice, live, listed, retry);
   // Sessions first seen this tick (or beyond the main probe's slice cap) are read on a catch-up.
@@ -472,37 +505,102 @@ interface PersistDeps {
   readonly retentionDays: number;
 }
 
-/** Cards, needs-you flags and the session row for one session alive in the latest report. */
-function persistSession(run: MachineRun, d: PersistDeps, report: ProbeReport, sessionId: string, file: ProbeSessionFile): void {
+/** The store's bounds for a card's option ids (store.ts `OPTION_ID_RE`, `MAX_CARD_OPTIONS`). */
+const OPTION_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,7}$/;
+const MAX_OPTION_IDS = 12;
+
+/** Ids of a schema-2 sentinel's options: validated against the store's bounds, de-duplicated, never any option text. */
+function sentinelOptionIds(sentinelJson: string): string[] {
+  let doc: unknown;
+  try {
+    doc = JSON.parse(sentinelJson);
+  } catch {
+    return [];
+  }
+  const raw = typeof doc === "object" && doc !== null ? (doc as { options?: unknown }).options : undefined;
+  if (!Array.isArray(raw)) return [];
+  const ids: string[] = [];
+  for (const o of raw as unknown[]) {
+    const id = typeof o === "object" && o !== null ? (o as { id?: unknown }).id : undefined;
+    if (typeof id === "string" && OPTION_ID_RE.test(id) && !ids.includes(id)) ids.push(id);
+    if (ids.length >= MAX_OPTION_IDS) break;
+  }
+  return ids;
+}
+
+/**
+ * T10-3: the ids the page's buttons send — a sentinel's while one is raised, else the reply question's, else none.
+ * Triage 2 (DI-5): a sentinel belongs to a folder, not a session; when more than one live session on the machine
+ * shares its folder, a send button could type the id into the wrong session, so its ids are not stored (no send
+ * buttons) while the needs-you flag stays — the operator answers in the Claude session.
+ */
+function optionIdsFor(signals: readonly NeedsYou[], sentinelJson: string | undefined, reply: ReplyQuestion | undefined, sentinelShared: boolean): readonly string[] {
+  if (sentinelJson !== undefined && signals.some((s) => s.kind === "sentinel")) return sentinelShared ? [] : sentinelOptionIds(sentinelJson);
+  return reply?.options ?? [];
+}
+
+/** The session's latest card when it asks Karl something and he has neither answered nor dismissed it. */
+function unansweredReplyQuestion(store: SqliteConsoleStore, machine: string, sessionId: string): ConsoleCardRow | undefined {
+  const latest = storeCall(() => store.latestCard(machine, sessionId));
+  return latest !== undefined && latest.asksYou && latest.answeredAt === null && latest.dismissedAt === null ? latest : undefined;
+}
+
+/**
+ * Cards, needs-you flags and the session row for one session alive in the latest report. `sharesCwd`: another live
+ * session of the report runs in the same folder (triage 2).
+ */
+function persistSession(run: MachineRun, d: PersistDeps, report: ProbeReport, sessionId: string, file: ProbeSessionFile, sharesCwd: boolean): void {
   const { name, at } = run;
   const c = cursorFor(run, sessionId);
   const place = placementOf(file, report.panes, name);
   const sentinelJson = run.sentinels.get(sessionId);
+  // O1: only the LAST turn's reply is asked about; a tick that read no turn has no reply text (the sticky
+  // re-flag below carries an earlier reply question across such ticks).
+  const lastTurn = c.turns[c.turns.length - 1];
   const needs = detectNeedsYou({
     status: file.status,
     ...(file.waitingFor !== undefined ? { waitingFor: file.waitingFor } : {}),
     paneTail: place.paneId !== "" ? (run.tails.get(place.paneId) ?? "") : "",
-    ...(sentinelJson !== undefined ? { sentinelJson } : {})
+    ...(sentinelJson !== undefined ? { sentinelJson } : {}),
+    ...(lastTurn !== undefined ? { replyText: lastTurn.replyText } : {}),
+    mask: d.mask
   });
   for (const p of needs.problems) run.problems.push(`session ${short(sessionId)}: ${p}`);
   const faces = buildCardFaces(c.turns, { machine: name, projectKey: place.key, sessionId }, d.mask);
   const needsKind = needs.signals[0]?.kind ?? null;
   const kind = kindFor(needs.signals);
+  // T10-3: asksYou comes from the reply itself, whatever other signal is up (so the sticky return always works).
+  const reply = lastTurn !== undefined ? detectReplyQuestion(lastTurn.replyText, d.mask) : undefined;
+  const asksYou = reply !== undefined;
+  const hasSentinel = needs.signals.some((s) => s.kind === "sentinel");
+  const options = optionIdsFor(needs.signals, sentinelJson, reply, sharesCwd);
+  // T10-2: no new face and no signal — an unanswered, undismissed reply question stays raised.
+  const sticky = needs.signals.length === 0 && faces.length === 0 ? unansweredReplyQuestion(d.store, name, sessionId) : undefined;
+  const alreadyRaised = sticky !== undefined && sticky.needsYou && sticky.needsKind === "reply_question";
   // No stale flags (ruling 4): clear before a new latest face takes them, or when the signal is gone.
-  if (needs.signals.length === 0 || faces.length > 0) storeCall(() => d.store.clearNeedsYou(name, sessionId, at));
+  if (!alreadyRaised && (needs.signals.length === 0 || faces.length > 0)) storeCall(() => d.store.clearNeedsYou(name, sessionId, at));
+  if (sticky !== undefined && !alreadyRaised) {
+    storeCall(() => d.store.setCardNeeds(sticky.id, { needsYou: true, needsKind: "reply_question", kind: kindFor([]), options: sticky.options }, at));
+  }
   if (needs.signals.length > 0 && faces.length === 0) {
     const latest = storeCall(() => d.store.latestCard(name, sessionId));
-    if (latest !== undefined && (!latest.needsYou || latest.needsKind !== needsKind || latest.kind !== kind)) {
-      storeCall(() => d.store.setCardNeeds(latest.id, { needsYou: true, needsKind, kind }, at));
+    const idsDiffer = latest !== undefined && hasSentinel && JSON.stringify(latest.options) !== JSON.stringify(options);
+    if (latest !== undefined && (!latest.needsYou || latest.needsKind !== needsKind || latest.kind !== kind || idsDiffer)) {
+      // While a sentinel is up its ids are the card's options, always (the buttons send them). Residual: when it
+      // vanishes the sticky reply_question returns with those stored ids, not the reply's letters.
+      storeCall(() => d.store.setCardNeeds(latest.id, { needsYou: true, needsKind, kind, ...(hasSentinel ? { options } : {}) }, at));
     }
   }
   faces.forEach((face, i) => {
     const latest = i === faces.length - 1;
     const card = latest ? { ...face, kind } : face;
-    const flags = latest ? { needsYou: needs.signals.length > 0, needsKind } : { needsYou: false, needsKind: null };
+    // Every upsert passes asksYou/options: the store resets them when omitted.
+    const flags = latest
+      ? { needsYou: needs.signals.length > 0, needsKind, asksYou, options }
+      : { needsYou: false, needsKind: null, asksYou: false, options: [] };
     storeCall(() => d.store.upsertCard(card, flags, d.retentionDays, at));
   });
-  const view = stateFor(file.status, file.waitingFor, needs.signals.length > 0);
+  const view = stateFor(file.status, file.waitingFor, needs.signals.length > 0 || sticky !== undefined);
   storeCall(() => d.store.upsertSession(sessionRow(run, d, sessionId, file, place, c, view), at));
 }
 
@@ -544,7 +642,10 @@ function persistRun(run: MachineRun, d: PersistDeps, report: ProbeReport): void 
   const live = liveFiles(report.sessions);
   // An unreliable session list ends nothing this tick (final review I3).
   const mayEnd = run.sessionsUnparsed === 0;
-  for (const [sessionId, file] of live) persistSession(run, d, report, sessionId, file);
+  // Triage 2 (DI-5): how many live sessions run in each folder — a sentinel there is the folder's, not one session's.
+  const perCwd = new Map<string, number>();
+  for (const f of live.values()) perCwd.set(f.cwd, (perCwd.get(f.cwd) ?? 0) + 1);
+  for (const [sessionId, file] of live) persistSession(run, d, report, sessionId, file, (perCwd.get(file.cwd) ?? 0) > 1);
   for (const [sessionId, c] of run.cursors) {
     if (live.has(sessionId)) continue;
     const row = run.storedById.get(sessionId);
@@ -555,7 +656,7 @@ function persistRun(run: MachineRun, d: PersistDeps, report: ProbeReport): void 
       const key = src !== undefined ? placementOf(src.file, src.panes, name).key : row?.projectKey;
       if (key !== undefined) {
         for (const face of buildCardFaces(c.turns, { machine: name, projectKey: key, sessionId }, d.mask)) {
-          storeCall(() => d.store.upsertCard(face, { needsYou: false, needsKind: null }, d.retentionDays, at));
+          storeCall(() => d.store.upsertCard(face, { needsYou: false, needsKind: null, asksYou: false, options: [] }, d.retentionDays, at));
         }
       }
     }
@@ -717,9 +818,9 @@ export function createConsolePoller(deps: ConsolePollerDeps): ConsolePoller {
   /** Poll one ready machine. Resolves false when a store call failed or the poll broke (no purge then). */
   async function pollMachine(name: string, conn: ConnectableMachine, at: string, correlationId: string): Promise<boolean> {
     const mem = memFor(name, at); // seeds `pending` on the first poll
-    let run = newRun(name, at, []);
+    let run = newRun(name, at, [], mask);
     try {
-      run = newRun(name, at, storeCall(() => deps.store.listSessions(name)), mem.missedTicks);
+      run = newRun(name, at, storeCall(() => deps.store.listSessions(name)), mask, mem.missedTicks);
       await probeLoop(run, conn, deps.exec);
       if (run.sessionsUnparsed > 0) {
         run.problems.push(`session file format not recognised: ${unparsedCount(run.sessionsUnparsed)} without a valid pid or sessionId — no session ended this poll`);

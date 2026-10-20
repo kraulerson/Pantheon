@@ -110,6 +110,48 @@ describe("Internal error handling (sanitized, no leak)", () => {
     expect(res.json().error).toBe("internal_error");
   });
 
+  it("ruling T11-15 (IV-2, L9): a JSON body that is not UTF-8 is 400 invalid_utf8 — decoded by a fatal decoder BEFORE parsing, never replaced with U+FFFD", async () => {
+    const { app } = makeApp();
+    const json = { ...auth, "content-type": "application/json" };
+    const bad: ReadonlyArray<readonly [label: string, bytes: number[]]> = [
+      ["a stray 0xFF", [0xff]],
+      ["CESU-8 (an encoded surrogate)", [0xed, 0xa0, 0x80]],
+      ["an overlong '/'", [0xc0, 0xaf]],
+      ["a truncated sequence", [0xe2, 0x82]]
+    ];
+    const before = (await app.inject({ method: "GET", url: "/api/backends", headers: auth })).json() as unknown[];
+    for (const [label, bytes] of bad) {
+      const payload = Buffer.concat([Buffer.from('{"displayName":"A'), Buffer.from(bytes), Buffer.from('B","kind":"local_alden1","endpoint":"10.0.0.9:8080","enabled":true}')]);
+      const res = await app.inject({ method: "POST", url: "/api/backends", headers: json, payload });
+      expect(res.statusCode, label).toBe(400);
+      expect(res.json(), label).toEqual({ error: "invalid_utf8" });
+    }
+    expect((await app.inject({ method: "GET", url: "/api/backends", headers: auth })).json()).toEqual(before);
+    // Well-formed multi-byte UTF-8 still parses.
+    const ok = await app.inject({ method: "POST", url: "/api/backends", headers: json, payload: Buffer.from(JSON.stringify({ displayName: "Café ☕", kind: "local_alden1", endpoint: "10.0.0.9:8080", enabled: true }), "utf8") });
+    expect(ok.statusCode).toBe(201);
+    expect((ok.json() as { displayName: string }).displayName).toBe("Café ☕");
+  });
+
+  it("ruling T11-15 (L9): Fastify's own client errors keep their 4xx with a fixed body — empty, malformed and prototype-poisoned JSON 400, an oversized body 413, an unknown media type 415 — never the error's message; 5xx stays internal_error", async () => {
+    const { app } = makeApp();
+    const json = { ...auth, "content-type": "application/json" };
+    const cases: ReadonlyArray<readonly [label: string, headers: Record<string, string>, payload: string | Buffer, status: number, error: string]> = [
+      ["empty JSON body", json, "", 400, "bad_request"],
+      ["malformed JSON", json, "{not json", 400, "bad_request"],
+      ["__proto__ (secure-json-parse kept)", json, '{"__proto__":{"admin":true}}', 400, "bad_request"],
+      ["constructor.prototype", json, '{"constructor":{"prototype":{"admin":true}}}', 400, "bad_request"],
+      ["over the 1 MiB body limit", json, Buffer.alloc(1024 * 1024 + 16, 0x20), 413, "payload_too_large"],
+      ["an unknown media type", { ...auth, "content-type": "application/xml" }, "<x/>", 415, "unsupported_media_type"]
+    ];
+    for (const [label, headers, payload, status, error] of cases) {
+      const res = await app.inject({ method: "POST", url: "/api/backends", headers, payload });
+      expect(res.statusCode, label).toBe(status);
+      expect(res.json(), label).toEqual({ error });
+      expect(res.body, label).not.toMatch(/Body|JSON|content-type|Media Type|too large/i);
+    }
+  });
+
   it("config page renders an error banner when the MCP list is unavailable", async () => {
     const repo = new SqliteRegistry(":memory:");
     seedDefaults(repo);

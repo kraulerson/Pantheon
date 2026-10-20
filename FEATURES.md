@@ -436,3 +436,109 @@ R5 (menus read-only); TM-026 (machine probe); Bible §9 C.9. Audit:
 - **Settings take effect on restart:** the settings file is read once at startup.
 - **Masking misses:** an unrecognised secret format can reach a card face or the live expand view
   (spec §8.4 residual). See the audit for the full residual list.
+
+## Feature 16: Maestro Console F2 — answer from the page
+
+**Phase Built:** 2, Maestro Console Track 1, step F2 (spec §6.4, §6.6, §7, §8, §14); built 2026-10-19/20
+as one commit (ruling A1 carried from F1). Task 12, the commit-approval screen, was added on Karl's
+ruling "Build it" (2026-10-20) because spec §6.4 already required it.
+**Status:** Complete in code. Next: deploy to VM 1093 (settings file v3 with the `machines` key, a
+database backup, tmux 3.2 or later and `claude` checked on Linux-Dev), then UAT-6. What a pasted
+reply does inside Claude Code's input is judged in UAT-6; unit tests cannot prove it.
+**Summary:**
+- **Reply from a card:** each card has a reply box with a byte counter (4,096 bytes at most) and
+  **Submit**. The text is validated on the server: it is refused, never stripped, when it is empty,
+  too long, not valid UTF-8, or carries control characters or ESC.
+- **Reply questions (O1):** when a reply's TL;DR says it is waiting on you, the card is raised as a
+  question with a **Dismiss** button. Lettered options appear as buttons that only **copy** the id
+  into the box (you still press Submit). The rule is Karl's O1 ruling; its measured precision on the
+  survey was 23 of 30, so a false ask can be dismissed.
+- **Sentinel answers:** a pending-approval sentinel with option ids gets buttons that **send** only
+  that id. **Commit approvals never get a button** (D5): you type the id.
+- **Step-up:** the first send asks for the operator passphrase and opens a 15-minute window, shown in
+  the header with a **Drop elevation** button. The window is server-side and keyed on the cookie
+  session. A bearer-only caller cannot open it.
+- **Delivery:** one allow-listed script per send re-verifies the target on the machine (session id,
+  raw `procStart`, pid, pane process chain, no menu or trust prompt on screen, pane not in copy mode)
+  and pastes the text as one bracketed paste. The text travels as base64 and is never in a command
+  line.
+- **Audit:** every send writes an `attempted` row before any dial and a `result` row after, into
+  `console_submit_log` (append-only by two triggers, kept forever, R6). A failed audit write means no
+  dial.
+- **Outcomes, all labelled:** `sent` ("answered by you", "sent — waiting for the session", or "queued
+  — the session is busy"), `refused_target_changed`, `refused_menu_visible` (including copy mode),
+  `failed`, and `unconfirmed` ("Could not confirm the send — check the Claude session before sending
+  again"). A retry after a lost answer or a server error keeps its key, so it cannot paste twice.
+- **Commit-approval screen (Task 12):** after you send the first id of a commit approval, the card
+  reads the session's screen (masked, last 60 lines or 8 KiB, never stored) and says "Check the staged
+  change above, then type ‹id› again and press Submit to confirm". While the read is out it says
+  "… reading the session's screen". After Hide or a failed read it says the screen "is not shown here"
+  and points to the Claude session. Bidi controls on the screen show as `⟦U+XXXX⟧`. Each Submit
+  starts a fresh send for its card; a read from an earlier send never overwrites a later status.
+- **Machine shell drawer:** a drawer at the bottom of the page holds one shell per machine, opened
+  with **Ctrl+backtick** or the bar button, resizable. **Esc inside the drawer minimises it and is not
+  sent to the shell.** Every open is audited write-ahead (`opened_shell`).
+- **Claude-session view:** a **Claude session** switch on a project shows its live session in place
+  of the cards; menus are answered there.
+- **New Session / New Project:** **+ New session** lists the folders under the machine's projects
+  root; a click starts Claude there, and **Create project** makes a new folder and session. Both need
+  the step-up. The root comes from the settings file's `machines` key.
+- **What is never sent or stored:** a reply is never stored in `console_card` or `console_session`;
+  only the audit copy (`text_masked`, a stronger mask, at most 8,192 bytes) is kept in the submit log.
+  The passphrase is never stored or logged. The session screen and the expand text are never stored.
+  Nothing a session wrote is ever sent back into a session; a button sends at most an option id of 8
+  characters.
+
+**Key Interfaces:**
+- **Remote commands (new mint sites):** `src/console/deliver-command.ts` (`buildDeliverCommand`,
+  `parseDeliverOutput`); `src/console/session-command.ts` (`buildListProjectsCommand`,
+  `buildCreateSessionCommand`, `parseListProjectsOutput`, `parseCreateSessionOutput`);
+  `src/devmachine/tmux.ts` (`buildTmuxAttachCommand` with `create` and `cwd`, `remoteDirProblem`);
+  `src/console/probe-command.ts` (`buildPaneTailCommand`).
+- **Validation and storage:** `src/console/submit.ts` (`validateSubmitText`, `SubmitOutcome`);
+  `src/console/store.ts` (`console_submit_log`,
+  `appendSubmitLog`, `findSubmitResult`, `markAnswered`, `markDismissed`); `src/console/masking.ts`
+  (`maskSecrets`, `maskSubmitText`).
+- **Step-up:** `src/http/auth/step-up.ts` (`requireElevated`, `cookieSessionId`).
+- **Routes and page:** `src/http/routes/console.ts` (`GET`/`POST /console/api/step-up`,
+  `POST /console/api/cards/:id/submit`, `POST /console/api/cards/:id/dismiss`,
+  `GET /console/api/cards/:id/pane`); `src/http/routes/console-sessions.ts`
+  (`GET /console/api/machines/:name/projects`, `POST /console/api/machines/:name/sessions`);
+  `src/http/routes/terminal.ts` (`?shell=1`); `src/http/console-page.ts`;
+  `src/http/terminal-client.ts`; `src/http/harness-frame.ts`.
+- **Configuration:** the settings file's `machines` key (`projectsRoot` per machine). Table
+  `console_submit_log` and three added `console_card` columns (Bible §5). `.env.local.example`:
+  nothing new.
+
+**Related ADRs:** ADR-0010 (and its follow-ups 2026-10-17 and 2026-10-20); rulings R4 (step-up), R5
+(menus stay read-only; options are shown and the Claude-session view opens), R6 (append-only audit),
+D5 (no commit-approval buttons), D18 (terminal access needs operator sign-in only); TM-020 and TM-025;
+Bible §4, §5, §7, §9 C.9. Audit: `docs/security-audits/maestro-console-f2-security-audit.md`.
+
+**Test Coverage:** `Test Files 74 passed | 1 skipped (75)`, `Tests 1375 passed | 5 skipped | 1 todo
+(1381)` on the staged tree, measured 2026-10-20 (F1 closed at 961 passed). New test files:
+`console-step-up`, `console-submit`, `console-deliver-command`, `console-session-command`. Extended:
+`console-store`, `console-routes`, `console-page`, `console-poller`, `console-masking`,
+`console-cards`, `console-probe-command`, `console-settings`, `console-menu-fixtures`,
+`console-transcript`, `terminal-route`, `devmachine-tmux`, `devmachine-connection`, `http-app`,
+`mount-prefix`, `preprocessor-routes` and `server`.
+
+**Known Limitations:**
+- **Esc in the drawer is swallowed:** it minimises the drawer and is not forwarded to the shell, so
+  programs in the drawer shell (vim, less, fzf) never receive it. Ctrl+backtick and the bar button
+  also toggle the drawer. Karl kept this behaviour (A1, 2026-10-20).
+- **Terminal access is not step-up gated (accepted, D18):** anyone holding the operator cookie can
+  type into a session through the Claude-session view or the drawer, and can Submit inside Karl's
+  open 15-minute window.
+- **Commit-approval screen:** it closes at the start of every Submit, including one whose step-up is
+  then cancelled (one **Show** restores it); a failing automatic re-read discards a good screen
+  (**Refresh** restores it); the screen may predate CDF's render (the second read at about 2 seconds
+  and **Refresh** are the remedy).
+- **No passphrase throttle (accepted):** a wrong passphrase is logged at warn but not rate-limited.
+- **Unprefixed secrets:** a raw 40-character secret with no known prefix, pasted into a reply, is
+  kept in the audit copy unless it is a hex run or a long mixed run (spec §8.4 residual).
+- **Stale session file with a recycled pid** passes the liveness check until the probe compares
+  `procStart` with the live process (BUGS).
+- **Reload:** a reload does not restore the selected machine, project, view or drawer; terminals
+  re-attach when you reopen them.
+- **Desktop only:** the Claude-session view and the shell drawer need a window at least 900 px wide.

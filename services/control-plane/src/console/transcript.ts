@@ -346,7 +346,11 @@ function collapse(s: string): string {
 // `**TL;DR:**` and `**TL;DR**` (and `**TL;DR**:`) all occur in real replies. The whitespace after the colon is
 // reachable only through the colon (final review I1): `\s*:?\s*` let two runs split one whitespace stretch every
 // way, quadratic on `**TL;DR` + whitespace with no closing `**`; this form matches the same language in linear time.
-const TLDR_MARKER = /\*\*\s*TL;DR\s*(?::\s*)?\*\*\s*:?/gi;
+// F2 widened it: one parenthetical (`**TL;DR (plain English):**`) and an unbolded or heading marker at line start
+// (`TL;DR:`, `## TL;DR`, `### TL;DR —`). The parenthetical is capped at 40 chars and the line form's runs at 8, so
+// no unbounded whitespace run sits next to another optional one.
+const TLDR_MARKER_BOLD = /\*\*\s*TL;DR(?:\s*\([^)\n]{0,40}\))?\s*(?::\s*)?\*\*\s*:?/gi;
+const TLDR_MARKER_LINE = /^[ \t]{0,8}(?:#{1,6}[ \t]{1,8})?TL;DR\b[ \t]{0,8}(?:[:\u2014-][ \t]{0,8})?/gim;
 
 /**
  * The text after the last TL;DR marker to the end of its paragraph; else the first `fallbackChars`
@@ -355,9 +359,15 @@ const TLDR_MARKER = /\*\*\s*TL;DR\s*(?::\s*)?\*\*\s*:?/gi;
  */
 export function extractTldr(replyText: string, opts?: { readonly fallbackChars?: number }): string {
   let after: number | undefined;
-  for (const m of replyText.matchAll(TLDR_MARKER)) after = m.index + m[0].length;
+  for (const re of [TLDR_MARKER_BOLD, TLDR_MARKER_LINE]) {
+    for (const m of replyText.matchAll(re)) {
+      const end = m.index + m[0].length;
+      if (after === undefined || end > after) after = end;
+    }
+  }
   if (after !== undefined) {
-    const rest = replyText.slice(after);
+    // A heading marker leaves the paragraph after a blank line; skip leading whitespace so it is not read as empty.
+    const rest = replyText.slice(after).replace(/^\s+/, "");
     const blank = rest.search(/\r?\n[ \t]*\r?\n/);
     const body = collapse(blank === -1 ? rest : rest.slice(0, blank));
     if (body !== "") return body;

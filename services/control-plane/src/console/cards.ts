@@ -66,7 +66,7 @@ export function stateFor(status: string, waitingFor: string | undefined, needsYo
   }
 }
 
-export type NeedsKind = "waiting" | "menu_on_screen" | "sentinel";
+export type NeedsKind = "waiting" | "menu_on_screen" | "sentinel" | "reply_question";
 
 export interface NeedsYou {
   readonly kind: NeedsKind;
@@ -74,6 +74,8 @@ export interface NeedsYou {
   readonly detail: string;
   /** Set on a schema-2 sentinel that offers an option with `approves: "commit"` (drives `kindFor`). */
   readonly approvesCommit?: true;
+  /** Lettered option ids (≤ 12); set only for `reply_question`. */
+  readonly options?: readonly string[];
 }
 
 /**
@@ -116,6 +118,57 @@ function parseSentinel(json: string, problems: string[]): NeedsYou | undefined {
   return undefined;
 }
 
+/** A clause that says nothing is needed: checked on the first words of the clause (commas included). */
+export const NEGATION_RE = /^\W*(?:nothing|none|no\b|not\b|only your|your usual)/i;
+/** "waiting on you|karl" plus the eight words after it. */
+export const WAIT_CLAUSE_RE = /\bwaiting on (?:you|karl)\b\s*:?\s*((?:\S+\s*){0,8})/gi;
+/**
+ * A lettered option at line start: `A1`/`A2`, `Option A`, `(A)`, with an optional bullet, bold, one short
+ * parenthetical and a separator. Numbered lists never match. Every run is bounded, so it is linear.
+ */
+export const LETTERED_OPTION_RE =
+  /^[ \t]{0,3}(?:[-*][ \t]{1,4})?(?:\*\*)?(?:Option[ \t]{1,2}([A-Z])|\(([A-Z])(?=\))|([A-Z]\d{1,2}))(?:[ \t]{0,2}\([^)\n]{0,40}\))?(?:\*\*)?[ \t]{0,2}[:.)\u2014\u2013-]/gm;
+const MAX_REPLY_OPTIONS = 12;
+const PRE_NEGATION_WINDOW = 60;
+const PRE_NEGATION_RE = /\b(?:nothing|none|no|not)\b(?:\W+\w+){0,3}\W*$/i;
+const SENTENCE_END_RE = /[.;!?]\s|\n/;
+
+export interface ReplyQuestion {
+  /** Masked, ≤ 200 chars. */
+  readonly waiting: string;
+  /** Lettered ids in body order, unique, ≤ 12. */
+  readonly options: readonly string[];
+}
+
+/**
+ * O1: the TL;DR block (the whole reply when there is no marker) carries a non-negated "waiting on you"
+ * clause. A trailing question mark alone is never a signal.
+ */
+export function detectReplyQuestion(replyText: string, mask: (t: string) => string): ReplyQuestion | undefined {
+  const tldr = extractTldr(replyText, { fallbackChars: Number.POSITIVE_INFINITY });
+  let clause: string | undefined;
+  for (const m of tldr.matchAll(WAIT_CLAUSE_RE)) {
+    // Pre-clause negation ("Nothing is waiting on you"): bounded look-back within the current sentence.
+    const before = tldr.slice(Math.max(0, m.index - PRE_NEGATION_WINDOW), m.index).split(SENTENCE_END_RE).pop() ?? "";
+    if (PRE_NEGATION_RE.test(before)) continue;
+    // The clause ends at the first sentence terminator: later sentences are not part of the ask.
+    const c = ((m[1] ?? "").split(SENTENCE_END_RE)[0] ?? "").trim();
+    if (/\w/.test(c) && !NEGATION_RE.test(c)) {
+      clause = c;
+      break;
+    }
+  }
+  if (clause === undefined) return undefined;
+  const ids: string[] = [];
+  for (const m of replyText.matchAll(LETTERED_OPTION_RE)) {
+    const id = m[1] ?? m[2] ?? m[3];
+    if (id !== undefined && !ids.includes(id)) ids.push(id);
+    if (ids.length >= MAX_REPLY_OPTIONS) break;
+  }
+  // Plan: a lone lettered line is a reference, not a choice; two or more distinct ids make options.
+  return { waiting: maskClip(clause, MAX_DETAIL_CHARS, mask), options: ids.length >= 2 ? ids : [] };
+}
+
 /**
  * Signals in the order waiting (status), menu_on_screen (detail = fixture name), sentinel. A schema-2
  * sentinel raises a signal whether or not it offers a commit option (`approvesCommit` only when it does);
@@ -126,6 +179,8 @@ export function detectNeedsYou(args: {
   readonly waitingFor?: string;
   readonly paneTail: string;
   readonly sentinelJson?: string;
+  readonly replyText?: string;
+  readonly mask?: (t: string) => string;
 }): NeedsYouResult {
   const signals: NeedsYou[] = [];
   const problems: string[] = [];
@@ -138,6 +193,10 @@ export function detectNeedsYou(args: {
   if (args.sentinelJson !== undefined) {
     const s = parseSentinel(args.sentinelJson, problems);
     if (s) signals.push(s);
+  }
+  if (signals.length === 0 && args.replyText !== undefined) {
+    const q = detectReplyQuestion(args.replyText, args.mask ?? maskSecrets);
+    if (q) signals.push({ kind: "reply_question", detail: q.waiting, options: q.options });
   }
   return { signals, problems };
 }

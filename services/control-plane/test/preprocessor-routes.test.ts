@@ -77,6 +77,22 @@ describe("POST /v1/chat/completions", () => {
     await app.close();
   });
 
+  it("ruling T11-15 blast radius: the app-wide strict JSON parser still parses a normal LARGE chat body (multi-byte UTF-8, ~600 KB) — and refuses a non-UTF-8 one with 400 invalid_utf8", async () => {
+    const app = build();
+    const turns = Array.from({ length: 300 }, (_, i) => ({ role: i % 2 === 0 ? "user" : "assistant", content: `Turn ${i}: café, naïve, 日本語, emoji 😀 — ${"lorem ipsum dolor sit amet ".repeat(70)}` }));
+    const payload = Buffer.from(JSON.stringify({ model: "x", messages: turns }), "utf8");
+    expect(payload.length).toBeGreaterThan(500_000);
+    expect(payload.length).toBeLessThan(1024 * 1024);
+    const res = await app.inject({ method: "POST", url: "/v1/chat/completions", headers: { "x-pantheon-identity": "id-A", "content-type": "application/json" }, payload });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().choices[0].message.content).toBe("ok");
+    const broken = Buffer.concat([Buffer.from('{"model":"x","messages":[{"role":"user","content":"a'), Buffer.from([0xff]), Buffer.from('b"}]}')]);
+    const refused = await app.inject({ method: "POST", url: "/v1/chat/completions", headers: { "x-pantheon-identity": "id-A", "content-type": "application/json; charset=utf-8" }, payload: broken });
+    expect(refused.statusCode).toBe(400);
+    expect(refused.json()).toEqual({ error: "invalid_utf8" });
+    await app.close();
+  });
+
   it("fails closed (4xx) on a missing identity header", async () => {
     const app = build();
     const res = await app.inject({

@@ -18,8 +18,9 @@
  * {@link SshConnectionError} — never a raw error, never key material.
  *
  * The remote command is the branded {@link RemoteCommand} type: it can only be minted by the
- * allow-listing builders in `tmux.ts` and `console/probe-command.ts`, so a plain attacker-influenced
- * string cannot reach `exec` without a deliberate cast (TM-020).
+ * allow-listing builders in `tmux.ts`, `console/probe-command.ts`, `console/deliver-command.ts` and
+ * `console/session-command.ts`, so a plain attacker-influenced string cannot reach `exec` without a
+ * deliberate cast (TM-020).
  *
  * The ssh2 client is injected via {@link SshClientFactory} so the lifecycle is unit-testable; the
  * default factory wraps the real `ssh2.Client`.
@@ -32,8 +33,8 @@ import { type SshTarget } from "./provisioning.js";
 
 /**
  * A remote command that has passed allow-list validation. Minted ONLY by the allow-listing builders in
- * `tmux.ts` and `console/probe-command.ts` — the brand makes an unvalidated string a compile error at
- * the exec seam.
+ * `tmux.ts`, `console/probe-command.ts`, `console/deliver-command.ts` and `console/session-command.ts` — the
+ * brand makes an unvalidated string a compile error at the exec seam.
  */
 export type RemoteCommand = string & { readonly __brand: "RemoteCommand" };
 
@@ -110,12 +111,39 @@ const DEFAULT_CONNECT_TIMEOUT_MS = 20_000;
 const DEFAULT_REMOTE_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024;
 
+/**
+ * Where a {@link runRemoteCommand} failure happened (ruling T11-18): `before_exec` — the exec request was never sent,
+ * so nothing ran on the machine; `after_exec` — `exec()` had been asked for, so the command may have run (in part).
+ */
+export type SshFailurePhase = "before_exec" | "after_exec";
+
 /** SSH connect / PTY failures. Carries no key material and no raw ssh2 internals toward a client. */
 export class SshConnectionError extends Error {
-  constructor(message: string) {
+  /** Set by `runRemoteCommand` (additive; a terminal's failures and older callers carry none). */
+  readonly phase?: SshFailurePhase;
+
+  constructor(message: string, phase?: SshFailurePhase) {
     super(message);
     this.name = "SshConnectionError";
+    if (phase !== undefined) this.phase = phase;
   }
+}
+
+/** A first-party token for why a `runRemoteCommand` dial failed — never the error's own text (ruling T11-18). */
+export type RemoteFailureReason = "connect_failed" | "timeout" | "ssh_failed" | "exec_error";
+
+/**
+ * What a rejected `runRemoteCommand` says about the command (ruling T11-18). Anything but an `SshConnectionError`
+ * with `phase: "after_exec"` — a dial refused before the exec request, a custody error, any other throw — never
+ * reached the machine's shell: `mayHaveRun` false, reason `connect_failed`. Once the exec request was sent the
+ * command may have run: `timeout` (the overall timer fired), `exec_error` (the exec request failed) or `ssh_failed`
+ * (the connection dropped), told apart by this module's own fixed message shapes.
+ */
+export function remoteCommandFailure(err: unknown): { readonly mayHaveRun: boolean; readonly reason: RemoteFailureReason } {
+  if (!(err instanceof SshConnectionError) || err.phase !== "after_exec") return { mayHaveRun: false, reason: "connect_failed" };
+  if (/^remote command on \S+ timed out after \d+ ms$/.test(err.message)) return { mayHaveRun: true, reason: "timeout" };
+  if (/^failed to run a command on \S+$/.test(err.message)) return { mayHaveRun: true, reason: "exec_error" };
+  return { mayHaveRun: true, reason: "ssh_failed" };
 }
 
 function makeSession(client: SshClient, stream: SshStream): TerminalSession {
@@ -135,11 +163,11 @@ function defaultFactory(): SshClient {
   return new Ssh2Client() as unknown as SshClient;
 }
 
-function makeClient(factory: SshClientFactory | undefined, target: SshTarget): SshClient {
+function makeClient(factory: SshClientFactory | undefined, target: SshTarget, phase?: SshFailurePhase): SshClient {
   try {
     return (factory ?? defaultFactory)();
   } catch {
-    throw new SshConnectionError(`SSH client for ${target.logicalName} could not be created`);
+    throw new SshConnectionError(`SSH client for ${target.logicalName} could not be created`, phase);
   }
 }
 
@@ -229,6 +257,8 @@ export async function connectTerminal(
  * Resolves with the exit code as data (a non-zero exit is not an exception); rejects with a
  * sanitized {@link SshConnectionError} on connect failure, exec failure, or timeout. The connection
  * is always closed afterwards. Same fail-closed rule as the terminal: no key in custody → no dial.
+ * Every rejection from the dial onwards carries its `phase` (ruling T11-18): `execRequested` turns true
+ * immediately before `client.exec(…)`, so a failure after it may have run the command.
  */
 export async function runRemoteCommand(
   target: SshTarget,
@@ -240,10 +270,11 @@ export async function runRemoteCommand(
   const privateKey = await deps.custody.resolvePrivateKey(handle);
   const timeoutMs = opts.timeoutMs ?? DEFAULT_REMOTE_TIMEOUT_MS;
   const cap = opts.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
-  const client = makeClient(deps.clientFactory, target);
+  const client = makeClient(deps.clientFactory, target, "before_exec");
 
   return new Promise<RemoteCommandResult>((resolve, reject) => {
     let settled = false;
+    let execRequested = false;
     const stdout = new BoundedCapture(cap);
     const stderr = new BoundedCapture(cap);
     const finish = (fn: () => void): void => {
@@ -257,11 +288,15 @@ export async function runRemoteCommand(
       }
       fn();
     };
-    const fail = (message: string): void => finish(() => reject(new SshConnectionError(message)));
+    const fail = (message: string): void => {
+      const phase: SshFailurePhase = execRequested ? "after_exec" : "before_exec";
+      finish(() => reject(new SshConnectionError(message, phase)));
+    };
     const timer = setTimeout(() => fail(`remote command on ${target.logicalName} timed out after ${timeoutMs} ms`), timeoutMs);
 
     client.on("ready", () => {
       try {
+        execRequested = true;
         client.exec(command, {}, (err, stream) => {
           if (err || !stream) {
             fail(`failed to run a command on ${target.logicalName}`);

@@ -5,8 +5,10 @@
  * is asserted over the generated text itself; `*.key` files are never named.
  */
 
+import { spawnSync } from "node:child_process";
 import { describe, it, expect } from "vitest";
 import { buildTmuxListCommand } from "../src/devmachine/tmux.js";
+import { parseProbeOutput } from "../src/console/probe.js";
 import {
   PANE_ID_RE,
   PROBE_MAX_OUTPUT_BYTES,
@@ -14,6 +16,7 @@ import {
   ProbeError,
   SESSION_ID_RE,
   buildExpandCommand,
+  buildPaneTailCommand,
   buildProbeCommand,
   type ProbePlan
 } from "../src/console/probe-command.js";
@@ -137,7 +140,7 @@ describe("buildProbeCommand", () => {
 
 describe("read-only invariant and expand", () => {
   it("the command never contains send-keys, paste-buffer, load-buffer or kill-", () => {
-    const text = `${buildProbeCommand(PLAN)}\n${buildExpandCommand(SID, 10, 100)}`;
+    const text = `${buildProbeCommand(PLAN)}\n${buildExpandCommand(SID, 10, 100)}\n${buildPaneTailCommand("%5", 60)}`;
     // Plain `kill` is pinned too; only the liveness form `kill -0 ` (signal 0 sends nothing) is allowed.
     expect(text).not.toMatch(/send-keys|paste-buffer|load-buffer|kill-|\bkill\b(?! -0 )/);
     expect(text).toMatch(/kill -0 "\$pid"/);
@@ -179,11 +182,84 @@ describe("read-only invariant and expand", () => {
   });
 
   it("key files are never named", () => {
-    const text = `${buildProbeCommand(PLAN)}\n${buildExpandCommand(SID, 10, 100)}`;
+    const text = `${buildProbeCommand(PLAN)}\n${buildExpandCommand(SID, 10, 100)}\n${buildPaneTailCommand("%5", 60)}`;
     expect(text).not.toContain("*.key");
     expect(text).not.toMatch(/\.key\b/);
     expect(text).not.toContain("bridgeSessionId");
     expect(text).not.toContain("messagingSocketPath");
     expect(text).toContain("/.claude/sessions/*.json");
+  });
+});
+
+// F2 Task 12 (spec §6.4): the commit approval's second step reads the session's screen — the probe's own `tail_of`
+// function and record format over ONE allow-listed pane id, then `end`.
+describe("buildPaneTailCommand (Task 12)", () => {
+  const PREFIX_LINE = `PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH" /bin/sh <<'PANTHEON_PROBE_SCRIPT'`;
+  /** The script body between the heredoc's opening line and its closing tag (the minted text ends in a newline). */
+  const bodyOf = (cmd: string): string => {
+    const lines = cmd.split("\n");
+    expect(lines[0]).toBe(PREFIX_LINE);
+    expect(lines.slice(-2)).toEqual(["PANTHEON_PROBE_SCRIPT", ""]);
+    return lines.slice(1, -2).join("\n");
+  };
+
+  it("Task 12: the pane-tail command carries the pane id single-quoted only, reuses the probe's tail_of, and ends with end", () => {
+    const cmd = buildPaneTailCommand("%4242", 60);
+    expect(cmd.startsWith(`${PREFIX_LINE}\n`)).toBe(true);
+    // The probe's own function (`capture-pane -S -<lines>`: the visible pane plus <lines> lines of history), one call.
+    expect(cmd).toContain(String.raw`tail_of() {
+  printf 'PANTHEON_PROBE:tail:%s:' "$1"
+  tmux capture-pane -p -J -S -60 -t "$1" 2>/dev/null | b64
+  printf '\n'
+}`);
+    expect(cmd).toContain("b64() { base64 | tr -d '\\n'; }");
+    expect(cmd).toContain("command -v base64 >/dev/null 2>&1 || { echo \"probe: base64 not found\" >&2; exit 126; }");
+    expect(cmd).toContain("\ntail_of '%4242'\n");
+    expect(cmd).toContain(`printf '${PROBE_SENTINEL}end\\n'`);
+    // The pane id is the only %-digit token, and every occurrence is single-quoted.
+    expect(cmd.match(/%\d+/g)).toEqual(["%4242"]);
+    expect(cmd.split("'%4242'").length - 1).toBe(1);
+    // Nothing else of the probe: no pane listing, no session files, no transcript slices.
+    expect(cmd).not.toContain("list-panes");
+    expect(cmd).not.toContain(".claude");
+    expect(cmd).not.toContain("slice");
+    // The probe's own parser reads the output: the record by pane id, then the end marker.
+    const text = "❯ A1\n  Staged change:\n";
+    const report = parseProbeOutput(`Last login: banner\n${PROBE_SENTINEL}tail:%4242:${Buffer.from(text, "utf8").toString("base64")}\n${PROBE_SENTINEL}end\n`);
+    expect(report.tails.get("%4242")).toBe(text);
+    expect(report.ended).toBe(true);
+  });
+
+  it("Task 12: a pane id outside %digits and lines outside 1 … 200 are refused before any command exists, naming the rule only", () => {
+    const refused = (paneId: unknown, lines: unknown): ProbeError => {
+      let err: unknown;
+      try {
+        buildPaneTailCommand(paneId as string, lines as number);
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(ProbeError);
+      return err as ProbeError;
+    };
+    for (const pane of ["%5; id", "5", "%", "%1234567", "@5", "%5 ", "%-1", "%5'", "", "%5\n", "'%5'", "%5$(id)"]) {
+      const err = refused(pane, 60);
+      if (pane.length > 1) expect(err.message).not.toContain(pane);
+    }
+    refused(5, 60);
+    refused(undefined, 60);
+    for (const lines of [0, 201, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, "60", undefined, null]) refused("%5", lines);
+    expect(buildPaneTailCommand("%5", 1)).toContain("capture-pane -p -J -S -1 -t");
+    expect(buildPaneTailCommand("%5", 200)).toContain("capture-pane -p -J -S -200 -t");
+    expect(buildPaneTailCommand("%123456", 60)).toContain("tail_of '%123456'");
+  });
+
+  it("Task 12: the pane-tail body passes sh -n (parsed, never run)", () => {
+    const body = bodyOf(buildPaneTailCommand("%7", 60));
+    const check = spawnSync("/bin/sh", ["-n"], { input: body, encoding: "utf8" });
+    expect(check.error).toBeUndefined();
+    expect(check.stderr).toBe("");
+    expect(check.status).toBe(0);
+    // The check has teeth: a body the shell cannot parse fails it.
+    expect(spawnSync("/bin/sh", ["-n"], { input: `${body}\nif then fi\n`, encoding: "utf8" }).status).not.toBe(0);
   });
 });

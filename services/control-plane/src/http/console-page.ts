@@ -6,6 +6,8 @@
  *
  *   GET BASE/console/api/state            → { machines, sessions, cards, settings | { disabled, entry } }
  *   GET BASE/console/api/cards/:id/expand → ExpandResult (200 ok/changed; 400/404/409/502 labelled states)
+ *   GET BASE/console/api/cards/:id/pane   → { tail, capturedAt, truncated } — a commit approval's session screen,
+ *                                           masked server-side (F2 Task 12; 400/404/409/502 labelled states)
  *
  * TRUST BOUNDARY. Everything the client renders — titles, TL;DRs, status values, reasons, machine problems,
  * the expand view — was written by Claude sessions on dev machines (`trusted:false`, masked server-side).
@@ -38,6 +40,7 @@
 import { withBase } from "./base-path.js";
 import { pageHead } from "./theme.js";
 import { BUILD_ID, withBuild } from "./build-id.js";
+import { TERMINAL_CLIPBOARD_JS, TERMINAL_ADDONS_JS, TERMINAL_OPEN_JS } from "./terminal-client.js";
 
 export interface ConsolePageModel {
   /** Mount prefix for this request (`/harness` on the chat site, `""` on the admin site). */
@@ -159,9 +162,65 @@ main.cards { padding: var(--console-pad); display: grid; gap: var(--console-gap)
 .trail li { white-space: pre-wrap; overflow-wrap: anywhere; padding: 2px 0; }
 .trail .tool { color: var(--console-text); font-weight: 600; }
 .empty { color: var(--console-text2); font-style: italic; margin: 0; }
+/* F2 Task 12: a commit approval's session screen — terminal text, kept as laid out, scrolled sideways inside the card */
+.pane, .pane > * { min-width: 0; }
+.pane { display: grid; gap: calc(var(--console-gap) * .7); }
+.pane .detail { max-width: none; }
+/* ruling T12-2: characters in logical order, as the terminal shows them — a bidi control on screen cannot reorder a line */
+.pane-text { margin: 0; font-size: .8em; line-height: 1.3; white-space: pre; overflow-x: auto; background: var(--console-bg); color: var(--console-text); border: 1px solid var(--console-border); border-radius: 6px; padding: 8px; unicode-bidi: bidi-override; direction: ltr; }
+.pane-text:focus-visible { outline: 3px solid var(--console-text); outline-offset: 2px; }
 .status-line { margin: 0; padding: 4px var(--console-pad); font-size: .8em; color: var(--console-text2); border-top: 1px solid var(--console-border); background: var(--console-surface2); display: flex; flex-wrap: wrap; gap: .8em; }
 [data-poll-status][data-state="error"], [data-poll-status][data-state="signed_out"], [data-poll-status][data-state="disabled"] { color: var(--console-need); }
 .glyph { font-size: var(--console-glyph); }
+/* F2: the work area (view switch + cards or Claude session), fold, reply box, modals and the shell drawer */
+.work { display: flex; flex-direction: column; min-width: 0; }
+.work main.cards { flex: 1; }
+.cards-head { display: flex; flex-wrap: wrap; gap: var(--console-gap); align-items: center; padding: var(--console-pad) var(--console-pad) 0; }
+.cards-head button, .view-switch button, .tab-action, .fold-toggle, .reply button, .modal button, .elev button, .drawer-bar button { font: inherit; font-size: .85em; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--console-border); cursor: pointer; }
+.view-switch { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.view-switch button[aria-pressed="true"] { outline: 2px solid var(--console-text); outline-offset: -2px; font-weight: 600; }
+.view-switch button:disabled, .reply button:disabled, .tab-action:disabled, .modal button:disabled { opacity: .55; cursor: not-allowed; border-style: dashed; }
+.tab-action { align-self: end; margin-bottom: 8px; background: transparent; }
+.desktop-note { display: none; margin: 0; padding: var(--console-pad); font-size: .8em; color: var(--console-text2); }
+.fold-toggle { background: transparent; justify-self: start; }
+.reply { display: grid; gap: calc(var(--console-gap) * .7); border-top: 1px dashed var(--console-border); padding-top: var(--console-gap); }
+.reply textarea { width: 100%; box-sizing: border-box; min-height: 4.2em; max-width: 80ch; font: inherit; font-size: .95em; color: var(--console-text); background: var(--console-bg); border: 1px solid var(--console-border); border-radius: 6px; padding: 6px 8px; resize: vertical; }
+.reply textarea:disabled { opacity: .6; border-style: dashed; }
+.reply textarea:focus-visible { outline: 3px solid var(--console-text); outline-offset: 2px; }
+.reply-row, .options { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.byte-count { font-size: .8em; color: var(--console-text2); font-family: var(--font-mono); }
+.send-status { margin: 0; font-size: .85em; color: var(--console-text2); overflow-wrap: anywhere; }
+.send-status:empty { display: none; }
+/* status lines: the leading glyph and the words carry the state; data-state only paints it (CC1) */
+.send-status[data-state="ok"], .elev[data-state="ok"] { color: #6ad39a; }
+.send-status[data-state="warn"] { color: var(--console-need); }
+.send-status[data-state="error"], .elev[data-state="error"] { color: #ff8a8a; }
+.send-status[data-state="info"], .elev[data-state="info"] { color: var(--console-text2); }
+.elev { font-size: .85em; color: var(--console-text2); display: inline-flex; gap: 6px; align-items: center; }
+.modal-overlay { position: fixed; inset: 0; background: rgba(8, 14, 26, .75); display: flex; align-items: center; justify-content: center; z-index: 50; }
+.modal { background: var(--console-surface); color: var(--console-text); border: 1px solid var(--console-border); border-radius: 8px; padding: 14px 16px; width: min(560px, 92vw); max-height: 85vh; overflow: auto; display: grid; gap: var(--console-gap); }
+.modal h2 { margin: 0; font-size: 1.05em; }
+.modal label { display: grid; gap: 4px; font-size: .9em; }
+.modal input { font: inherit; color: var(--console-text); background: var(--console-bg); border: 1px solid var(--console-border); border-radius: 6px; padding: 6px 8px; }
+.modal .modal-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.modal .project-list { display: grid; gap: 6px; }
+.modal .project-row { text-align: left; background: transparent; }
+.claude-panels { display: flex; flex-direction: column; flex: 1; min-height: 60vh; padding: var(--console-pad); }
+.claude-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 6px; }
+.term-status { margin: 0; font-family: var(--font-mono); font-size: .8em; color: var(--console-text2); }
+.term-host { flex: 1; min-height: 50vh; }
+.drawer-wrap { border-top: 1px solid var(--console-border); background: var(--console-surface2); }
+.drawer-grip { height: 8px; cursor: ns-resize; background: var(--console-border); }
+.drawer-grip:focus-visible { outline: 3px solid var(--console-text); outline-offset: -3px; }
+.drawer-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 4px var(--console-pad); font-size: .85em; }
+.drawer-bar .hint { margin-left: auto; }
+.drawer-panels { overflow: hidden; }
+.drawer { display: flex; flex-direction: column; height: 100%; padding: 0 var(--console-pad); }
+.drawer .term-host { min-height: 0; }
+@media (max-width: 900px) {
+  [data-view-switch], [data-drawer-wrap] { display: none !important; }
+  .desktop-note { display: block; }
+}
 [hidden] { display: none !important; }`;
 
 /**
@@ -174,6 +233,9 @@ export const CONSOLE_CLIENT_JS = `
   'use strict';
   var doc = document;
   var win = window;
+${TERMINAL_CLIPBOARD_JS}
+${TERMINAL_ADDONS_JS}
+${TERMINAL_OPEN_JS}
   // A client already running in this window (a re-boot) must stop dialling before this one starts.
   if (win.__console && typeof win.__console.stop === 'function') { try { win.__console.stop(); } catch (e) {} }
   var BASE = doc.documentElement.getAttribute('data-base') || '';
@@ -193,6 +255,26 @@ export const CONSOLE_CLIENT_JS = `
   var BORDERS = { solid: 1, dashed: 1, double: 1, dotted: 1, 'thick-left': 1 };
   var SECTIONS = [{ id: 'full', label: 'full text' }, { id: 'why', label: 'why' }, { id: 'what', label: 'what it did' }];
   var SEP = '|'; // machine names cannot contain it (registry allow-list), so machine|key never collides
+  var MAX_REPLY_BYTES = 4096;
+  var OPTION_ID_RE = /^[A-Za-z0-9._-]{1,8}$/;
+  var TMUX_NAME_RE = /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/;
+  var PROJECT_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$/; // mirrors the server's rule for the HINT only; the server decides
+  var DRAWER_DEFAULT_H = 241, DRAWER_MIN_H = 96, DRAWER_STEP = 16;
+  var SUBMIT_400 = {
+    empty: 'nothing to send',
+    too_long: 'too long — ' + MAX_REPLY_BYTES + ' bytes max',
+    control_char: 'the text contains characters that cannot be sent',
+    escape: 'the text contains characters that cannot be sent',
+    invalid_utf8: 'the text contains characters that cannot be sent',
+    not_text: 'that is not text — nothing was sent',
+    invalid_key: 'the request key was refused — press Submit again',
+    'unexpected card id': 'this card has an unexpected id — nothing was sent'
+  };
+  var SUBMIT_409 = {
+    not_reachable: 'session not reachable',
+    menu_card: 'this is a menu — open the Claude session',
+    unresolved: 'could not tell whether the text went in — check the Claude session'
+  };
 
   function q(sel) { return doc.querySelector(sel); }
   var el = {
@@ -237,6 +319,12 @@ export const CONSOLE_CLIENT_JS = `
   var payload = null, lastKey = '', view = null;
   var sel = { machine: '*', project: null };
   var cardUi = map();
+  var stepUp = { until: null, known: false, unavailable: false, note: '', timer: null, modal: null, sessionModal: null };
+  var viewMode = map(); // machine|key → 'cards' | 'claude' (per project, this page load)
+  var pending = map(); // machine|tmux → a project tab inserted before the poll has seen its session
+  var claudeTerms = map(); // machine|tmux → { panel, status, note, handle }
+  var drawers = map(); // machine → { machine, el, status, handle, minimised, title }
+  var drawerH = DRAWER_DEFAULT_H, modals = [], modalSeq = 0;
   var timer = null, inflight = null, stopped = false, lastFetchAt = 0, pollMs = DEFAULT_POLL_S * 1000;
 
   // ---- view model ----
@@ -289,6 +377,15 @@ export const CONSOLE_CLIENT_JS = `
       if (s.reachable !== false) { p.reachable = true; if (typeof s.tmuxSession === 'string' && s.tmuxSession) p.tmux = s.tmuxSession; }
       if (v.state !== 'ended') p.live++;
       if (RANK[v.state] > RANK[p.worst]) { p.worst = v.state; p.worstView = v; }
+    });
+    // A project tab inserted by New session stays until the poll shows a project with that tmux session (or key).
+    Object.keys(pending).forEach(function (pk) {
+      var pp = pending[pk];
+      var m = machineOf(pp.machine);
+      var seen = m.projects.some(function (x) { return x.tmux === pp.tmux || x.key === pp.key; });
+      if (seen) { delete pending[pk]; return; }
+      var pid = pp.machine + SEP + pp.key;
+      byId[pid] = pp; projects.push(pp); m.projects.push(pp);
     });
     var all = { counts: {}, worst: 'none', needsYou: 0 };
     machineOrder.forEach(function (name) {
@@ -383,6 +480,12 @@ export const CONSOLE_CLIENT_JS = `
       pressed(b, sel.machine === name);
       b.addEventListener('click', function () { select(name, null); });
       nav.appendChild(b);
+      var ns = mk('button', 'tab-action', '+ New session'); ns.type = 'button';
+      ns.setAttribute('data-new-session', name); ns.setAttribute('data-focus-key', 'newsession:' + name);
+      ns.setAttribute('aria-label', 'New session on ' + str(name, 60));
+      ns.disabled = stepUp.unavailable;
+      ns.addEventListener('click', function () { openSessionDialog(name); });
+      nav.appendChild(ns);
     });
   }
   function projectTab(p) {
@@ -391,7 +494,7 @@ export const CONSOLE_CLIENT_JS = `
     b.setAttribute('data-state', p.worst);
     b.setAttribute('data-border', p.border);
     var v = p.worstView;
-    b.appendChild(mk('span', 'st', v ? v.glyph + ' ' + v.word + (p.live > 1 ? ' · ' + p.live + ' sessions' : '') : '– NO SESSIONS'));
+    b.appendChild(mk('span', 'st', v ? v.glyph + ' ' + v.word + (p.live > 1 ? ' · ' + p.live + ' sessions' : '') : (p.pending ? '… STARTING — not seen by the poll yet' : '– NO SESSIONS')));
     if (sel.machine === '*') b.appendChild(mk('span', 'where', 'on ' + p.machine));
     if (!p.configured) b.appendChild(mk('span', 'note', 'new — not set up'));
     pressed(b, projectSelected(p));
@@ -427,7 +530,7 @@ export const CONSOLE_CLIENT_JS = `
     nav.addEventListener('keydown', function (e) {
       var k = e.key;
       if (k !== 'ArrowRight' && k !== 'ArrowLeft' && k !== 'Home' && k !== 'End') return;
-      var tabs = Array.prototype.filter.call(nav.querySelectorAll('button'), function (b) { return !b.disabled; });
+      var tabs = Array.prototype.filter.call(nav.querySelectorAll('button.tab'), function (b) { return !b.disabled; });
       if (!tabs.length) return;
       var i = tabs.indexOf(doc.activeElement); if (i < 0) return;
       var n = k === 'Home' ? 0 : k === 'End' ? tabs.length - 1 : (i + (k === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length;
@@ -510,7 +613,11 @@ export const CONSOLE_CLIENT_JS = `
   // ---- cards ----
   function sessionFor(c) { var k = c.machine + SEP + c.sessionId; return has(view.sessionsById, k) ? view.sessionsById[k] : null; }
   function projectFor(c) { var k = c.machine + SEP + c.projectKey; return has(view.byId, k) ? view.byId[k] : null; }
-  function uiFor(id) { if (!has(cardUi, id)) cardUi[id] = { open: {}, view: null, status: '', fetching: null }; return cardUi[id]; }
+  function projectOf(machine, key) { var k = machine + SEP + key; return view && has(view.byId, k) ? view.byId[k] : null; }
+  function uiFor(id) {
+    if (!has(cardUi, id)) cardUi[id] = { open: {}, view: null, status: '', fetching: null, text: '', key: null, keyText: null, busy: false, dismissing: false, sendStatus: '', fold: null, needsYou: false, pane: null, paneStatus: '', paneFetching: null, paneGen: 0, paneTimer: null, sendSeq: 0, confirmText: null, nextStep: null };
+    return cardUi[id];
+  }
   function findCard(id) {
     var list = el.cards ? el.cards.querySelectorAll('[data-card]') : [];
     for (var i = 0; i < list.length; i++) if (list[i].getAttribute('data-card') === id) return list[i];
@@ -531,6 +638,8 @@ export const CONSOLE_CLIENT_JS = `
     var meta = [age(c.createdAt, now)];
     if (num(c.toolCallCount) > 0) meta.push(plural(num(c.toolCallCount), 'tool call', 'tool calls'));
     if (num(c.thinkingChars) > 0) meta.push('with reasoning');
+    // M-2 (ruling T11-20): the stored answer time, so it survives a reload and shows on every device.
+    if (typeof c.answeredAt === 'string' && c.answeredAt) meta.push('answered ' + hhmm(c.answeredAt));
     if (typeof c.dismissedAt === 'string' && c.dismissedAt) meta.push('dismissed');
     return meta.join(' · ');
   }
@@ -555,8 +664,11 @@ export const CONSOLE_CLIENT_JS = `
     art.appendChild(head);
     var title = mk('h3', 'title', str(c.title, 120) || '(untitled)'); title.setAttribute('data-title', ''); art.appendChild(title);
     if (sv && sv.reason) { var r = mk('p', 'reason', 'waiting for: ' + sv.reason); r.setAttribute('data-reason', ''); art.appendChild(r); }
+    ui.needsYou = c.needsYou === true;
+    var fold = mk('button', 'fold-toggle'); fold.type = 'button'; fold.setAttribute('data-fold-toggle', ''); fold.setAttribute('data-focus-key', 'fold:' + c.id);
+    fold.addEventListener('click', function () { setFold(c.id, !foldOpen(c.id)); syncFoldAll(); });
+    art.appendChild(fold);
     var tldr = mk('div', 'tldr', str(c.tldrMasked, 1024)); tldr.setAttribute('data-tldr', ''); art.appendChild(tldr);
-    if (c.needsYou === true) art.appendChild(mk('p', 'hint', 'Answer it in the terminal — this page is read-only.'));
     if (p && !p.reachable) art.appendChild(mk('p', 'hint', 'not reachable — this session has no tmux pane; start it in tmux to reach it from here.'));
     var actions = mk('div', 'actions');
     SECTIONS.forEach(function (s) {
@@ -575,7 +687,10 @@ export const CONSOLE_CLIENT_JS = `
     SECTIONS.forEach(function (s) {
       var sec = mk('section', 'detail'); sec.setAttribute('data-section', s.id); sec.setAttribute('aria-label', s.label); art.appendChild(sec);
     });
+    if (c.kind === 'commit_approval') renderPane(art, c); // F2 Task 12: above the reply box (the next step says "above")
+    if (c.kind === 'menu') renderMenuActions(art, c, p); else renderReplyBox(art, c, ses);
     applyCardUi(art, ui);
+    applyFold(art, c.id);
     return art;
   }
   function applyCardUi(art, ui) {
@@ -661,6 +776,822 @@ export const CONSOLE_CLIENT_JS = `
     return p;
   }
 
+  // ---- the commit approval's second step (F2 Task 12, spec §6.4): the session's screen, read on demand ----
+  // CDF answers the first id by showing the question, the staged change and the hooks in the session, then asks for the
+  // id again. The server masks and caps the screen; it is shown as text in a <pre> and held only while the view is open
+  // (never in localStorage / sessionStorage — R1). A failed or empty read closes the view and says why (CC1: glyph +
+  // words). CDF's render appears only once every UserPromptSubmit hook on the machine has finished, so a send reads the
+  // screen afresh and once more PANE_REREAD_MS later (fix round 1, I-1).
+  var PANE_409 = { not_commit_approval: "only a commit approval shows the session's screen", not_reachable: 'session not reachable — its screen cannot be read from here' };
+  var PANE_REREAD_MS = 2000;
+  // Ruling T12-3: every bidi formatting character on the screen shows as a visible mark (⟦U+202E⟧), so none can reorder
+  // a line whatever the style does (an RLO inside bidi-override still opens an override of its own). Display only: the
+  // server's masked text is unchanged. The class is written with escapes, never the characters themselves.
+  var BIDI_RE = /[\\u202A-\\u202E\\u2066-\\u2069\\u200E\\u200F\\u061C]/g;
+  function bidiMarks(s) {
+    return s.replace(BIDI_RE, function (ch) { return '⟦U+' + ('000' + ch.charCodeAt(0).toString(16).toUpperCase()).slice(-4) + '⟧'; });
+  }
+  function renderPane(art, c) {
+    var wrap = mk('div', 'pane'); wrap.setAttribute('data-pane', '');
+    var row = mk('div', 'actions');
+    var show = mk('button', null, "Show the session's screen"); show.type = 'button';
+    show.setAttribute('data-pane-show', ''); show.setAttribute('data-focus-key', 'pane-show:' + c.id); show.setAttribute('aria-controls', 'pane-' + c.id);
+    show.addEventListener('click', function () { showPane(c.id); });
+    row.appendChild(show); wrap.appendChild(row);
+    wrap.appendChild(statusLine('data-pane-status', 'status').node);
+    var sec = mk('section', 'detail'); sec.id = 'pane-' + c.id; sec.setAttribute('data-pane-view', ''); sec.setAttribute('aria-label', "The session's screen");
+    sec.appendChild(mk('h4', null, "The session's screen (masked)"));
+    var pre = mk('pre', 'pane-text'); pre.setAttribute('data-pane-text', ''); pre.setAttribute('tabindex', '0'); sec.appendChild(pre);
+    var hint = mk('p', 'hint', 'If the staged change is not shown yet, press Refresh'); hint.setAttribute('data-pane-hint', ''); sec.appendChild(hint);
+    var acts = mk('div', 'actions');
+    var rb = mk('button', null, 'Refresh'); rb.type = 'button'; rb.setAttribute('data-pane-refresh', ''); rb.setAttribute('data-focus-key', 'pane-refresh:' + c.id);
+    rb.addEventListener('click', function () { showPane(c.id); });
+    var hb = mk('button', null, 'Hide'); hb.type = 'button'; hb.setAttribute('data-pane-hide', ''); hb.setAttribute('data-focus-key', 'pane-hide:' + c.id);
+    hb.addEventListener('click', function () { hidePane(c.id); });
+    acts.appendChild(rb); acts.appendChild(hb); sec.appendChild(acts);
+    wrap.appendChild(sec);
+    art.appendChild(wrap);
+    applyPane(wrap, uiFor(c.id));
+  }
+  function applyPane(box, ui) {
+    var open = !!ui.pane;
+    var show = box.querySelector('[data-pane-show]'), refreshBtn = box.querySelector('[data-pane-refresh]');
+    var sec = box.querySelector('[data-pane-view]'), pre = box.querySelector('[data-pane-text]'), st = box.querySelector('[data-pane-status]');
+    show.hidden = open; show.setAttribute('aria-expanded', open ? 'true' : 'false');
+    [show, refreshBtn].forEach(function (b) { if (ui.paneFetching) b.setAttribute('aria-busy', 'true'); else b.removeAttribute('aria-busy'); });
+    sec.hidden = !open;
+    var t = open ? ui.pane.tail : '';
+    if (pre.textContent !== t) pre.textContent = t;
+    if (st.textContent !== ui.paneStatus) st.textContent = ui.paneStatus;
+    st.setAttribute('data-state', stateOf(ui.paneStatus));
+  }
+  // Applies the card's pane state and re-words the send's next step to match it (M-1, nextStepText); when the pressed
+  // button goes away (Show as the view opens, Refresh / Hide as it closes) the keyboard's place moves to the one that
+  // replaced it.
+  function refreshPane(id) {
+    var ui = uiFor(id), next = nextStepText(ui);
+    if (next !== null) setSend(id, next);
+    var art = findCard(id), box = art ? art.querySelector('[data-pane]') : null;
+    if (!box) return;
+    var a = doc.activeElement, inside = !!(a && box.contains(a));
+    applyPane(box, ui);
+    if (!inside || !a.closest('[hidden]')) return;
+    var to = box.querySelector(ui.pane ? '[data-pane-refresh]' : '[data-pane-show]');
+    if (to) { try { to.focus({ preventScroll: true }); } catch (e) { to.focus(); } }
+  }
+  function clock(iso) { var d = new Date(iso); return isNaN(d.getTime()) ? '(unknown time)' : hhmmss(d); }
+  function paneFailure(r) {
+    var st = r.status, b = r.body && typeof r.body === 'object' ? r.body : null;
+    if (r.signedOut) return '✕ signed out — reload to sign in';
+    if (st === 400) return '⚠ this card has an unexpected id — nothing was read';
+    if (st === 404) return '⚠ this card is gone — nothing to show';
+    if (st === 409) return '⚠ ' + (b && has(PANE_409, b.error) ? PANE_409[b.error] : 'refused — ' + str(String(b ? b.error : ''), 40));
+    if (st === 502) return "✕ Can't show the session's screen now — " + (b && typeof b.message === 'string' && b.message ? str(b.message, 300) : 'the machine did not answer');
+    return '✕ the harness answered HTTP ' + st;
+  }
+  // M-1: a commit approval's next step follows the view. It points "above" only while a screen read for this send is
+  // shown, says "reading" while that read is out, and otherwise points to the Claude session (the view hidden, or the
+  // read failed). ui.nextStep is set when the send is answered sent, and cleared when the card's next Submit starts (B-1).
+  function nextStepText(ui) {
+    var n = ui.nextStep;
+    if (!n) return null;
+    var view = ui.pane ? 'shown' : ui.paneFetching ? 'reading' : 'closed';
+    if (n.repeat) return '✓ ' + n.text + ' sent again to confirm, ' + n.at + (view === 'shown' ? ' — the screen above shows what the session did' : view === 'reading' ? " — reading the session's screen" : " — the session's screen is not shown here; open the Claude session to see what it did");
+    if (view === 'shown') return '⚠ Check the staged change above, then type ' + n.text + ' again and press Submit to confirm';
+    if (view === 'reading') return '… ' + n.text + ' sent, ' + n.at + " — reading the session's screen";
+    return '⚠ CDF asks for ' + n.text + " again to confirm — the session's screen is not shown here: open the Claude session to see the staged change, then type " + n.text + ' again and press Submit';
+  }
+  // Show and Refresh read the screen again; one read at a time per card, except that a send's read is FRESH: a read
+  // already in flight began before it, so its answer is dropped (I-1). A read belongs to the view and to the send it
+  // began under (B-1): once a fresh read replaces it, Hide closes the view or the card's next Submit starts, its answer
+  // writes nothing — neither the screen view nor a status line.
+  function showPane(id, fresh) {
+    var ui = uiFor(id);
+    if (ui.paneFetching && !fresh) return ui.paneFetching;
+    if (!ID_RE.test(id)) { ui.pane = null; ui.paneStatus = '⚠ this card has an unexpected id — nothing was read'; refreshPane(id); return Promise.resolve(); }
+    if (ui.paneFetching) ui.paneGen++;
+    var gen = ui.paneGen, seq = ui.sendSeq;
+    var current = function () { return gen === ui.paneGen && seq === ui.sendSeq; };
+    ui.paneStatus = "… reading the session's screen";
+    var p = request(BASE + '/console/api/cards/' + encodeURIComponent(id) + '/pane').then(function (r) {
+      if (!current()) return;
+      var b = r.body;
+      var answered = !r.signedOut && r.status === 200 && b && typeof b === 'object' && typeof b.tail === 'string' && typeof b.capturedAt === 'string' && typeof b.truncated === 'boolean';
+      // M-1: an empty capture is a failed one — never a tick over an empty screen.
+      if (answered && b.tail.trim() !== '') {
+        ui.pane = { tail: bidiMarks(str(b.tail, 8192)) }; // the clip first, so it never splits a mark
+        ui.paneStatus = "✓ the session's screen at " + clock(b.capturedAt) + (b.truncated ? ' — cut to its last 60 lines / 8 KiB' : '');
+        return;
+      }
+      ui.pane = null;
+      ui.paneStatus = answered ? "⚠ the session's screen came back empty — the pane may have closed" : paneFailure(r);
+    }).catch(function () {
+      if (!current()) return;
+      ui.pane = null;
+      ui.paneStatus = "✕ Can't show the session's screen now — the harness did not answer";
+    }).then(function () {
+      if (!current()) return; // dropped: whatever made it stale owns the view and the status lines now
+      if (ui.paneFetching === p) ui.paneFetching = null;
+      refreshPane(id); // the screen (or why not), and the next step that goes with it
+    });
+    ui.paneFetching = p;
+    refreshPane(id); // "reading" and aria-busy while the machine answers
+    return p;
+  }
+  function clearPaneTimer(ui) { if (ui.paneTimer !== null) { clearTimeout(ui.paneTimer); ui.paneTimer = null; } }
+  // Hide closes the view, forgets the text, drops an answer still in flight and cancels a send's second read. Every send
+  // starts with it too (newSend, paneAfterSend), so nothing read for an earlier send stays on the card.
+  function hidePane(id) {
+    var ui = uiFor(id);
+    clearPaneTimer(ui);
+    ui.paneGen++; ui.paneFetching = null; ui.pane = null; ui.paneStatus = '';
+    refreshPane(id);
+  }
+  // A send's reads (I-1): the view starts empty (a screen or a read from before the send is not this send's — M-1), then
+  // a fresh read now and one more PANE_REREAD_MS later — skipped when the card is no longer on the page, cancelled by
+  // Hide or by the card's next Submit (B-1). next is this send's next step; nextStepText words it from the view.
+  function paneAfterSend(id, next) {
+    var ui = uiFor(id), seq = ui.sendSeq;
+    hidePane(id);
+    ui.nextStep = next;
+    showPane(id, true);
+    ui.paneTimer = setTimeout(function () {
+      ui.paneTimer = null;
+      if (seq === ui.sendSeq && findCard(id)) showPane(id, true);
+    }, PANE_REREAD_MS);
+  }
+
+  // ---- per-viewer storage: every access guarded (a private window or blocked site data throws) ----
+  function lsGet(k) { try { return win.localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { win.localStorage.setItem(k, v); } catch (e) {} }
+  function ssGet(k) { try { return win.sessionStorage.getItem(k); } catch (e) { return null; } }
+  function ssSet(k, v) { try { win.sessionStorage.setItem(k, v); } catch (e) {} }
+
+  // ---- fold (trial finding 4): needs-you cards open, the rest folded; the choice is remembered per card ----
+  function foldOpen(id) {
+    var ui = uiFor(id);
+    if (ui.fold === 'open') return true;
+    if (ui.fold === 'closed') return false;
+    var s = lsGet('console.fold.' + id);
+    if (s === 'open') return true;
+    if (s === 'closed') return false;
+    return ui.needsYou;
+  }
+  function applyFold(art, id) {
+    var open = foldOpen(id);
+    var t = art.querySelector('[data-tldr]'); if (t) t.hidden = !open;
+    var b = art.querySelector('[data-fold-toggle]');
+    if (b) { b.textContent = (open ? '▾ ' : '▸ ') + 'TL;DR'; b.setAttribute('aria-expanded', open ? 'true' : 'false'); }
+  }
+  function setFold(id, open) {
+    var ui = uiFor(id); ui.fold = open ? 'open' : 'closed';
+    lsSet('console.fold.' + id, ui.fold);
+    var art = findCard(id); if (art) applyFold(art, id);
+  }
+  function syncFoldAll() {
+    var b = q('[data-fold-all]'); if (!b) return;
+    var list = cardsInScope();
+    b.textContent = list.some(function (c) { return foldOpen(c.id); }) ? 'Fold all' : 'Expand all'; // the label names the NEXT action
+    b.disabled = list.length === 0;
+  }
+  function foldAll() {
+    var list = cardsInScope();
+    var anyOpen = list.some(function (c) { return foldOpen(c.id); });
+    list.forEach(function (c) { setFold(c.id, !anyOpen); });
+    syncFoldAll();
+  }
+
+  // ---- writes: JSON in, { status, body } out; a rejection means no answer at all ----
+  function send(method, url, body) {
+    var opts = { method: method, credentials: 'same-origin', headers: { accept: 'application/json' } };
+    if (body !== undefined) { opts.headers['content-type'] = 'application/json'; opts.body = JSON.stringify(body); }
+    return new Promise(function (resolve, reject) {
+      var p; try { p = fetch(url, opts); } catch (e) { reject(e); return; }
+      Promise.resolve(p).then(resolve, reject);
+    }).then(function (r) {
+      if (r.status === 204) return { status: 204, body: null };
+      return Promise.resolve().then(function () { return r.json(); }).then(
+        function (b) { return { status: r.status, body: b }; },
+        function () { return { status: r.status, body: null }; });
+    });
+  }
+  function newKey() {
+    var c = win.crypto;
+    if (c && typeof c.randomUUID === 'function') return c.randomUUID();
+    // randomUUID needs a secure context; the console may be opened over plain http on the LAN
+    var b = new Uint8Array(16); c.getRandomValues(b);
+    b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128;
+    var h = Array.prototype.map.call(b, function (x) { return (x < 16 ? '0' : '') + x.toString(16); }).join('');
+    return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20);
+  }
+  function utf8Len(s) { return new TextEncoder().encode(s).length; }
+
+  // ---- modal: focus trapped, Esc dismisses, focus goes back to whatever opened it ----
+  var FOCUSABLE = 'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
+  function openModal(attr, title, onClose) {
+    var opener = doc.activeElement;
+    var openerKey = opener && opener.getAttribute ? opener.getAttribute('data-focus-key') : null;
+    var overlay = mk('div', 'modal-overlay');
+    var dlg = mk('div', 'modal');
+    dlg.setAttribute(attr, ''); dlg.setAttribute('role', 'dialog'); dlg.setAttribute('aria-modal', 'true');
+    var h = mk('h2', null, title); h.id = 'console-modal-' + (++modalSeq); dlg.setAttribute('aria-labelledby', h.id);
+    dlg.appendChild(h); overlay.appendChild(dlg); doc.body.appendChild(overlay);
+    var m = { overlay: overlay, dlg: dlg, closed: false, onDismiss: null };
+    m.close = function () {
+      if (m.closed) return;
+      m.closed = true;
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      var i = modals.indexOf(m); if (i >= 0) modals.splice(i, 1);
+      if (onClose) onClose();
+      if (opener && opener.isConnected && typeof opener.focus === 'function') { try { opener.focus(); } catch (e) {} }
+      else restoreFocus(openerKey); // the opener was re-rendered meanwhile: find its twin
+    };
+    m.dismiss = function () { m.close(); if (m.onDismiss) m.onDismiss(); };
+    dlg.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); m.dismiss(); return; }
+      if (e.key !== 'Tab') return;
+      var f = Array.prototype.filter.call(dlg.querySelectorAll(FOCUSABLE), function (x) { return !x.hidden; });
+      if (!f.length) { e.preventDefault(); return; }
+      var first = f[0], last = f[f.length - 1], a = doc.activeElement;
+      if (e.shiftKey && (a === first || !dlg.contains(a))) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (a === last || !dlg.contains(a))) { e.preventDefault(); first.focus(); }
+    });
+    modals.push(m);
+    return m;
+  }
+
+  // ---- step-up: a passphrase opens a short window in which the console may type; the header says when it ends ----
+  var STEP_UP_URL = BASE + '/console/api/step-up';
+  function elevatedNow() { return typeof stepUp.until === 'string' && Date.parse(stepUp.until) > Date.now(); }
+  function stepUpWords(kind) {
+    if (kind === 'unavailable') return '✕ step-up unavailable — login is disabled';
+    if (kind === 'cookie_only') return '✕ step-up needs a signed-in browser session — a bearer token cannot elevate';
+    if (kind === 'cancelled') return '⚠ step-up cancelled — nothing was sent';
+    if (kind === 'busy') return '⚠ a step-up prompt is already open — finish it first';
+    if (kind === 'signed_out') return '✕ signed out — reload to sign in';
+    if (kind === 'network') return "✕ can't reach the harness — step-up not checked, nothing was sent";
+    return '✕ step-up failed — nothing was sent';
+  }
+  function renderElevation() {
+    var box = q('[data-elevation]'); if (!box) return;
+    clear(box);
+    box.setAttribute('data-state', stepUp.unavailable ? 'error' : elevatedNow() ? 'ok' : 'info');
+    if (stepUp.unavailable) { box.appendChild(tx('✕ step-up unavailable — login is disabled')); return; }
+    if (!stepUp.known) return;
+    if (elevatedNow()) {
+      box.appendChild(tx('✓ elevated until ' + hhmm(stepUp.until)));
+      var d = mk('button', null, 'Drop elevation'); d.type = 'button'; d.setAttribute('data-drop-elevation', ''); d.setAttribute('data-focus-key', 'drop-elevation');
+      d.addEventListener('click', dropElevation);
+      box.appendChild(d);
+    } else box.appendChild(tx('○ not elevated'));
+    if (stepUp.note) box.appendChild(tx(' · ' + stepUp.note));
+  }
+  function clearStepUpTimer() { if (stepUp.timer !== null) { clearTimeout(stepUp.timer); stepUp.timer = null; } }
+  function setElevation(until) {
+    stepUp.known = true; stepUp.unavailable = false; stepUp.note = '';
+    stepUp.until = typeof until === 'string' ? until : null;
+    clearStepUpTimer();
+    if (elevatedNow()) stepUp.timer = setTimeout(function () { stepUp.timer = null; renderElevation(); }, Math.min(Date.parse(stepUp.until) - Date.now() + 250, 2147000000));
+    renderElevation(); syncGates();
+  }
+  function markUnavailable() {
+    stepUp.unavailable = true; stepUp.until = null; clearStepUpTimer();
+    renderElevation(); syncGates();
+  }
+  function dropElevation() {
+    send('POST', STEP_UP_URL, { revoke: true }).then(function (r) {
+      if (r.status === 204 || r.status === 200) setElevation(null);
+      else { stepUp.note = 'could not drop it — HTTP ' + r.status; renderElevation(); }
+    }, function () { stepUp.note = "could not drop it — can't reach the harness"; renderElevation(); });
+  }
+  // Page load: learn whether a window is already open (after a reload) or step-up is unavailable, before any send.
+  // Same branches as ensureElevated, but it never opens the dialog; an unreadable answer leaves the header as it was.
+  function checkStepUp() {
+    send('GET', STEP_UP_URL).then(function (r) {
+      if (r.status === 503) { markUnavailable(); return; }
+      if (r.status === 403 && r.body && r.body.error === 'step_up_cookie_only') { stepUp.known = true; stepUp.note = 'step-up needs a signed-in browser session'; renderElevation(); return; }
+      if (r.status === 200 && r.body && typeof r.body === 'object') setElevation(r.body.elevatedUntil);
+    }, function () {});
+  }
+  // Runs then() with a step-up window open: straight away when one is, else after the passphrase dialog. declined(kind) otherwise.
+  function ensureElevated(then, declined) {
+    var fail = typeof declined === 'function' ? declined : function () {};
+    if (stepUp.unavailable) { fail('unavailable'); return; }
+    send('GET', STEP_UP_URL).then(function (r) {
+      if (r.status === 503) { markUnavailable(); fail('unavailable'); return; }
+      if (r.status === 401) { fail('signed_out'); return; }
+      if (r.status === 403 && r.body && r.body.error === 'step_up_cookie_only') { fail('cookie_only'); return; }
+      if (r.status !== 200 || !r.body || typeof r.body !== 'object') { fail('error'); return; }
+      setElevation(r.body.elevatedUntil);
+      if (elevatedNow()) then(); else openStepUpDialog(then, fail);
+    }, function () { fail('network'); });
+  }
+  function openStepUpDialog(then, fail) {
+    if (stepUp.modal) { fail('busy'); return; }
+    var m = openModal('data-stepup-dialog', 'Confirm it is you', function () { stepUp.modal = null; });
+    stepUp.modal = m;
+    m.onDismiss = function () { fail('cancelled'); };
+    var form = mk('form'); form.setAttribute('novalidate', '');
+    var lab = mk('label', null, 'Passphrase');
+    var input = mk('input'); input.type = 'password'; input.name = 'passphrase'; input.setAttribute('autocomplete', 'current-password');
+    lab.appendChild(input);
+    var stl = statusLine('data-stepup-status', 'alert'), st = stl;
+    var actions = mk('div', 'modal-actions');
+    var ok = mk('button', null, 'Confirm'); ok.type = 'submit'; ok.setAttribute('data-stepup-confirm', '');
+    var no = mk('button', null, 'Cancel'); no.type = 'button'; no.setAttribute('data-stepup-cancel', '');
+    no.addEventListener('click', function () { m.dismiss(); });
+    actions.appendChild(ok); actions.appendChild(no);
+    form.appendChild(lab); form.appendChild(stl.node); form.appendChild(actions);
+    m.dlg.appendChild(form);
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var pass = input.value; input.value = ''; // never kept: the field is emptied before the request leaves
+      if (pass === '') { st.textContent = '⚠ enter the passphrase'; input.focus(); return; }
+      ok.disabled = true; st.textContent = '… checking';
+      send('POST', STEP_UP_URL, { passphrase: pass }).then(function (r) {
+        pass = ''; ok.disabled = false;
+        if (r.status === 200 && r.body && typeof r.body === 'object') { setElevation(r.body.elevatedUntil); m.close(); then(); return; }
+        if (r.status === 403 && r.body && r.body.error === 'step_up_cookie_only') { m.close(); fail('cookie_only'); return; }
+        if (r.status === 403) { st.textContent = '✕ passphrase refused — try again'; input.focus(); return; }
+        if (r.status === 503) { markUnavailable(); m.close(); fail('unavailable'); return; }
+        st.textContent = '✕ the harness answered HTTP ' + r.status;
+      }, function () { pass = ''; ok.disabled = false; st.textContent = "✕ can't reach the harness — try again"; });
+    });
+    input.focus();
+  }
+  // POST; a 403 step_up_required opens the dialog and retries ONCE with the same body (so the same key).
+  function postWithStepUp(url, body) {
+    return send('POST', url, body).then(function (r) {
+      var e = r.status === 403 && r.body && typeof r.body === 'object' ? r.body.error : '';
+      if (e !== 'step_up_required' && e !== 'step_up_cookie_only') return { status: r.status, body: r.body, retried: false, declined: null };
+      return new Promise(function (resolve, reject) {
+        ensureElevated(function () {
+          send('POST', url, body).then(function (r2) { resolve({ status: r2.status, body: r2.body, retried: true, declined: null }); }, reject);
+        }, function (kind) { resolve({ status: 0, body: null, retried: false, declined: kind }); });
+      });
+    });
+  }
+
+  // ---- reply box ----
+  function claudeAttachable(p) { return !!p && p.reachable === true && TMUX_NAME_RE.test(p.tmux) && p.tmux.indexOf('sh-') !== 0; }
+  function replyReason(ses) {
+    if (!ses) return 'not reachable — the poll does not know this session';
+    var t = ses.row.tmuxSession;
+    if (typeof t === 'string' && t.indexOf('sh-') === 0) return 'this is a machine shell — replies are not sent to it';
+    if (ses.view.state === 'ended') return 'the session has ended — nothing to reply to';
+    if (ses.row.reachable === false || typeof t !== 'string' || t === '') return 'not reachable — start it in tmux to reply from here';
+    // M-1 (ruling T11-20): a session showing a prompt is answered in the Claude session — the server refuses the send.
+    if (ses.row.status === 'waiting') return 'the session is showing a prompt — answer it in the Claude session';
+    return '';
+  }
+  function optionIds(c) { return Array.isArray(c.options) ? c.options.filter(function (o) { return typeof o === 'string' && OPTION_ID_RE.test(o); }) : []; }
+  function syncReply(art, id) {
+    var ui = uiFor(id);
+    var ta = art.querySelector('[data-reply-box]'); if (!ta) return;
+    var n = utf8Len(ui.text);
+    var cnt = art.querySelector('[data-byte-count]');
+    if (cnt) cnt.textContent = n + ' / ' + MAX_REPLY_BYTES + ' bytes' + (n > MAX_REPLY_BYTES ? ' — over the limit, Submit is off until it is shorter' : '');
+    var sb = art.querySelector('[data-submit]');
+    // Not disabled while a send is in flight (a disabled button drops the keyboard's place, and the step-up dialog
+    // hands focus back to it): submit() ignores a second click while ui.busy, and aria-busy says so.
+    if (sb) {
+      sb.disabled = ta.disabled || stepUp.unavailable || ui.text.trim() === '' || n > MAX_REPLY_BYTES;
+      if (ui.busy) sb.setAttribute('aria-busy', 'true'); else sb.removeAttribute('aria-busy');
+    }
+    Array.prototype.forEach.call(art.querySelectorAll('[data-option]'), function (b) {
+      b.disabled = ta.disabled || (b.getAttribute('data-sends') === 'true' && stepUp.unavailable);
+    });
+  }
+  function syncById(id) { var art = findCard(id); if (art) syncReply(art, id); }
+  function syncGates() {
+    Array.prototype.forEach.call(doc.querySelectorAll('[data-card]'), function (art) { syncReply(art, art.getAttribute('data-card')); });
+    Array.prototype.forEach.call(doc.querySelectorAll('[data-new-session], [data-new-project], [data-project-row]'), function (b) { b.disabled = stepUp.unavailable; });
+  }
+  // CC1: a status line says its state in a glyph + words AND in data-state (the theme colours it); the glyph leads the text.
+  function stateOf(text) { var g = String(text).charAt(0); return g === '✓' ? 'ok' : g === '⚠' ? 'warn' : g === '✕' ? 'error' : 'info'; }
+  function statusLine(attr, role) {
+    var node = mk('p', 'send-status'); node.setAttribute(attr, ''); node.setAttribute('role', role); node.setAttribute('data-state', 'info');
+    return { node: node, set textContent(t) { node.textContent = t; node.setAttribute('data-state', stateOf(t)); } };
+  }
+  function setSend(id, text) {
+    var ui = uiFor(id); ui.sendStatus = text;
+    var art = findCard(id); var s = art ? art.querySelector('[data-send-status]') : null;
+    if (s && s.textContent !== text) s.textContent = text;
+    if (s) s.setAttribute('data-state', stateOf(text));
+  }
+  function setBoxText(id, text) {
+    var ui = uiFor(id); ui.text = text;
+    var art = findCard(id); var ta = art ? art.querySelector('[data-reply-box]') : null;
+    if (ta && ta.value !== text) ta.value = text;
+    if (art) syncReply(art, id);
+  }
+  // Reply-question buttons only COPY the id into the box (TM-020: nothing a session wrote is sent back by a click).
+  function copyLetter(id, optionId) {
+    var t = uiFor(id).text;
+    setBoxText(id, t === '' ? optionId : (/\\s$/.test(t) ? t + optionId : t + ' ' + optionId));
+    var art = findCard(id); var ta = art ? art.querySelector('[data-reply-box]') : null; if (ta) ta.focus();
+  }
+  function renderReplyBox(art, c, ses) {
+    var ui = uiFor(c.id);
+    var reason = replyReason(ses);
+    var opts = optionIds(c);
+    var isQuestion = c.asksYou === true && opts.length > 0 && c.kind !== 'commit_approval'; // D5: a commit approval never gets buttons
+    var isSentinel = c.kind === 'reply' && c.needsKind === 'sentinel' && opts.length > 0;
+    var wrap = mk('div', 'reply'); wrap.setAttribute('data-reply', '');
+    if (reason) { var why = mk('p', 'hint', '⚠ ' + reason); why.setAttribute('data-reply-disabled', ''); wrap.appendChild(why); }
+    if (isQuestion || isSentinel) {
+      var row = mk('div', 'options'); row.setAttribute('role', 'group'); row.setAttribute('aria-label', isSentinel ? 'Answer options (a click sends)' : 'Answer options (a click copies)');
+      opts.forEach(function (oid) {
+        var b = mk('button', null, oid); b.type = 'button';
+        b.setAttribute('data-option', oid); b.setAttribute('data-focus-key', 'opt:' + c.id + ':' + oid);
+        if (isSentinel) { b.setAttribute('data-sends', 'true'); b.title = 'Sends ' + oid + ' to the session'; }
+        else b.title = 'Copies ' + oid + ' into the box — nothing is sent until you press Submit';
+        b.addEventListener('click', function () { if (isSentinel) sendSentinel(c.id, oid); else copyLetter(c.id, oid); });
+        row.appendChild(b);
+      });
+      wrap.appendChild(row);
+      wrap.appendChild(mk('p', 'hint', isSentinel ? 'A button sends only its option id.' : 'A button copies its id into the box; you press Submit.'));
+    }
+    var ta = mk('textarea'); ta.setAttribute('data-reply-box', ''); ta.setAttribute('data-focus-key', 'box:' + c.id);
+    ta.setAttribute('maxlength', String(MAX_REPLY_BYTES)); ta.setAttribute('rows', '3'); ta.setAttribute('aria-label', 'Reply to: ' + str(c.title, 80));
+    ta.value = ui.text; ta.disabled = reason !== '';
+    ta.addEventListener('input', function () { ui.text = ta.value; syncReply(art, c.id); });
+    wrap.appendChild(ta);
+    var line = mk('div', 'reply-row');
+    var cnt = mk('span', 'byte-count'); cnt.setAttribute('data-byte-count', ''); line.appendChild(cnt);
+    var sb = mk('button', null, 'Submit'); sb.type = 'button'; sb.setAttribute('data-submit', ''); sb.setAttribute('data-focus-key', 'submit:' + c.id);
+    sb.addEventListener('click', function () { submit(c.id, ui.text); });
+    line.appendChild(sb);
+    if (reason === '') line.appendChild(openClaudeButton(c, projectFor(c))); // ruling T9-3: every reachable non-menu card can jump to its session
+    // Ruling T11-19 (I-1): Dismiss on any card that asks — buttons or none — while neither dismissed nor answered (D5: never a commit approval).
+    var dismissable = c.asksYou === true && c.kind !== 'commit_approval' && !(typeof c.dismissedAt === 'string' && c.dismissedAt) && !(typeof c.answeredAt === 'string' && c.answeredAt);
+    if (dismissable) {
+      var db = mk('button', null, 'Dismiss'); db.type = 'button'; db.setAttribute('data-dismiss', ''); db.setAttribute('data-focus-key', 'dismiss:' + c.id);
+      db.addEventListener('click', function () { dismiss(c.id); });
+      line.appendChild(db);
+    }
+    wrap.appendChild(line);
+    var st = statusLine('data-send-status', 'status'); st.textContent = ui.sendStatus;
+    wrap.appendChild(st.node);
+    art.appendChild(wrap);
+    syncReply(art, c.id);
+  }
+  // A menu answers on screen: its options are shown, read-only, and the button opens the Claude session.
+  function renderMenuActions(art, c, p) {
+    var opts = optionIds(c);
+    var wrap = mk('div', 'reply');
+    if (opts.length) { var ro = mk('p', 'hint', 'Options on screen (read-only): ' + opts.join(' · ')); ro.setAttribute('data-options-readonly', ''); wrap.appendChild(ro); }
+    wrap.appendChild(openClaudeButton(c, p));
+    art.appendChild(wrap);
+  }
+  function openClaudeButton(c, p) {
+    var b = mk('button', null, 'Open Claude session'); b.type = 'button'; b.setAttribute('data-open-claude', ''); b.setAttribute('data-focus-key', 'openclaude:' + c.id);
+    b.disabled = !claudeAttachable(p);
+    if (b.disabled) b.title = 'this session has no tmux pane to attach to';
+    b.addEventListener('click', function () { openClaude(c.machine, c.projectKey); });
+    return b;
+  }
+
+  // ---- submit: the key is fresh after a 2xx or 4xx answer and kept across silence and a 5xx (rulings T9-1, T11-10) ----
+  // B-1: every Submit starts a new send of its card, whatever its outcome. The earlier send's next step stops, its
+  // second read is cancelled, a read still in flight is dropped and the view closes, so nothing begun for an earlier
+  // send can re-word this send's status line or re-open the view.
+  function newSend(id) {
+    var ui = uiFor(id);
+    ui.sendSeq++; ui.nextStep = null;
+    hidePane(id);
+  }
+  function submit(id, text) {
+    var ui = uiFor(id);
+    if (ui.busy) return Promise.resolve();
+    newSend(id); // from here this Submit owns the card's status line and its screen view
+    if (!ID_RE.test(id)) { setSend(id, '⚠ ' + SUBMIT_400['unexpected card id']); return Promise.resolve(); }
+    // The key belongs to the text it first carried: edited text is a different send, so it gets its own key.
+    if (ui.key === null || ui.keyText !== text) { ui.key = newKey(); ui.keyText = text; }
+    ui.busy = true; setSend(id, '… sending'); syncById(id);
+    return postWithStepUp(BASE + '/console/api/cards/' + id + '/submit', { text: text, key: ui.key }).then(function (res) {
+      ui.busy = false;
+      if (res.declined) { ui.key = null; setSend(id, stepUpWords(res.declined)); } else showOutcome(id, text, res);
+      syncById(id);
+    }, function () {
+      ui.busy = false; // no answer: the key stays, so the server can recognise a retry of a send whose answer was lost
+      setSend(id, "✕ can't reach the harness — nothing was confirmed; try again to retry");
+      syncById(id);
+    });
+  }
+  function cardById(id) {
+    var list = payload && Array.isArray(payload.cards) ? payload.cards : [];
+    for (var i = 0; i < list.length; i++) if (list[i] && list[i].id === id) return list[i];
+    return null;
+  }
+  function showOutcome(id, text, res) {
+    var ui = uiFor(id), st = res.status, b = res.body && typeof res.body === 'object' ? res.body : {};
+    // Ruling T11-10: a 5xx proves nothing about the paste, so the key stays — exactly as after a lost answer — and a
+    // retry meets the server's unresolved 409 instead of a second paste. Any 2xx or 4xx answer was final: a fresh key.
+    if (st < 500) ui.key = null;
+    if (st === 200 && typeof b.outcome === 'string') {
+      var msg = str(b.message, 300) || b.outcome;
+      var c = cardById(id);
+      if (b.outcome === 'sent') {
+        if (c && c.kind === 'commit_approval') {
+          // Ruling T11-20 (I-3) + F2 Task 12 (spec §6.4): CDF answers the first id by showing the question, the staged change
+          // and the hooks, then asks for the id again — the card opens the session's screen and says the next step. The box
+          // is NOT prefilled (D5: the second confirmation is typed). This page tells the first id from its typed repeat by
+          // its own sends; after a reload the repeat reads as a first id again, and the screen shows which it was. The
+          // next step follows the view (M-1): nextStepText words it each time the view changes, until the next Submit.
+          var repeat = ui.confirmText === text;
+          ui.confirmText = repeat ? null : text;
+          paneAfterSend(id, { text: str(text, 80), at: hhmm(b.at), repeat: repeat });
+        } else {
+          // "queued" is not a confirmation yet: a neutral glyph, not the tick
+          setSend(id, (msg.indexOf('queued') === 0 ? '… ' : '✓ ') + msg + ', ' + hhmm(b.at));
+        }
+        if (ui.text === text) setBoxText(id, '');
+        refresh(); // the card's own state (answered, dismissed) comes from the poll
+      } else setSend(id, (b.outcome === 'failed' ? '✕ ' : '⚠ ') + msg); // unconfirmed and refusals: ⚠, the text stays in the box
+      return;
+    }
+    if (st === 400) { setSend(id, '⚠ ' + (has(SUBMIT_400, b.error) ? SUBMIT_400[b.error] : 'refused — ' + str(String(b.error), 40))); return; }
+    if (st === 403 && b.error === 'step_up_cookie_only') { setSend(id, stepUpWords('cookie_only')); return; }
+    if (st === 403 && b.error === 'step_up_required') { setSend(id, '⚠ step-up expired — confirm again, then press Submit'); return; }
+    if (st === 401 || st === 403) { setSend(id, '✕ signed out — reload to sign in'); return; }
+    if (st === 404) { setSend(id, '⚠ this card is gone — nothing was sent'); return; }
+    if (st === 409) { setSend(id, '⚠ ' + (typeof b.message === 'string' && b.message ? str(b.message, 300) : (has(SUBMIT_409, b.error) ? SUBMIT_409[b.error] : 'refused — ' + str(String(b.error), 40)))); return; }
+    if (st === 503) { markUnavailable(); setSend(id, stepUpWords('unavailable')); return; }
+    setSend(id, '✕ the harness answered HTTP ' + st + (st >= 500 ? ' — nothing was confirmed; try again to retry' : ''));
+  }
+  // A sentinel button sends ONLY its option id, and only inside a step-up window.
+  function sendSentinel(id, optionId) {
+    if (uiFor(id).busy) return;
+    ensureElevated(function () { submit(id, optionId); }, function (kind) { setSend(id, stepUpWords(kind)); });
+  }
+  function dismiss(id) {
+    var ui = uiFor(id);
+    if (!ID_RE.test(id) || ui.dismissing) return; // a double click posts once
+    ui.dismissing = true;
+    // Ruling T11-15: the console's POST routes take JSON only, so Dismiss sends an empty JSON object.
+    send('POST', BASE + '/console/api/cards/' + id + '/dismiss', {}).then(function (r) {
+      ui.dismissing = false;
+      if (r.status === 200) { setSend(id, '✓ dismissed'); refresh(); }
+      else setSend(id, '⚠ could not dismiss — HTTP ' + r.status);
+    }, function () { ui.dismissing = false; setSend(id, "✕ can't reach the harness — not dismissed"); });
+  }
+
+  // ---- view switch: Cards | Claude session for the selected project; the poll keeps running underneath ----
+  function wsUrl(machine, o) {
+    var url = (win.location.protocol === 'https:' ? 'wss://' : 'ws://') + win.location.host + BASE + '/terminal/' + encodeURIComponent(machine);
+    var qs = [];
+    if (o.shell) qs.push('shell=1'); else if (o.session) qs.push('tmux=' + encodeURIComponent(o.session));
+    if (o.resume) qs.push('session=' + encodeURIComponent(o.resume));
+    return qs.length ? url + '?' + qs.join('&') : url;
+  }
+  function selectedProject() {
+    if (sel.project === null || !view) return null;
+    for (var i = 0; i < view.projects.length; i++) if (projectSelected(view.projects[i])) return view.projects[i];
+    return null;
+  }
+  // The CSS hides the view switch and the drawer under 900 px; the script agrees (the note under the cards says why).
+  function narrow() { return typeof win.matchMedia === 'function' && win.matchMedia('(max-width: 899px)').matches; }
+  function modeOf(p) { return !narrow() && p && has(viewMode, p.machine + SEP + p.key) && viewMode[p.machine + SEP + p.key] === 'claude' && claudeAttachable(p) ? 'claude' : 'cards'; }
+  function showClaude(p) {
+    var key = p.machine + SEP + p.tmux;
+    var root = q('[data-claude-panels]');
+    var t = has(claudeTerms, key) ? claudeTerms[key] : null;
+    if (!t) {
+      var panel = mk('div', 'claude-panel'); panel.setAttribute('data-claude-panel', key);
+      var status = mk('p', 'term-status', '[~] Connecting to ' + p.machine + ' · ' + p.tmux + '…'); status.setAttribute('role', 'status'); status.setAttribute('data-claude-status', '');
+      var note = mk('p', 'hint'); note.setAttribute('data-claude-note', '');
+      var host = mk('div', 'term-host');
+      panel.appendChild(note); panel.appendChild(status); panel.appendChild(host);
+      if (root) root.appendChild(panel); // in the page before the terminal measures its host
+      t = claudeTerms[key] = { panel: panel, status: status, note: note, handle: null };
+      var rk = 'console.term.' + p.machine + '.claude.' + p.tmux;
+      t.handle = pantheonOpenTerminal(host, wsUrl(p.machine, { session: p.tmux, resume: ssGet(rk) }), {
+        label: p.machine + ' · ' + p.tmux,
+        hidden: function () { return panel.hidden || (root ? root.hidden : false); },
+        status: function (state, text) { status.setAttribute('data-state', state); status.textContent = text; },
+        onReady: function (id) { ssSet(rk, id); }
+      });
+    }
+    t.panel.hidden = false;
+    if (t.handle && t.handle.fit) t.handle.fit();
+  }
+  function applyView() {
+    var p = selectedProject();
+    var mode = modeOf(p);
+    var bar = q('[data-view-switch]');
+    if (bar) {
+      bar.hidden = !p;
+      var bc = bar.querySelector('[data-view="cards"]'), bl = bar.querySelector('[data-view="claude"]'), note = bar.querySelector('[data-view-note]');
+      if (bc) pressed(bc, mode === 'cards');
+      if (bl) { pressed(bl, mode === 'claude'); bl.disabled = !!p && !claudeAttachable(p); }
+      if (note) note.textContent = p && !claudeAttachable(p) ? 'no Claude session to attach to — it has no tmux pane (or is a machine shell)' : '';
+    }
+    if (el.cards) el.cards.hidden = mode === 'claude';
+    var fa = q('[data-fold-all]'); if (fa) fa.hidden = mode === 'claude';
+    var root = q('[data-claude-panels]'); if (root) root.hidden = mode !== 'claude';
+    Object.keys(claudeTerms).forEach(function (k) { claudeTerms[k].panel.hidden = true; });
+    if (mode === 'claude') showClaude(p);
+  }
+  function setViewMode(mode) {
+    var p = selectedProject(); if (!p) return;
+    viewMode[p.machine + SEP + p.key] = mode;
+    applyView();
+  }
+  function openClaude(machine, key) {
+    viewMode[machine + SEP + key] = 'claude';
+    select(machine, key);
+  }
+  function rebuildView() { if (!payload) return; view = buildView(payload); render(); }
+
+  // ---- shell drawer (spec 14.2): one per machine, kept alive while hidden; Esc inside it is the one swallowed key ----
+  function drawerOf(machine) { return has(drawers, machine) ? drawers[machine] : null; }
+  function currentDrawer() { return sel.machine === '*' ? null : drawerOf(sel.machine); }
+  function isToggleKey(e) { return !!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === '\\x60' || e.code === 'Backquote'); }
+  function maxDrawerH() { return Math.max(DRAWER_MIN_H, (win.innerHeight || 800) - 160); }
+  function applyDrawerHeight() {
+    var panels = q('[data-drawer-panels]'); if (panels) panels.style.height = drawerH + 'px';
+    var grip = q('[data-drawer-grip]');
+    if (grip) { grip.setAttribute('aria-valuenow', String(drawerH)); grip.setAttribute('aria-valuemax', String(maxDrawerH())); }
+  }
+  function setDrawerHeight(h) {
+    drawerH = Math.min(maxDrawerH(), Math.max(DRAWER_MIN_H, Math.round(h)));
+    lsSet('console.drawer.height', String(drawerH));
+    applyDrawerHeight();
+    var d = currentDrawer(); if (d && !d.minimised && d.handle && d.handle.fit) d.handle.fit();
+  }
+  function renderDrawerBar() {
+    var title = q('[data-drawer-title]'), btn = q('[data-drawer-toggle]'); if (!title || !btn) return;
+    var d = currentDrawer();
+    title.textContent = sel.machine === '*' ? 'Shell · choose a machine' : 'Shell · ' + str(sel.machine, 60) + (d && d.title ? ' · ' + d.title : '');
+    btn.disabled = sel.machine === '*';
+    btn.textContent = !d ? 'Open shell' : (d.minimised ? '▴ Restore' : '▾ Minimise');
+    btn.setAttribute('aria-expanded', d && !d.minimised ? 'true' : 'false');
+  }
+  function renderDrawers() {
+    var panels = q('[data-drawer-panels]'); if (!panels) return;
+    var cur = currentDrawer();
+    Object.keys(drawers).forEach(function (m) {
+      var d = drawers[m];
+      d.el.hidden = d !== cur;
+      if (d.minimised) d.el.setAttribute('data-minimised', ''); else d.el.removeAttribute('data-minimised');
+    });
+    panels.hidden = !cur || cur.minimised;
+    applyDrawerHeight();
+    renderDrawerBar();
+    if (cur && !cur.minimised && cur.handle && cur.handle.fit) cur.handle.fit();
+  }
+  function setMinimised(d, on) {
+    d.minimised = on;
+    renderDrawers();
+    if (!on && d.handle && d.handle.term && d.handle.term.focus) d.handle.term.focus();
+  }
+  // Keys xterm offers before the shell sees them. Returning false drops the key: the shell never receives it.
+  function drawerKey(d, e) {
+    if (isToggleKey(e)) { e.stopPropagation(); setMinimised(d, !d.minimised); return false; }
+    if (e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) { e.stopPropagation(); setMinimised(d, true); return false; }
+    return true;
+  }
+  function openDrawer(machine) {
+    var panels = q('[data-drawer-panels]'); if (!panels) return null;
+    var d = { machine: machine, el: mk('div', 'drawer'), status: mk('p', 'term-status', '[~] Connecting to a shell on ' + machine + '…'), handle: null, minimised: false, title: '' };
+    d.el.setAttribute('data-drawer', ''); d.el.setAttribute('data-machine', machine);
+    d.status.setAttribute('data-drawer-status', ''); d.status.setAttribute('role', 'status');
+    var host = mk('div', 'term-host');
+    d.el.appendChild(d.status); d.el.appendChild(host);
+    panels.appendChild(d.el);
+    drawers[machine] = d;
+    panels.hidden = false; // shown before the terminal measures its host
+    applyDrawerHeight();
+    var rk = 'console.term.' + machine + '.shell';
+    d.handle = pantheonOpenTerminal(host, wsUrl(machine, { shell: true, resume: ssGet(rk) }), {
+      label: 'a shell on ' + machine,
+      hidden: function () { return d.el.hidden || d.minimised; },
+      status: function (state, text) { d.status.setAttribute('data-state', state); d.status.textContent = text; },
+      keyFilter: function (e) { return drawerKey(d, e); },
+      onReady: function (id) { ssSet(rk, id); },
+      onTitle: function (t) { d.title = str(t, 120); renderDrawerBar(); }
+    });
+    renderDrawers();
+    return d;
+  }
+  function toggleDrawer() {
+    if (sel.machine === '*' || narrow()) return;
+    var d = drawerOf(sel.machine);
+    if (!d) openDrawer(sel.machine); else setMinimised(d, !d.minimised);
+  }
+  function onDocKey(e) {
+    if (isToggleKey(e)) { e.preventDefault(); toggleDrawer(); return; }
+    if (e.key === 'Escape' && modals.length === 0) {
+      var d = currentDrawer();
+      if (d && !d.minimised && d.el.contains(doc.activeElement)) { e.preventDefault(); setMinimised(d, true); }
+    }
+  }
+
+  // ---- new session / new project ----
+  function addPendingProject(machine, tmux, path) {
+    var segs = typeof path === 'string' ? path.split('/').filter(function (s) { return s !== ''; }) : [];
+    pending[machine + SEP + tmux] = { machine: machine, key: tmux, display: str(segs.length ? segs[segs.length - 1] : tmux, 40), glyph: '·', border: 'solid', configured: false,
+      reachable: true, sessions: [], worst: 'none', worstView: null, live: 0, tmux: tmux, pending: true };
+    viewMode[machine + SEP + tmux] = 'claude';
+    sel.machine = machine; sel.project = { key: tmux, machine: machine };
+    rebuildView();
+  }
+  function sessionOutcome(machine, m, status, res) {
+    var b = res.body && typeof res.body === 'object' ? res.body : {}, st = res.status;
+    if (st === 200 && (b.outcome === 'created_session' || b.outcome === 'created_project')) {
+      var tmux = b.tmuxSession;
+      if (typeof tmux !== 'string' || !TMUX_NAME_RE.test(tmux) || tmux.indexOf('sh-') === 0) {
+        status.textContent = '⚠ the server named a machine shell or an unusable session — it is not opened as a project';
+        return;
+      }
+      m.close();
+      addPendingProject(machine, tmux, b.path);
+      if (b.outcome === 'created_project' && has(claudeTerms, machine + SEP + tmux)) {
+        claudeTerms[machine + SEP + tmux].note.textContent = 'The new session is asking you to trust the folder — answer it in the Claude session.';
+      }
+      return;
+    }
+    // Ruling T11-18: an unconfirmed start may have happened — ⚠, never ✕.
+    if (st === 200) { status.textContent = (b.outcome === 'unconfirmed' ? '⚠ ' : '✕ ') + (str(b.message, 300) || 'the session could not be started'); return; }
+    if (st === 400) {
+      status.textContent = b.error === 'refused_root' ? '⚠ that folder is outside the projects root — refused'
+        : b.error === 'refused_name' ? '⚠ that name is not allowed — use letters, digits, space, . _ or - (64 characters at most)'
+        : '⚠ the request was malformed — nothing was started';
+      return;
+    }
+    if (st === 409 && b.error === 'no_projects_root') { status.textContent = '⚠ no projects root configured for this machine'; return; }
+    if (st === 409 || st === 502) { status.textContent = '✕ ' + (typeof b.message === 'string' && b.message ? str(b.message, 300) : 'the machine is not connectable'); return; }
+    if (st === 403 && b.error === 'step_up_cookie_only') { status.textContent = stepUpWords('cookie_only'); return; }
+    if (st === 403 && b.error === 'step_up_required') { status.textContent = '⚠ step-up expired — confirm again, then try again'; return; }
+    if (st === 401 || st === 403) { status.textContent = '✕ signed out — reload to sign in'; return; }
+    if (st === 503) { markUnavailable(); status.textContent = stepUpWords('unavailable'); return; }
+    status.textContent = '✕ the harness answered HTTP ' + st;
+  }
+  function createSession(machine, m, status, body) {
+    var url = BASE + '/console/api/machines/' + encodeURIComponent(machine) + '/sessions';
+    status.textContent = '… starting';
+    ensureElevated(function () {
+      postWithStepUp(url, body).then(function (res) {
+        if (res.declined) status.textContent = stepUpWords(res.declined); else sessionOutcome(machine, m, status, res);
+      }, function () { status.textContent = "✕ can't reach the harness — nothing was confirmed"; });
+    }, function (kind) { status.textContent = stepUpWords(kind); });
+  }
+  function openSessionDialog(machine) {
+    if (stepUp.sessionModal) return; // one dialog at a time
+    var m = openModal('data-session-dialog', 'New session on ' + str(machine, 60), function () { stepUp.sessionModal = null; });
+    stepUp.sessionModal = m;
+    var status = statusLine('data-session-status', 'status');
+    var list = mk('div', 'project-list'); list.setAttribute('data-project-list', '');
+    var form = mk('form'); form.setAttribute('novalidate', '');
+    var lab = mk('label', null, 'New project (a folder under the projects root)');
+    var name = mk('input'); name.type = 'text'; name.setAttribute('data-new-project-name', ''); name.setAttribute('maxlength', '64'); name.setAttribute('autocomplete', 'off');
+    lab.appendChild(name);
+    var hint = mk('p', 'hint'); hint.setAttribute('data-new-project-hint', '');
+    var actions = mk('div', 'modal-actions');
+    var create = mk('button', null, 'Create project'); create.type = 'submit'; create.setAttribute('data-new-project', ''); create.disabled = stepUp.unavailable;
+    var close = mk('button', null, 'Close'); close.type = 'button'; close.addEventListener('click', function () { m.dismiss(); });
+    actions.appendChild(create); actions.appendChild(close);
+    form.appendChild(lab); form.appendChild(hint); form.appendChild(actions);
+    name.addEventListener('input', function () {
+      hint.textContent = name.value === '' || PROJECT_NAME_RE.test(name.value) ? '' : 'Names start with a letter or digit, then letters, digits, space, . _ or - (64 characters at most) — the server decides.';
+    });
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      if (name.value === '') { status.textContent = '⚠ enter a project name'; name.focus(); return; }
+      createSession(machine, m, status, { newProject: name.value });
+    });
+    m.dlg.appendChild(status.node); m.dlg.appendChild(list); m.dlg.appendChild(form);
+    status.textContent = '… listing folders on ' + machine;
+    name.focus();
+    send('GET', BASE + '/console/api/machines/' + encodeURIComponent(machine) + '/projects').then(function (r) {
+      var b = r.body && typeof r.body === 'object' ? r.body : {};
+      if (r.status === 200 && Array.isArray(b.projects)) {
+        status.textContent = b.projects.length ? 'Pick a folder to start Claude in, or create a project:' : 'No folders under the projects root yet — create a project:';
+        b.projects.forEach(function (pr) {
+          if (!pr || typeof pr.name !== 'string' || typeof pr.path !== 'string') return;
+          var running = typeof pr.running === 'string' && pr.running ? pr.running : null;
+          var btn = mk('button', 'project-row'); btn.type = 'button';
+          btn.setAttribute('data-project-row', pr.name); btn.setAttribute('data-path', pr.path);
+          btn.appendChild(mk('strong', null, str(pr.name, 64)));
+          btn.appendChild(tx(running ? ' — ● running — open it' : ' — ○ start Claude here'));
+          btn.disabled = stepUp.unavailable;
+          btn.addEventListener('click', function () {
+            if (running === null) { createSession(machine, m, status, { folder: pr.path }); return; }
+            if (!projectOf(machine, running)) { status.textContent = '⚠ it is running as ' + str(running, 60) + ', which the poll has not shown yet — try again in a moment'; return; }
+            m.close();
+            openClaude(machine, running);
+          });
+          list.appendChild(btn);
+        });
+        return;
+      }
+      if (r.status === 409 && b.error === 'no_projects_root') { status.textContent = '⚠ no projects root configured for this machine'; return; }
+      if (r.status === 401 || r.status === 403) { status.textContent = '✕ signed out — reload to sign in'; return; }
+      status.textContent = '✕ ' + (typeof b.message === 'string' && b.message ? str(b.message, 300) : 'the harness answered HTTP ' + r.status);
+    }, function () { status.textContent = "✕ can't reach the harness — nothing was listed"; });
+  }
+
   // ---- transport ----
   function request(url) {
     var opts = { credentials: 'same-origin', headers: { accept: 'application/json' } };
@@ -677,13 +1608,20 @@ export const CONSOLE_CLIENT_JS = `
 
   // ---- render ----
   function focusedKey() { var a = doc.activeElement; return a && a.getAttribute ? a.getAttribute('data-focus-key') : null; }
-  function restoreFocus(key) {
+  // A focused reply box is rebuilt by a render: its selection (caret = start == end) is carried over to the new one.
+  function focusedSelection() {
+    var a = doc.activeElement;
+    if (!a || a.tagName !== 'TEXTAREA' || typeof a.selectionStart !== 'number') return null;
+    return { start: a.selectionStart, end: a.selectionEnd, dir: a.selectionDirection };
+  }
+  function restoreFocus(key, selection) {
     if (!key) return;
     var all = doc.querySelectorAll('[data-focus-key]');
     for (var i = 0; i < all.length; i++) {
       if (all[i].getAttribute('data-focus-key') !== key) continue;
       // keep the keyboard place without yanking the page to it (an engine without the options object falls back)
       try { all[i].focus({ preventScroll: true }); } catch (e) { try { all[i].focus(); } catch (e2) {} }
+      if (selection && all[i].tagName === 'TEXTAREA') { try { all[i].setSelectionRange(selection.start, selection.end, selection.dir || 'none'); } catch (e3) {} }
       return;
     }
   }
@@ -702,11 +1640,12 @@ export const CONSOLE_CLIENT_JS = `
     el.summary.textContent = scope + (sel.project ? ' · ' + sel.project.key : '') + ' · ' + plural(ps.length, 'project', 'projects') + ': ' + countsText(counts) + ' · ' + plural(shown, 'card', 'cards') + ' shown';
   }
   function render() {
-    var focusKey = focusedKey();
+    var focusKey = focusedKey(), focusSel = focusedSelection();
     var now = Date.now();
     renderMachineTabs(); renderProjectTabs(); renderMachineBanners(); renderCards(now); renderSummary();
+    applyView(); renderDrawers(); syncFoldAll(); syncGates();
     doc.title = (view.all.needsYou > 0 ? '(' + view.all.needsYou + ') ' : '') + 'Console';
-    restoreFocus(focusKey);
+    restoreFocus(focusKey, focusSel);
   }
   // Fields that change on every tick without changing what the page shows (final review M6). A poll that differs
   // from the adopted one only in these keeps the DOM (focus, an open fold, a text selection): the card ages are
@@ -799,13 +1738,48 @@ export const CONSOLE_CLIENT_JS = `
     refresh();
   }
 
+  // The public stop() also lets go of everything this client attached: the document key handler, timers, terminals, modals.
+  function shutdown() {
+    stop();
+    doc.removeEventListener('keydown', onDocKey);
+    clearStepUpTimer();
+    Object.keys(cardUi).forEach(function (k) { clearPaneTimer(cardUi[k]); });
+    Object.keys(claudeTerms).forEach(function (k) { var h = claudeTerms[k].handle; if (h && h.close) h.close(); });
+    Object.keys(drawers).forEach(function (k) { var h = drawers[k].handle; if (h && h.close) h.close(); });
+    modals.slice().forEach(function (m) { m.close(); });
+  }
+
   wireRow(el.machineTabs); wireRow(el.projectTabs);
   win.addEventListener('focus', onWake);
   doc.addEventListener('visibilitychange', function () { if (!doc.hidden) onWake(); });
-  win.__console = { refresh: refresh, select: select, expand: expand, stop: stop };
+  doc.addEventListener('keydown', onDocKey);
+  (function wireControls() {
+    var fa = q('[data-fold-all]'); if (fa) fa.addEventListener('click', foldAll);
+    var vc = q('[data-view="cards"]'), vl = q('[data-view="claude"]');
+    if (vc) vc.addEventListener('click', function () { setViewMode('cards'); });
+    if (vl) vl.addEventListener('click', function () { setViewMode('claude'); });
+    var tg = q('[data-drawer-toggle]'); if (tg) tg.addEventListener('click', toggleDrawer);
+    var stored = parseInt(lsGet('console.drawer.height'), 10);
+    if (isFinite(stored)) drawerH = Math.min(maxDrawerH(), Math.max(DRAWER_MIN_H, stored));
+    applyDrawerHeight();
+    var grip = q('[data-drawer-grip]');
+    if (!grip) return;
+    grip.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowUp') { e.preventDefault(); setDrawerHeight(drawerH + DRAWER_STEP); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); setDrawerHeight(drawerH - DRAWER_STEP); }
+    });
+    grip.addEventListener('mousedown', function (e) {
+      e.preventDefault();
+      var startY = e.clientY, startH = drawerH;
+      function move(ev) { setDrawerHeight(startH + (startY - ev.clientY)); }
+      function up() { doc.removeEventListener('mousemove', move); doc.removeEventListener('mouseup', up); }
+      doc.addEventListener('mousemove', move); doc.addEventListener('mouseup', up);
+    });
+  })();
+  win.__console = { refresh: refresh, select: select, expand: expand, stop: shutdown };
   if (q('[data-console-disabled]')) { stopped = true; setStatus('disabled', '✕ console disabled — not polling'); }
   else if (typeof fetch !== 'function') { stopped = true; setStatus('error', '✕ live updates are unavailable in this browser'); }
-  else refresh();
+  else { refresh(); checkStepUp(); }
 })();
 `;
 
@@ -836,6 +1810,7 @@ export function renderConsolePage(model: ConsolePageModel): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Console</title>
 ${pageHead(base)}
+<link rel="stylesheet" href="${withBuild(withBase(base, "/assets/xterm.css"))}">
 <style>
 ${fonts}
 ${CONSOLE_CSS}
@@ -848,6 +1823,7 @@ ${CONSOLE_CSS}
   <a href="${withBase(base, "/admin/config")}" data-nav="config">Configuration</a>
   <a href="${withBase(base, "/admin/approvals")}" data-nav="approvals">Approvals</a>
   <a href="${withBase(base, "/help")}" data-nav="help">Help</a>
+  <span class="elev" data-elevation role="status" aria-live="polite"></span>
   ${model.loginEnabled ? `<form method="post" action="${withBase(base, "/logout")}" class="logout" style="display:inline;margin-left:auto"><button type="submit">Log out</button></form>` : ""}
   <span class="muted build" data-build="${esc(BUILD_ID)}" title="The build this page came from — quote it if something looks out of date">build ${esc(BUILD_ID)}</span>
 </header>
@@ -861,11 +1837,36 @@ ${CONSOLE_CSS}
   <p data-selection-summary>… loading</p>
   <h2>Marks</h2>
   ${LEGEND}
-  <p class="hint">Cards are read-only in this step: answer in the terminal (Open terminal ↗). Text from the machines is masked and shown as text.</p>
+  <p class="hint">Reply from a card: type in its box and press Submit (the first send asks for your passphrase). Option buttons on a question only copy the id into the box. Text from the machines is masked and shown as text.</p>
 </aside>
-<main class="cards" data-cards aria-label="Cards"><p class="empty" data-empty>… loading</p></main>
+<div class="work">
+  <div class="cards-head" data-cards-head>
+    <div class="view-switch" data-view-switch role="group" aria-label="View of the selected project" hidden>
+      <button type="button" data-view="cards" aria-pressed="true">Cards</button>
+      <button type="button" data-view="claude" aria-pressed="false">Claude session</button>
+      <span class="hint" data-view-note></span>
+    </div>
+    <button type="button" data-fold-all>Fold all</button>
+  </div>
+  <p class="desktop-note" data-desktop-note>The Claude session view and the shell drawer need a window at least 900 px wide.</p>
+  <main class="cards" data-cards aria-label="Cards"><p class="empty" data-empty>… loading</p></main>
+  <section class="claude-panels" data-claude-panels aria-label="Claude session" hidden></section>
 </div>
+</div>
+<section class="drawer-wrap" data-drawer-wrap aria-label="Machine shell">
+  <div class="drawer-grip" data-drawer-grip role="separator" aria-orientation="horizontal" aria-label="Resize the shell drawer" aria-valuemin="96" aria-valuenow="241" tabindex="0" aria-describedby="drawer-help"></div>
+  <div class="drawer-bar">
+    <strong data-drawer-title>Shell · choose a machine</strong>
+    <button type="button" data-drawer-toggle aria-expanded="false" disabled>Open shell</button>
+    <span class="hint" id="drawer-help" data-drawer-help><kbd>Ctrl</kbd>+<kbd>&#96;</kbd> shows or hides the shell. <kbd>Esc</kbd> inside the shell minimises it and is not sent to the shell — it is the only key this drawer swallows.</span>
+  </div>
+  <div class="drawer-panels" data-drawer-panels hidden></div>
+</section>
 <div class="status-line"><span data-poll-status role="status" aria-live="polite" data-state="loading">… loading</span> <span data-poll-heartbeat aria-live="off"></span></div>
+<script src="${withBuild(withBase(base, "/assets/xterm.js"))}"></script>
+<script src="${withBuild(withBase(base, "/assets/xterm-addon-fit.js"))}"></script>
+<script src="${withBuild(withBase(base, "/assets/xterm-addon-clipboard.js"))}"></script>
+<script src="${withBuild(withBase(base, "/assets/xterm-addon-webgl.js"))}"></script>
 <script>${CONSOLE_CLIENT_JS}</script>
 </body>
 </html>`;

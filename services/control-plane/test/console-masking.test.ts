@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { MASK, MASK_PATTERNS, maskSecrets, maskWith, maskCompleteLines } from "../src/console/masking.js";
+import { MASK, MASK_PATTERNS, maskSecrets, maskSubmitText, maskWith, maskCompleteLines } from "../src/console/masking.js";
 
 interface Sample {
   readonly text: string;
@@ -26,11 +26,13 @@ const HEX64 = "a".repeat(64);
  *    40 chars; bearer uses `Bearer ` with a 24-char token containing a dot, which cloudflare's exact
  *    `{40}` cannot match.
  *  - gitea_hex uses `Authorization: token <40 hex>`: no `=`, so env_secret is out, and no `:` / `=`
- *    after the word `token`, so high_entropy_in_context is out. env_secret's value is 9 non-hex chars
- *    (under high_entropy's 32 floor). high_entropy's value is 35 mixed-case chars after a lowercase
- *    `password:` (not 40 hex, and env_secret wants an uppercase name with `=`).
+ *    after the word `token`, so high_entropy_in_context and secret_assignment are out. env_secret's value
+ *    is 9 non-hex chars (under high_entropy's 32 floor) behind `MY_SECRET` (no word boundary before
+ *    `SECRET`, so secret_assignment is out). high_entropy's value is 35 mixed-case chars after
+ *    `client_secret:` — a compound name, so the `\b`-anchored secret_assignment (T11-14) does not see it.
+ *  - secret_assignment's value is 9 chars after `Password:` (no `=`, a mixed-case name, under the 32 floor).
  *  - the prefix-only patterns stand alone with no `token=` / `key:` context word in front, so neither
- *    env_secret nor high_entropy_in_context can also match them.
+ *    env_secret nor high_entropy_in_context nor secret_assignment can also match them.
  */
 const SAMPLES: Readonly<Record<string, Sample>> = {
   netbird: around("peer ", "nbp_" + "A".repeat(24)),
@@ -38,6 +40,10 @@ const SAMPLES: Readonly<Record<string, Sample>> = {
   cloudflare: around("cloudflare: ", "W".repeat(20) + "x".repeat(20)),
   pantheon_keycard: around("card: ", "pk1_" + HEX64),
   anthropic: around("model ", "sk-ant-" + "k".repeat(24)),
+  openai: around("model ", "sk-" + "T3BlbkFJ".repeat(6)),
+  slack: around("bot ", "xoxb-" + "1234567890-" + "AbCdEfGhIjKlMnOp"),
+  stripe: around("charge ", "sk_" + "live_" + "Q1w2E3r4T5y6U7i8O9p0"),
+  google: around("maps ", "AIza" + "Sy" + "Ab1_-".repeat(6) + "Cd3"),
   aws: around("aws ", "AKIA" + "Q7".repeat(8)),
   private_key_block: around("pasted:\n", "-----BEGIN OPENSSH PRIVATE KEY-----\nAAAAB3Nza\n-----END OPENSSH PRIVATE KEY-----", "\nok"),
   bearer: around("Authorization: Bearer ", "Xy9".repeat(7) + ".Qz"),
@@ -48,7 +54,8 @@ const SAMPLES: Readonly<Record<string, Sample>> = {
   gitea_hex: around("Authorization: token ", HEX40),
   url_credentials: around("https://", "deploy:s3cr3tpass", "@git.example.test/x.git"),
   env_secret: around("export MY_SECRET=", "abcdefgh1"),
-  high_entropy_in_context: around("password: ", "Zx9Qw".repeat(7)),
+  high_entropy_in_context: around("client_secret: ", "Zx9Qw".repeat(7)),
+  secret_assignment: around("Password: ", "hunter2!x"),
 };
 
 function sample(name: string): Sample {
@@ -89,7 +96,69 @@ describe("console secret masking", () => {
 
   it("masks an Anthropic key sk-ant-<20+>", () => expectMasked("anthropic"));
 
-  it("masks an AWS access key id AKIA<16>", () => expectMasked("aws"));
+  it("masks an AWS access key id AKIA<16>, and a temporary ASIA<16> (T11-14)", () => {
+    expectMasked("aws");
+    expect(maskSecrets("sts " + "ASIA" + "Q7".repeat(8))).toBe("sts [masked]");
+  });
+
+  // Ruling T11-14 (DI-2(a)): prefixed vendor credentials, every match at least 8 bytes.
+  it("masks an OpenAI key: sk-<20+ letters/digits> and sk-proj-<40+>", () => {
+    expectMasked("openai");
+    expect(maskSecrets("key sk-proj-" + "Ab1_-x9Z".repeat(8) + " done")).toBe("key [masked] done");
+  });
+
+  it("an sk- body never admits hyphenated words: sk-learn-tools and friends are folder names, not keys", () => {
+    for (const plain of ["sk-learn-tools", "sk-learn-tools-for-beginners-and-experts", "/Users/karl/Projects/sk-learn-tools", "task-runner-notes", "desk-abcdefghijklmnopqrstuvwxyz", "sk-proj-roadmap-notes", "a sk_live_ mention"]) {
+      expect(maskSecrets(plain), plain).toBe(plain);
+    }
+  });
+
+  it("masks a Slack token xox[abposr]-…", () => {
+    expectMasked("slack");
+    for (const k of ["a", "p", "o", "s", "r"]) expect(maskSecrets(`t xox${k}-1234567890-abc`), k).toBe("t [masked]");
+  });
+
+  it("masks a Stripe secret or restricted key [sr]k_(live|test)_…", () => {
+    expectMasked("stripe");
+    expect(maskSecrets("r " + "rk_" + "test_" + "abcdefghij12")).toBe("r [masked]");
+  });
+
+  it("masks a Google API key AIza<35>", () => expectMasked("google"));
+
+  it("masks the value after a \\b-anchored password / passwd / secret / token / api key / access key and : or = (≥ 8 chars, any case)", () => {
+    expectMasked("secret_assignment");
+    const cases: ReadonlyArray<readonly [string, string]> = [
+      ["password=correcthorse", "password=[masked]"],
+      ["passwd: hunter22!", "passwd: [masked]"],
+      ["Secret = 'abcdefgh1'", "Secret = '[masked]'"],
+      ['token: "abcd-efgh-ijkl"', 'token: "[masked]"'],
+      ["API_KEY: abcdefgh", "API_KEY: [masked]"],
+      ["api-key=abcdefgh", "api-key=[masked]"],
+      ["accessKey: abcdefgh", "accessKey: [masked]"],
+      ["access_key=abcdefgh", "access_key=[masked]"]
+    ];
+    for (const [text, expected] of cases) expect(maskSecrets(text), text).toBe(expected);
+  });
+
+  it("the assignment form leaves usage figures, pwd, short values and longer words alone", () => {
+    for (const plain of ["tokens: 12345678", "pwd: /home/karl/projects", "password: short", "tokenizer=abcdefghij", "mytoken=abcdefghij", "passwords: abcdefghij", "the secret is out"]) {
+      expect(maskSecrets(plain), plain).toBe(plain);
+    }
+  });
+
+  it("every pattern's match is at least 8 bytes, so masking grows text only where url_credentials (12/7) or proxmox (20/13) can", () => {
+    for (const [name, s] of Object.entries(SAMPLES)) {
+      if (name === "url_credentials" || name === "proxmox") continue;
+      expect(Buffer.byteLength(s.secret), name).toBeGreaterThanOrEqual(8);
+      expect(Buffer.byteLength(maskSecrets(s.text)), name).toBeLessThanOrEqual(Buffer.byteLength(s.text));
+    }
+    // The proven worst case, a 4,096-byte submit of `://a:b@` runs, stays under the 8,192-byte CHECK either way.
+    const worst = "://a:b@".repeat(585) + "x";
+    expect(Buffer.byteLength(worst)).toBe(4096);
+    expect(Buffer.byteLength(maskSecrets(worst))).toBe(7021);
+    expect(Buffer.byteLength(maskSecrets(worst))).toBeLessThanOrEqual(Math.ceil((4096 * 12) / 7));
+    expect(Buffer.byteLength(maskSubmitText(worst))).toBeLessThanOrEqual(8192);
+  });
 
   it("masks a PEM private key block, header to footer", () => expectMasked("private_key_block"));
 
@@ -260,5 +329,85 @@ describe("console secret masking", () => {
     expect(maskSecrets('"access_token": "' + V + '"')).toBe('"access_token": "[masked]"');
     expect(maskSecrets("api_key=" + V)).toBe("api_key=[masked]");
     expect(maskSecrets("tokenizer emitted " + V)).toBe("tokenizer emitted " + V);
+  });
+
+  // Ruling T6-0: the delivery script compares the session file's RAW `procStart` with the stored value, which the
+  // poller passed through maskSecrets. A mask rule that touched any timestamp shape would make every Submit refuse
+  // "procStart changed" (fail-closed, feature dead), so each shape must come back byte-identical.
+  it("leaves procStart timestamps untouched: ISO-8601 with Z, fractional seconds, an offset, and the ctime shape", () => {
+    for (const stamp of ["2026-10-17T00:00:00Z", "2026-10-17T10:11:12.345Z", "2026-10-17T10:11:12+02:00", "Fri Oct 16 19:19:38 2026"]) {
+      expect(maskSecrets(stamp), stamp).toBe(stamp);
+      expect(maskSecrets(`"procStart": "${stamp}"`), stamp).toBe(`"procStart": "${stamp}"`);
+    }
+  });
+
+  it("T11-14: the new patterns stay linear on hostile floods (sk-, sk-proj-, xoxb-, AIza, password:, passwd=)", () => {
+    const floods: ReadonlyArray<readonly [string, string]> = [
+      ["sk-a x 25000", "sk-a".repeat(25000)],
+      ["sk-proj-a- x 12000", "sk-proj-a-".repeat(12000)],
+      ["xoxb- x 20000", "xoxb-".repeat(20000)],
+      ["AIza x 25000", "AIza".repeat(25000)],
+      ["password: x 10000", "password:".repeat(10000)],
+      ["passwd= + 100k spaces", "passwd=" + " ".repeat(100000) + "x"]
+    ];
+    for (const [label, text] of floods) {
+      const t0 = performance.now();
+      maskSecrets(text);
+      expect(performance.now() - t0, label).toBeLessThan(1000);
+    }
+  });
+});
+
+describe("maskSubmitText — the audit-only mask for console_submit_log.text_masked (ruling T11-14, DI-2(b))", () => {
+  // Built at runtime: an AWS-secret-shaped and a Cloudflare-shaped value (40 mixed chars, no context word).
+  const AWS_SECRET_SHAPE = ["wJalr", "XUtnFEMI", "/K7MDENG/", "bPxRfiCY", "EXAMPLEKEY"].join("");
+  const CF_SHAPE = "Zq8".repeat(13) + "x";
+
+  it("is maskSecrets first: every shared pattern still applies", () => {
+    for (const s of Object.values(SAMPLES)) expect(maskSubmitText(s.text)).toBe(maskSecrets(s.text));
+  });
+
+  it("masks a bare 40-hex run (a Gitea token pasted with no context) — a pasted git SHA is masked too, by design", () => {
+    expect(maskSubmitText(`use ${HEX40} now`)).toBe("use [masked] now");
+    expect(maskSubmitText(`commit ${"abc123".repeat(6)}abcd`)).toBe("commit [masked]");
+    expect(maskSecrets(`commit ${HEX40}`)).toBe(`commit ${HEX40}`); // the shared mask keeps SHAs on cards
+  });
+
+  it("masks a bare run of 32+ token chars that mixes letters and digits (an AWS secret key, a Cloudflare token)", () => {
+    expect(AWS_SECRET_SHAPE).toHaveLength(40);
+    expect(maskSubmitText(`aws secret ${AWS_SECRET_SHAPE}`)).toBe("aws secret [masked]");
+    expect(maskSubmitText(`${CF_SHAPE}.`)).toBe("[masked].");
+    expect(maskSecrets(CF_SHAPE)).toBe(CF_SHAPE); // no context word: the shared mask leaves it
+  });
+
+  it("leaves letters-only and digits-only runs, short runs and ordinary prose alone", () => {
+    for (const plain of [
+      "supercalifragilisticexpialidocious-and-then-some-more",
+      "1234567890123456789012345678901234",
+      "A1 — go ahead with the second option",
+      "Short123abc",
+      "see /Users/karl/Documents/Claude Projects/Pantheon/pantheon-harness for the plan"
+    ]) {
+      expect(maskSubmitText(plain), plain).toBe(plain);
+    }
+  });
+
+  it("only ever shrinks what maskSecrets produced, so the 8,192-byte CHECK holds", () => {
+    const texts = [`x ${AWS_SECRET_SHAPE} y ${HEX40} z ${CF_SHAPE}`, ALL_SAMPLES, "://a:b@".repeat(585) + "x"];
+    for (const t of texts) expect(Buffer.byteLength(maskSubmitText(t))).toBeLessThanOrEqual(Buffer.byteLength(maskSecrets(t)));
+  });
+
+  it("is idempotent and linear on hostile input (runs of 31 token chars, a 100k mixed run)", () => {
+    const once = maskSubmitText(`a ${AWS_SECRET_SHAPE} b`);
+    expect(maskSubmitText(once)).toBe(once);
+    for (const [label, text] of [
+      ["31-char runs", ("a1".repeat(15) + "b ").repeat(3000)],
+      ["one 100k mixed run", "a1".repeat(50000)],
+      ["39-hex runs", ("f".repeat(39) + " ").repeat(2500)]
+    ] as const) {
+      const t0 = performance.now();
+      maskSubmitText(text);
+      expect(performance.now() - t0, label).toBeLessThan(1000);
+    }
   });
 });

@@ -26,9 +26,10 @@ import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "./http/app.js";
+import { StepUpWindow } from "./http/auth/step-up.js";
 import { maskSecrets } from "./console/masking.js";
 import { createConsolePoller, createProbeExec, type PollerLogger } from "./console/poller.js";
-import { DEFAULT_CONSOLE_SETTINGS, loadConsoleSettings, type ConsoleSettingsResult } from "./console/settings.js";
+import { DEFAULT_CONSOLE_SETTINGS, loadConsoleSettings, projectsRootFor, type ConsoleSettingsResult } from "./console/settings.js";
 import { SqliteConsoleStore } from "./console/store.js";
 import { SqliteRegistry, seedDefaults } from "./registry/sqlite-repository.js";
 import { RegistryService } from "./registry/service.js";
@@ -208,7 +209,10 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
       settings: consoleSettings,
       // The expand route caps each dial to the card's own range, so the options are its to set.
       exec: (target, handle, command, opts) => runRemoteCommand(target, handle, command, { custody }, opts),
-      mask: maskSecrets
+      mask: maskSecrets,
+      // F2 Task 3 (R4): ONE window per process, so every route that consults it sees the same elevation state.
+      stepUp: new StepUpWindow(),
+      log: stderrLogger({ module: "console-routes" })
     }
   });
   consoleLog.info({ event: "console.routes_mounted", settingsPath: consoleSettingsPath, settingsOk: consoleSettings.ok }, "console routes mounted");
@@ -234,10 +238,21 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
 
   // Terminal modality (ADR-0005): key-only SSH brokered server-side from custody. `command` is the
   // (already allow-listed) tmux attach line when a tab targets a tmux session; otherwise a login shell.
+  // Machine shells (F2 Task 7): `?shell=1` attaches the console drawer to `sh-<machine>` in that machine's
+  // configured projects root — refused settings fall back to the defaults, where no machine has a root and the
+  // socket says so — and the first creation per machine is audited in the console store (ruling P-2).
   const terminals = new TerminalRegistry();
   const connect = (target: SshTarget, handle: string, command?: RemoteCommand) =>
     connectTerminal(target, handle, { custody }, command === undefined ? {} : { command });
-  await registerTerminalRoute(app, { registry, terminals, connect });
+  const shellSettings = consoleSettings.ok ? consoleSettings.settings : DEFAULT_CONSOLE_SETTINGS;
+  await registerTerminalRoute(app, {
+    registry,
+    terminals,
+    connect,
+    consoleStore,
+    projectsRootFor: (logicalName) => projectsRootFor(shellSettings, logicalName),
+    log: stderrLogger({ module: "terminal-route" })
+  });
 
   // One-time enrollment from the Configuration page (ADR-0005): the operator supplies the target
   // machine's password in the browser, the server installs the harness PUBLIC key and verifies a

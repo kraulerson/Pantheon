@@ -101,3 +101,48 @@ The decisions above and rulings R1–R6 are unchanged. Two things changed while 
    checkpoint patch instead. This is because the framework's commit check blocks a commit that stages
    source until the first five Build Loop steps are marked. The plan's "Execution deviations" section
    lists every ruling that changed the plan's text.
+
+## Follow-up 2026-10-20 (F2 built)
+
+The decisions above and rulings R1–R6 are unchanged. What F2 built, and where it departs from the
+spec or plan text (every ruling is in the F2 ledger, `.superpowers/sdd/2026-10-18-maestro-console-f2/progress.md`).
+
+1. **O1 as built (ruling T2-1, T2-2, T10-3).**
+   - The rule is Karl's O1 (A1, 2026-10-18), with two refinements: a negation word (nothing, none, no,
+     not) in the three words **before** "waiting on you" also means not-needs-you, and the clause is cut
+     at the first sentence end before the empty test.
+   - Lettered options need **two or more** ids; below that the card is a question without buttons.
+   - The ask is read from the reply itself (`asks_you`), whatever other signal is up, and an unanswered,
+     undismissed ask is re-raised on every poll (it is "sticky").
+   - Measured precision on the survey was 23 of 30 hand-labelled; false asks are expected, so
+     **Dismiss** shows on every asking card, with or without option buttons.
+2. **Step-up as built (R4).** A 15-minute window held in server memory and keyed on the cookie session id;
+   a bearer-only caller is refused; the compare is the one `/login` uses, with no artificial delay and no
+   throttle (ruling T3-0, accepted residual); refusals are logged at warn. `{ "revoke": true }` closes the
+   window (ruling P-1).
+3. **Raw `procStart` (recorded deviation; spec §6.6.4a).** The delivery script compares the session
+   file's `procStart` as the stored string, byte for byte, instead of converting both to epoch seconds.
+   The mask is proven transparent for ISO-8601 timestamps (ruling T6-0), and the poller compares the
+   masked value with the masked value (ruling T10-4).
+4. **A new outcome, `unconfirmed`, and a `phase` field.** A command that was requested but whose result
+   could not be confirmed is recorded `unconfirmed` and shown with a warning, not as a failure (ruling
+   T11-11). `SshConnectionError.phase` (`before_exec` or `after_exec`) tells the two apart; a failure
+   before the command was requested stays `failed` (ruling T11-18). The page keeps the idempotency key
+   after a 5xx so a retry cannot paste twice (rulings T11-10, T11-16).
+5. **`opened_shell` and the write-ahead shell audit (ruling T11-12, T11-17).** Every machine-shell open
+   writes an `attempted` row before the dial and a `result` row (`opened_shell`, or `failed`) after; no
+   row means no dial. This replaces the earlier once-per-process `created_shell` row, which could be
+   skipped and could be written for a shell nobody created.
+6. **The terminal bearer refusal (ruling T11-3).** While login is enabled, a bearer-only upgrade of the
+   terminal WebSocket is refused 403; the admin bearer keeps its API reach. Terminal and Claude-session
+   access otherwise stays at operator sign-in only (decision 18, 2026-10-17; the stolen-cookie residual
+   F-2 is accepted).
+7. **Task 12 added on Karl's ruling (2026-10-20, "Build it").** Spec §6.4's commit-approval second step
+   (the masked session screen and "type the id again") was missing from the plan. It is the plan's Task 12
+   addendum: an allow-listed pane-tail read behind the operator guard, with no step-up (read-only, masked,
+   never stored), and a view on the card.
+
+Esc inside the shell drawer minimises it and is not forwarded to the shell (spec §14.2.6); Karl kept
+this behaviour (A1, 2026-10-20).
+
+Security audit: `docs/security-audits/maestro-console-f2-security-audit.md`.

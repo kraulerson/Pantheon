@@ -1,16 +1,18 @@
 /**
- * Maestro Console probe — the two read-only remote commands F1 runs on a dev machine (spec §5, plan
+ * Maestro Console probe — the read-only remote commands the console runs on a dev machine (spec §5, plan
  * Task 3; TM-020 remote-command surface). Everything a card is built from comes back through
  * `buildProbeCommand`, once per machine per poll: the tmux panes, each `~/.claude/sessions/*.json`
  * (allow-listed fields only, never `*.key`), the transcript bytes after each stored offset, the
  * `capture-pane` tail of each pane of interest and each session's `pending-approval.json` sentinel.
- * `buildExpandCommand` fetches one byte range of one transcript for the on-demand expand view (R1:
- * nothing of it is stored).
+ * `buildExpandCommand` fetches one byte range of one transcript for the on-demand expand view, and
+ * `buildPaneTailCommand` one pane's `capture-pane` tail for a commit approval's second step (F2 Task 12,
+ * spec §6.4) — R1: nothing of either is stored.
  *
  * Security:
- * - Both commands are the branded {@link RemoteCommand}, minted here and in `tmux.ts` only. Every value
- *   that reaches the text passes its allow-list first ({@link SESSION_ID_RE}, {@link PANE_ID_RE}, bounded
- *   integers) and is then single-quoted; a plan with more than 64 slices or 256 panes is refused.
+ * - Every command is the branded {@link RemoteCommand}, minted by {@link mintScript} here (the F2 delivery
+ *   script in `deliver-command.ts` reuses it) and in `tmux.ts` only. Every value that reaches the text passes
+ *   its allow-list first ({@link SESSION_ID_RE}, {@link PANE_ID_RE}, bounded integers) and is then
+ *   single-quoted; a plan with more than 64 slices or 256 panes is refused.
  *   Refusals name the rule, never the offending value.
  * - The script is POSIX `sh` (bash-3.2-safe; BSD and GNU userland) and is handed to `/bin/sh` through a
  *   QUOTED heredoc after the same absolute-path PATH prefix `tmux.ts` uses. sshd runs a remote command
@@ -83,6 +85,8 @@ const MAX_SLICES = 64;
 const MAX_PANES = 256;
 const MAX_OFFSET = 1_000_000_000_000;
 const MAX_TAIL_LINES = 1000;
+/** History lines above the visible pane for the commit approval's pane view (F2 Task 12). */
+const MAX_PANE_VIEW_LINES = 200;
 
 /** Keep byte-identical to `TMUX_PATH_PREFIX` in tmux.ts (not exported there); the test compares them. */
 const PROBE_PATH_PREFIX = 'PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"';
@@ -90,10 +94,13 @@ const PROBE_PATH_PREFIX = 'PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:
 /** Heredoc delimiter; quoted, so the login shell performs no expansion on the body. */
 const HEREDOC_TAG = "PANTHEON_PROBE_SCRIPT";
 
-/** Without base64 every payload would be silently empty — fail loud instead (exit 126 → `failed`). */
-const BASE64_GUARD = String.raw`command -v base64 >/dev/null 2>&1 || { echo "probe: base64 not found" >&2; exit 126; }`;
+/** Without base64 every payload would be silently empty — fail loud instead (exit 126 → `failed`). Shared with `deliver-command.ts`. */
+export const BASE64_GUARD = String.raw`command -v base64 >/dev/null 2>&1 || { echo "probe: base64 not found" >&2; exit 126; }`;
 
 const END_LINE = String.raw`printf 'PANTHEON_PROBE:end\n'`;
+
+/** Base64 without line wrapping (macOS `base64` has no `-w0`): every record's payload is one line. */
+const B64_FUNCTION = String.raw`b64() { base64 | tr -d '\n'; }`;
 
 /**
  * Script head: panes, then session files (+ their sentinels). `String.raw` keeps the shell's own
@@ -109,7 +116,7 @@ const END_LINE = String.raw`printf 'PANTHEON_PROBE:end\n'`;
  */
 const PROBE_SCRIPT_HEAD = String.raw`export LC_ALL=C
 ${BASE64_GUARD}
-b64() { base64 | tr -d '\n'; }
+${B64_FUNCTION}
 tmux list-panes -a -F '#{pane_id} #{window_id} #{pane_pid} #{session_name}' 2>/dev/null | while read -r p w pid s; do
   c=$(tmux display-message -p -t "$p" '#{pane_current_command}' 2>/dev/null)
   printf 'PANTHEON_PROBE:pane:%s:%s:%s:%s:%s\n' "$(printf '%s' "$s" | b64)" "$w" "$p" "$pid" "$(printf '%s' "$c" | b64)"
@@ -182,8 +189,12 @@ function assertInteger(value: unknown, what: string, min: number, max: number): 
   return value;
 }
 
-/** Wrap a validated script body: PATH prefix as in tmux.ts, then `/bin/sh` fed by a quoted heredoc. */
-function mint(script: string): RemoteCommand {
+/**
+ * Wrap a validated script body: PATH prefix as in tmux.ts, then `/bin/sh` fed by a quoted heredoc. The
+ * mint for every console script — the probe, expand and pane-tail commands here, the delivery script in
+ * `deliver-command.ts`; callers pass allow-listed values only.
+ */
+export function mintScript(script: string): RemoteCommand {
   // Structural guard: no body line may close the heredoc early. Allow-listed values cannot contain the
   // tag, so this only trips on a template edit.
   if (script.split("\n").includes(HEREDOC_TAG)) throw new ProbeError("probe script would terminate its own heredoc");
@@ -201,7 +212,7 @@ export function buildProbeCommand(plan: ProbePlan): RemoteCommand {
   const lines = assertInteger(plan.tailLines, "tailLines", 1, MAX_TAIL_LINES);
   const slices = plan.slices.map((s) => `slice '${assertSessionId(s.sessionId)}' '${assertInteger(s.offset, "offset", 0, MAX_OFFSET)}'`);
   const tails = plan.panes.map((p) => `tail_of '${assertPaneId(p)}'`);
-  return mint([PROBE_SCRIPT_HEAD, sliceFunction(max), ...slices, tailFunction(lines), ...tails, END_LINE].join("\n"));
+  return mintScript([PROBE_SCRIPT_HEAD, sliceFunction(max), ...slices, tailFunction(lines), ...tails, END_LINE].join("\n"));
 }
 
 /**
@@ -230,5 +241,18 @@ else
   printf 'PANTHEON_PROBE:slice:%s:%s:0:0:0:\n' '${sid}' '${start}'
 fi
 ${END_LINE}`;
-  return mint(script);
+  return mintScript(script);
+}
+
+/**
+ * One pane's screen for a commit approval's second step (F2 Task 12, spec §6.4): the probe's own `tail_of` function
+ * and record over ONE pane — `capture-pane -S -<lines>`, i.e. the whole visible pane plus `lines` lines of history —
+ * then `end`. Parse it with `parseProbeOutput`: the text is `tails.get(paneId)`, trusted only when `ended`. Read-only:
+ * tmux is only asked to capture-pane. Throws {@link ProbeError} for a pane id outside {@link PANE_ID_RE} or `lines`
+ * outside 1 … 200 — before any command text exists; the pane id reaches the text single-quoted, nowhere else.
+ */
+export function buildPaneTailCommand(paneId: string, lines: number): RemoteCommand {
+  const pane = assertPaneId(paneId);
+  const history = assertInteger(lines, "lines", 1, MAX_PANE_VIEW_LINES);
+  return mintScript(["export LC_ALL=C", BASE64_GUARD, B64_FUNCTION, tailFunction(history), `tail_of '${pane}'`, END_LINE].join("\n"));
 }

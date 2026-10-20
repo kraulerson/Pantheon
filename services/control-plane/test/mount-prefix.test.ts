@@ -21,6 +21,8 @@ const TOKEN = "super-strong-admin-token-0123456789abcdef";
 const admin = { authorization: `Bearer ${TOKEN}` };
 const PREFIX = { "x-forwarded-prefix": "/harness" };
 const form = { "content-type": "application/x-www-form-urlencoded" };
+/** A WebSocket handshake's headers (the terminal route is the only upgrade route). */
+const WS = { upgrade: "websocket", connection: "Upgrade", "sec-websocket-version": "13", "sec-websocket-key": Buffer.from("the sample nonce").toString("base64") };
 
 function makeApp(o: { login?: boolean; chatUrl?: string } = {}): FastifyInstance {
   const repo = new SqliteRegistry(":memory:");
@@ -251,17 +253,42 @@ describe("audit 2026-08-27 hardenings (shared origin with the chat page)", () =>
   });
 
   it("refuses a terminal WebSocket handshake the browser labels same-site or cross-site (sibling hosts), like the POST check", async () => {
-    app = makeApp();
-    const ws = { upgrade: "websocket", connection: "Upgrade", "sec-websocket-version": "13", "sec-websocket-key": Buffer.from("the sample nonce").toString("base64") };
+    // The operator's browser: login on, a cookie session (ruling T11-3: the bearer no longer opens a terminal socket).
+    app = makeApp({ login: true });
+    const cookie = String((await app.inject({ method: "POST", url: "/login", payload: "password=correct%20horse", headers: form })).headers["set-cookie"]).split(";")[0]!;
     for (const site of ["same-site", "cross-site"]) {
-      const res = await app.inject({ method: "GET", url: "/terminal/mac", headers: { ...admin, ...ws, "sec-fetch-site": site } });
+      const res = await app.inject({ method: "GET", url: "/terminal/mac", headers: { cookie, ...WS, "sec-fetch-site": site } });
       expect(res.statusCode, site).toBe(403);
       expect(res.json()).toEqual({ error: "cross_origin_rejected" });
     }
     for (const site of ["same-origin", "none", undefined]) {
-      const res = await app.inject({ method: "GET", url: "/terminal/mac", headers: { ...admin, ...ws, ...(site ? { "sec-fetch-site": site } : {}) } });
+      const res = await app.inject({ method: "GET", url: "/terminal/mac", headers: { cookie, ...WS, ...(site ? { "sec-fetch-site": site } : {}) } });
       expect(res.statusCode, String(site)).not.toBe(403);
     }
+  });
+
+  it("ruling T11-3 (F-1): while login is enabled a terminal WebSocket upgrade needs an operator cookie session — a bearer-only upgrade is 403 terminal_cookie_only after the guard; no credential keeps its 401; headless keeps the bearer", async () => {
+    app = makeApp({ login: true });
+    const cookie = String((await app.inject({ method: "POST", url: "/login", payload: "password=correct%20horse", headers: form })).headers["set-cookie"]).split(";")[0]!;
+    const bearer = await app.inject({ method: "GET", url: "/terminal/mac", headers: { ...admin, ...WS } });
+    expect(bearer.statusCode).toBe(403);
+    expect(bearer.json()).toEqual({ error: "terminal_cookie_only" });
+    // The guard still answers first: nothing presented → 401; a wrong bearer → its own 403.
+    const anon = await app.inject({ method: "GET", url: "/terminal/mac", headers: WS });
+    expect(anon.statusCode).toBe(401);
+    expect(anon.json()).toEqual({ error: "unauthenticated" });
+    const wrong = await app.inject({ method: "GET", url: "/terminal/mac", headers: { authorization: "Bearer not-the-token", ...WS } });
+    expect(wrong.json()).toEqual({ error: "invalid_token" });
+    // A cookie session passes (this app mounts no terminal route, so the request goes on to the not-found handler);
+    // a cookie that is not a live session does not.
+    expect((await app.inject({ method: "GET", url: "/terminal/mac", headers: { cookie, ...WS } })).statusCode).toBe(404);
+    expect((await app.inject({ method: "GET", url: "/terminal/mac", headers: { ...admin, cookie: "pantheon_session=stale", ...WS } })).json()).toEqual({ error: "terminal_cookie_only" });
+    // The bearer keeps its API reach: only the upgrade is refused.
+    expect((await app.inject({ method: "GET", url: "/api/backends", headers: admin })).statusCode).toBe(200);
+    await app.close();
+    // Headless (login disabled): the bearer is the only credential there is, and it still opens the socket.
+    app = makeApp();
+    expect((await app.inject({ method: "GET", url: "/terminal/mac", headers: { ...admin, ...WS } })).statusCode).toBe(404);
   });
 });
 

@@ -18,7 +18,7 @@ export const SESSION_COOKIE = "pantheon_session";
 export const AUTH_PUBLIC_PATHS: readonly string[] = ["/login", "/logout"];
 
 /** Constant-time compare of two secrets via fixed-length digests (no length leak). */
-function timingSafeEqualStr(a: string, b: string): boolean {
+export function timingSafeEqualStr(a: string, b: string): boolean {
   const ha = createHash("sha256").update(a).digest();
   const hb = createHash("sha256").update(b).digest();
   return timingSafeEqual(ha, hb);

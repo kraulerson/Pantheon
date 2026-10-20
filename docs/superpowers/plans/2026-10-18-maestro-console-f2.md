@@ -484,3 +484,42 @@ it("embeds every MENU_ANCHORS entry as a literal grep", () => { for (const a of 
 - **Review Focus:** five lines, each pinned (Tasks 2, 5, 6, 3+6, 9).
 - **Proportion:** 11 tasks for a spec section set of roughly 120 lines; code blocks are test assertions and one script outline (the delivery script's steps are the plan's decisions — the exact tmux lines come from the spec).
 - **Open choice for Karl at plan review:** Task 9's `Esc` minimises the drawer and is not forwarded to the shell (spec §14.2.2 names Esc; §14.2.6 allows documenting an exception). Say "forward Esc" to drop that key from the toggle set.
+
+## Addendum 2026-10-20
+
+Written after the build. The execution ledger (`.superpowers/sdd/2026-10-18-maestro-console-f2/progress.md`, git-ignored) is the authority; where it and the text above differ, the ledger wins. The text above is left as planned.
+
+**The Esc choice is closed.** Karl kept the plan default (A1, 2026-10-20): Esc inside the drawer minimises it and is not forwarded to the shell; Ctrl+backtick and the bar button also toggle it.
+
+### Task 12: the commit-approval screen (added on Karl's ruling "Build it", 2026-10-20)
+
+- **Why:** spec §6.4 says that after the first Submit of a commit approval the card shows the masked pane tail and the next step "type ‹id› again to confirm". The plan omitted it (whole-branch review I-3, ruling T11-20 first deferred it, ruling T11-22 built it). It blocks the F2 commit.
+- **What:** `buildPaneTailCommand` in `src/console/probe-command.ts` (the probe's own `tail_of` over one allow-listed pane id); `GET /console/api/cards/:id/pane` (operator guard, no step-up, commit-approval cards only, masked, last 60 lines and 8 KiB, never stored, never logged); the page's "Show the session's screen" view with Refresh and Hide, and the after-`sent` next step with the box left empty (D5).
+- **Three fix rounds:** a fresh read on `sent` plus one re-read at about 2 s because CDF renders after its hooks (I-1); an empty capture is a failure and the "Check the staged change above" sentence shows only while a screen is shown (M-1); bidi controls on the screen shown as `⟦U+XXXX⟧` (T12-2, T12-3); a per-card send sequence so an earlier send's read cannot overwrite a later Submit's status (B-1, ruling T12-4).
+- **Brief:** `.superpowers/sdd/2026-10-18-maestro-console-f2/task-12-brief.md`. Rulings T12-1 to T12-4.
+
+### Deviations from the plan text above (one line each, with the ruling)
+
+- **Raw `procStart`:** the script compares the stored string byte for byte, not epoch seconds (Global Constraints; T6-0 pins mask transparency; T10-4 masked-versus-masked in the poller).
+- **P-1:** the step-up route also accepts `{ "revoke": true }` (Task 9's Drop elevation needs it).
+- **P-2, P-2b:** the terminal route takes optional `consoleStore` and `projectsRootFor` deps; there is one Fastify instance and one mount, so no separate "admin mount" exists.
+- **P-3:** fixture and live-script checks ran on this Mac against a throwaway tmux session, no SSH.
+- **T1-1:** the TL;DR block is the first non-empty paragraph after the last marker.
+- **T2-1, T2-2:** O1 gains a bounded negation look-back and a sentence cut; the two-or-more lettered options threshold is enforced in `detectReplyQuestion`.
+- **T3-0:** no 300 ms minimum response time on a step-up refusal (`/login` has none); **T3-1:** refusals are logged.
+- **T3-2, T3-3:** the controller alone marks the plan task active (implementers lack the task tools); the dispatch does not ask them to.
+- **T4-1b:** the `text_masked` CHECK is 8,192 bytes (twice the limit), not 4,096; **T4-2:** a code-point scan replaces `isWellFormed()` (not in the ES2022 lib); **T4-3:** the key index is a unique `(idempotency_key, row_kind)` index and in-process joins give one dial per key.
+- **T5-1:** `ps -A -o pid=,ppid=` replaces `ps -ax`; **T5-2:** menu anchors are matched by a quoted `case` prefix of at most 3 columns, not `grep -E`; **T5-3:** the trust-prompt anchors are added to `MENU_ANCHORS`.
+- **T6-1:** `validateSubmitText` refuses empty and whitespace-only text; **T6-2:** concurrent same-key requests join in process; **T6-3:** an unfinished key answers 409 `unresolved`; **T6-4:** a failed write-ahead append becomes outcome `failed` (`audit_write_failed`); **T6-5:** `pane_tail_hash` stores the pre-paste hash; **T6-6, T6-7:** the `statusAtSend` and "queued" wording rules.
+- **T7-0, T8-0:** Tasks 7 and 8 ran on the top tier because they add mint sites; **T7-1:** the `machines` key shape is the registry's logical-name shape; **T7-2:** the terminal route has its own logger dep so the fail-closed audit failure leaves a trace in production.
+- **T8-1:** the trust-prompt fixture was captured on this Mac and the throwaway folder left in the scratchpad; **T8-2:** creation rows use a server-minted key; **T8-3:** the create script resolves `claude` with `$HOME/.local/bin` prepended and fails with a labelled record; **T8-4:** the list parser returns `{ projects, dropped }`; **T8-5:** a folder whose tmux name would start `sh-` is rewritten `p-sh-…`; **T8-6:** the create script exports no `LC_ALL`; a cold-started tmux server has no locale (README note); **T8-7:** one shared admissibility rule for the list and the create route.
+- **T9-0:** Task 9 ran on sonnet; **T9-1:** the page mints a fresh key after any server-reported outcome (amended by T11-10 to 2xx and 4xx only); **T9-2:** Esc plan default; **T9-3:** every reachable non-menu card also gets "Open Claude session".
+- **T10-1 to T10-4:** the poller stores option ids for sentinels and reply questions, derives `asks_you` from the reply itself, re-raises an unanswered ask, and compares `procStart` masked-versus-masked.
+- **T11-0:** the audit ran as five parallel lenses (the project's Phase 2.4 rule); **T11-1:** order is audit, whole-branch review, one fix wave, scoped re-review, then documentation; **T11-2:** the Fable quota ran out (HTTP 429), so the audit, the review and every later review ran on Opus at max effort.
+- **T11-3:** a bearer-only terminal upgrade is refused while login is enabled; **T11-4:** F-2 is accepted under decision 18; **T11-5:** `remoteDirProblem` refuses `#`, C1 controls, lone surrogates and bidi controls; **T11-6, T11-8:** machine- and operator-derived text is masked before storage and paths the mask would alter are dropped or refused.
+- **T11-7, T11-14:** prefixed credential patterns and an assignment form in the shared mask, plus an audit-only `maskSubmitText`; unprefixed 40-character secrets stay a residual.
+- **T11-9, T11-15:** every JSON body is strict UTF-8, the four console POSTs require `application/json`, and Fastify's own 4xx errors keep their status with fixed bodies.
+- **T11-10, T11-16:** the page keeps the key after a 5xx and the post-dial "result not written" path answers 409 `unresolved`; **T11-11, T11-18:** outcome `unconfirmed` and `SshConnectionError.phase`.
+- **T11-12, T11-17:** every `?shell=1` open is audited write-ahead; `created_shell` is renamed `opened_shell`.
+- **T11-13:** `freeName` rewrites the final `sh-` candidate to `p-sh-…` (the "skip" wording never terminated); **T11-19, T11-21:** Dismiss on any asking card, `markAnswered` rules, and replay bound to the card and text.
+- **T11-20:** a `waiting` session gets no reply box; "answered HH:MM" is shown; the narrow reading of Review Focus 5 is accepted; **T11-22:** the Task 12 addendum; **T11-23:** the three fix-wave Minor items were folded into Task 12.

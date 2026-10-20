@@ -12,7 +12,7 @@
  */
 
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import formbody from "@fastify/formbody";
 import { RegistryService, ValidationError } from "../registry/service.js";
 import type { McpRegistrationService } from "../registry/mcp-registration.js";
@@ -25,6 +25,7 @@ import { registerHarnessRoutes, HARNESS_ASSET_PATHS, type TmuxLister } from "./r
 import { registerConsoleRoutes, type ConsoleWiring } from "./routes/console.js";
 import { SessionStore } from "./auth/session.js";
 import { operatorGuard, registerAuthRoutes, AUTH_PUBLIC_PATHS } from "./auth/operator-auth.js";
+import { cookieSessionId } from "./auth/step-up.js";
 import { USER_GUIDE_HTML, USER_GUIDE_PATH } from "./user-guide.js";
 import { isKeycardPath, keycardGuard } from "./auth/keycard-guard.js";
 import { registerKeycardAdminRoutes, registerKeycardDoor } from "./routes/keycard.js";
@@ -95,9 +96,11 @@ export interface AppOptions {
    */
   readonly approvalSources?: readonly ApprovalSource[];
   /**
-   * Maestro Console (F1, ADR-0010): the console store, its read-only poller, the loaded settings, the
-   * custody-bound remote run for on-demand expand, and the masker. When provided, `GET /console` and its two
-   * JSON routes are mounted behind the operator guard (never public — TM-011). Omit → not mounted.
+   * Maestro Console (F1, ADR-0010; F2 Task 3): the console store, its read-only poller, the loaded settings, the
+   * custody-bound remote run for on-demand expand, the masker, the passphrase step-up window and its logger. When
+   * provided, `GET /console`, its JSON routes and the step-up pair are mounted behind the operator guard (never
+   * public — TM-011); the step-up routes also get this app's RESOLVED session store and the operator passphrase
+   * while login is enabled (without login they answer 503). Omit → not mounted.
    */
   readonly console?: ConsoleWiring;
 }
@@ -232,9 +235,33 @@ function isUrlencodedForm(req: FastifyRequest): boolean {
   return (req.headers["content-type"] ?? "").includes("application/x-www-form-urlencoded");
 }
 
+/** The strict JSON parser's refusal of a body that is not well-formed UTF-8 (RFC 8259 §8.1): answered 400 `invalid_utf8`. */
+class InvalidUtf8BodyError extends Error {
+  readonly statusCode = 400;
+  constructor() {
+    super("request body is not valid UTF-8");
+    this.name = "InvalidUtf8BodyError";
+  }
+}
+
+/**
+ * Fatal: invalid UTF-8 throws instead of turning into U+FFFD. `ignoreBOM` keeps a leading BOM in the text, and
+ * secure-json-parse strips it before `JSON.parse`, so a BOM-prefixed JSON body still parses (ruling T11-23, m2).
+ */
+const STRICT_UTF8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+
+/** The callback form of Fastify's default JSON parser (secure-json-parse), as `getDefaultJsonParser` returns it. */
+type JsonTextParser = (req: FastifyRequest, body: string, done: (err: Error | null, body?: unknown) => void) => void;
+
+/** Ruling T11-15: the fixed body for each Fastify client error status the error handler passes through. */
+const CLIENT_ERROR_BODIES: Readonly<Record<number, string>> = { 413: "payload_too_large", 415: "unsupported_media_type" };
+
 export function buildApp(opts: AppOptions): FastifyInstance {
   const app = Fastify({
     logger: false,
+    // C2 (L4): a request id unique across processes and restarts (the default `req-<n>` restarts at req-1), used as
+    // the correlation id of every structured line a request writes.
+    genReqId: () => randomUUID(),
     // A malformed URL never reaches a route or a hook; answer it ourselves so the body is sanitized
     // (no reflected path) and the security header still lands (audit 2026-08-25).
     frameworkErrors: (_error, _req, reply) => {
@@ -242,6 +269,24 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     }
   });
   const { registry, mcp } = opts;
+
+  // Ruling T11-15 (IV-2): JSON is UTF-8. Fastify's default parser decodes the body with U+FFFD replacement, so a
+  // non-UTF-8 body reached the routes altered (or tripped the length check by accident). This parser decodes the
+  // raw bytes with a fatal decoder FIRST (→ 400 invalid_utf8), then hands the text to Fastify's own default JSON
+  // parser: secure-json-parse keeps refusing `__proto__` / `constructor.prototype`, and an empty body is still
+  // FST_ERR_CTP_EMPTY_JSON_BODY. App-wide (the console routes and the public chat entry alike).
+  app.removeContentTypeParser("application/json");
+  const parseJsonText = app.getDefaultJsonParser("error", "error") as JsonTextParser;
+  app.addContentTypeParser<Buffer>("application/json", { parseAs: "buffer" }, (req, body, done) => {
+    let text: string;
+    try {
+      text = STRICT_UTF8.decode(body);
+    } catch {
+      done(new InvalidUtf8BodyError(), undefined);
+      return;
+    }
+    parseJsonText(req, text, done);
+  });
 
   // #9 browser login (§7 tier-1): when an operator passphrase is configured, the guard also accepts
   // a session cookie and logged-out browser navigations redirect to /login.
@@ -320,6 +365,13 @@ export function buildApp(opts: AppOptions): FastifyInstance {
         return;
       }
       reply.code(result.status).send({ error: result.reason });
+      return;
+    }
+    // Ruling T11-3 (F-1): while login is enabled, a WebSocket upgrade (the terminal route, the only one) needs an
+    // accepted operator cookie session — the static admin bearer never drives a PTY. After the guard, so an
+    // unauthenticated upgrade keeps its 401; headless (login disabled) keeps the bearer; the bearer keeps its API reach.
+    if (isUpgrade && loginEnabled && sessions !== undefined && cookieSessionId(req, sessions) === undefined) {
+      reply.code(403).send({ error: "terminal_cookie_only" });
     }
   });
 
@@ -338,8 +390,31 @@ export function buildApp(opts: AppOptions): FastifyInstance {
       reply.code(400).send({ error: "validation_error", detail: err.message });
       return;
     }
+    if (err instanceof InvalidUtf8BodyError) {
+      reply.code(400).send({ error: "invalid_utf8" });
+      return;
+    }
+    // Ruling T11-15 (L9): Fastify's own client errors (an empty, malformed or prototype-poisoned JSON body, a body
+    // over the limit, an unknown media type, a length mismatch) keep their 4xx status with a fixed body — never the
+    // error's message. Nothing else in `src` sets a 4xx `statusCode`, so the narrow form loses nothing.
+    const { code, statusCode } = (typeof err === "object" && err !== null ? err : {}) as { readonly code?: unknown; readonly statusCode?: unknown };
+    if (typeof code === "string" && code.startsWith("FST_ERR_") && typeof statusCode === "number" && statusCode >= 400 && statusCode < 500) {
+      reply.code(statusCode).send({ error: CLIENT_ERROR_BODIES[statusCode] ?? "bad_request" });
+      return;
+    }
     // Never leak raw exception text toward the client.
     reply.code(500).send({ error: "internal_error" });
+  });
+
+  // Unknown routes: a fixed body that never echoes the request path or query (Fastify's default would).
+  app.setNotFoundHandler((req, reply) => {
+    const wantsJson = (req.headers.accept ?? "").includes("application/json") || req.url.startsWith("/api/") || req.url.startsWith("/console/api/");
+    reply.header("Cache-Control", "no-store");
+    if (wantsJson) {
+      reply.code(404).send({ error: "not_found" });
+      return;
+    }
+    reply.code(404).type("text/html; charset=utf-8").send("<!doctype html><title>Not found</title><p>Not found.</p>");
   });
 
   // ---- Backends ----
@@ -433,10 +508,18 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   // ---- Harness UI (frame + xterm.js terminal tabs + public xterm assets) — ADR-0005 §9 C.1/C.6 ----
   registerHarnessRoutes(app, { registry, loginEnabled, ...(opts.tmux ? { tmux: opts.tmux } : {}), ...(opts.chatUrl !== undefined ? { chatUrl: opts.chatUrl } : {}) });
 
-  // ---- Maestro Console (F1, ADR-0010): page + state + on-demand expand, all behind the guard above; nothing
-  // here joins PUBLIC_PATHS, so a keycard bearer meets the admin guard's 403 (TM-011). Mounted only when wired. ----
+  // ---- Maestro Console (F1, ADR-0010): page + state + on-demand expand + the F2 step-up pair, all behind the guard
+  // above; nothing here joins PUBLIC_PATHS, so a keycard bearer meets the admin guard's 403 (TM-011). Mounted only
+  // when wired. The step-up routes consult the SAME session store the guard and /login share — `sessions` as
+  // resolved above, not `opts.sessions`, which is absent whenever this app minted the store — and compare against
+  // the same passphrase; without login they answer 503. ----
   if (opts.console) {
-    registerConsoleRoutes(app, { ...opts.console, registry, loginEnabled });
+    registerConsoleRoutes(app, {
+      ...opts.console,
+      registry,
+      loginEnabled,
+      ...(loginEnabled && sessions ? { sessions, operatorPassword: opts.operatorPassword as string } : {})
+    });
   }
 
   // ---- Approval stores (BUGS #42): this host's Peta first (READER only — the decide verb is

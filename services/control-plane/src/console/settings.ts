@@ -1,11 +1,12 @@
 /**
  * Maestro Console settings file (spec §7): poll cadence, card retention, the areas vocabulary, the
- * per-project look and area map, the All-tab areas and the skill → areas map. Schema-validated when
+ * per-project look and area map, the All-tab areas, the skill → areas map and (F2 Task 7) the
+ * per-machine projects root behind the drawer shell and the new-session flow. Schema-validated when
  * loaded; a bad entry is refused with the ENTRY NAME and the RULE, never the offending value (same
  * hygiene as `approvalSourcesFrom`). `reminders` / `telegram` keys are accepted and ignored in F1.
  */
 
-import { TMUX_SESSION_NAME_RE } from "../devmachine/tmux.js";
+import { remoteDirProblem, TMUX_SESSION_NAME_RE } from "../devmachine/tmux.js";
 
 export interface ProjectSettings {
   readonly display: string;
@@ -13,6 +14,12 @@ export interface ProjectSettings {
   readonly border: string;
   readonly areas: readonly string[];
   readonly hidden: boolean;
+}
+
+/** One dev machine's console settings (F2 Task 7): `machines.<logicalName>` in the settings file. */
+export interface MachineSettings {
+  /** Absolute directory holding the machine's project folders: the drawer shell starts there; new sessions are made under it. */
+  readonly projectsRoot: string;
 }
 
 export interface ConsoleSettings {
@@ -24,6 +31,8 @@ export interface ConsoleSettings {
   readonly allTabAreas: readonly string[];
   /** Skill name → areas. */
   readonly skills: Readonly<Record<string, readonly string[]>>;
+  /** Key = dev-machine logical name. A machine without an entry has no drawer shell and no new-session flow. */
+  readonly machines: Readonly<Record<string, MachineSettings>>;
 }
 
 export type ConsoleSettingsResult =
@@ -37,6 +46,7 @@ export const DEFAULT_CONSOLE_SETTINGS: ConsoleSettings = {
   projects: {},
   allTabAreas: ["fleet-sessions", "general"],
   skills: {},
+  machines: {},
 };
 
 const BORDERS: readonly string[] = ["solid", "dashed", "double", "dotted", "thick-left"];
@@ -46,6 +56,12 @@ const SKILL_RE = /^[A-Za-z0-9][A-Za-z0-9:_-]{0,63}$/;
 const PROJECT_FIELDS: readonly string[] = ["display", "glyph", "border", "areas", "hidden"];
 const PLAIN_KEY_RE = /^[A-Za-z0-9_-]{1,40}$/;
 const VISIBLE_RE = /^[^\p{C}\s]+$/u;
+/**
+ * A `machines` key names a REGISTERED dev machine, so it takes the registry's `LOGICAL_NAME_RE` shape (a leading
+ * `_` allowed, never a leading `-` or `.`), capped at 64 characters — the registry is the authority on names (T7-1).
+ */
+const MACHINE_KEY_RE = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$/;
+const MACHINE_FIELDS: readonly string[] = ["projectsRoot"];
 
 class Refusal extends Error {
   constructor(readonly entry: string, readonly rule: string) {
@@ -105,6 +121,20 @@ function projectFrom(key: string, v: unknown, areas: readonly string[]): Project
   };
 }
 
+function machineFrom(key: string, v: unknown): MachineSettings {
+  // Always the bracketed entry name: a logical name may contain '.', which a dotted name would make ambiguous.
+  const at = keyEntry("machines", key);
+  const o = objectAt(v, at);
+  for (const field of Object.keys(o)) {
+    if (!MACHINE_FIELDS.includes(field)) return refuse(PLAIN_KEY_RE.test(field) ? `${at}.${field}` : keyEntry(at, field), "is not a known machine setting");
+  }
+  const root = o["projectsRoot"];
+  if (typeof root !== "string") return refuse(`${at}.projectsRoot`, "must be an absolute path (a string starting with '/')");
+  // The allow-list the command builder applies again at mint time (`tmux new-session -c`): a root it would refuse is refused here, by rule, never by value.
+  const problem = remoteDirProblem(root);
+  return problem === undefined ? { projectsRoot: root } : refuse(`${at}.projectsRoot`, problem);
+}
+
 function parse(raw: string): ConsoleSettings {
   let parsed: unknown;
   try {
@@ -142,7 +172,14 @@ function parse(raw: string): ConsoleSettings {
     }),
   );
 
-  return { pollSeconds, retention: { cardsDays }, areas, projects, allTabAreas, skills };
+  const machines = Object.fromEntries(
+    Object.entries(root["machines"] === undefined ? {} : objectAt(root["machines"], "machines")).map(([key, v]) => {
+      if (!MACHINE_KEY_RE.test(key)) return refuse(keyEntry("machines", key), "key must be a dev-machine logical name");
+      return [key, machineFrom(key, v)] as const;
+    }),
+  );
+
+  return { pollSeconds, retention: { cardsDays }, areas, projects, allTabAreas, skills, machines };
 }
 
 /** Parse the file text. `undefined` / blank → the defaults. Never echoes a value in a refusal. */
@@ -159,4 +196,9 @@ export function consoleSettingsFrom(raw: string | undefined): ConsoleSettingsRes
 /** `readFile` returns the text, or `undefined` for a missing file (→ defaults). Other I/O errors propagate. */
 export function loadConsoleSettings(path: string, readFile: (p: string) => string | undefined): ConsoleSettingsResult {
   return consoleSettingsFrom(readFile(path));
+}
+
+/** The machine's configured projects root (own entries only), or undefined: no drawer shell and no new-session flow for it. */
+export function projectsRootFor(settings: ConsoleSettings, logicalName: string): string | undefined {
+  return Object.hasOwn(settings.machines, logicalName) ? settings.machines[logicalName]?.projectsRoot : undefined;
 }

@@ -5,6 +5,7 @@
  * store is a real `:memory:` SqliteConsoleStore; clock and timers are injected. Nothing is dialled.
  */
 
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import Fastify from "fastify";
@@ -21,6 +22,9 @@ import { splitTurns } from "../src/console/transcript.js";
 import { SqliteConsoleStore, type ConsoleSessionRow } from "../src/console/store.js";
 import { maskSecrets } from "../src/console/masking.js";
 import { registerConsoleRoutes } from "../src/http/routes/console.js";
+import { StepUpWindow } from "../src/http/auth/step-up.js";
+import { SessionStore } from "../src/http/auth/session.js";
+import { DELIVER_SENTINEL } from "../src/console/deliver-command.js";
 import { CONSOLE_CLIENT_JS, renderConsolePage } from "../src/http/console-page.js";
 
 const FIX = join(__dirname, "fixtures", "console");
@@ -535,10 +539,12 @@ describe("createConsolePoller — transcripts and cards", () => {
     await h.poller.tick();
     expect(h.store.listCards({}).map((c) => c.turnUuid.slice(0, 8)).sort()).toEqual([BASIC_TURN1, BASIC_TURN2].sort());
     expect(h.store.listSessions("Mac-Mini")[0]?.endedAt).toBe(iso(T0 + 10_000));
+    // Not rewritten once ended (turn 1's reply asks Karl, so its flag was cleared on the way: compare, not 1).
+    const versions = h.store.listCards({}).map((c) => c.version);
     h.clock.now += 5000;
     await h.poller.tick();
     expect(h.store.listCards({})).toHaveLength(2);
-    expect(h.store.listCards({}).every((c) => c.version === 1)).toBe(true);
+    expect(h.store.listCards({}).map((c) => c.version)).toEqual(versions);
   });
 
   it("the final turn of a session whose file vanished (clean exit) is carded once and the session ends", async () => {
@@ -762,7 +768,8 @@ describe("createConsolePoller — sessions, needs-you and health", () => {
     const m = fakeMachine({
       sessions: [live({ status: "waiting", waitingFor: "permission prompt" })],
       panes: [PANTHEON_PANE],
-      transcripts: new Map([[SID, BASIC]])
+      // A reply that asks nothing (BASIC's replies raise a reply question, which stays by design).
+      transcripts: new Map([[SID, Buffer.from(turnLines(1))]])
     });
     const h = harness([machine("Mac-Mini")], { "Mac-Mini": m });
     await h.poller.tick();
@@ -790,7 +797,8 @@ describe("createConsolePoller — sessions, needs-you and health", () => {
   });
 
   it("signals that appear with no new face flag the session's latest stored card", async () => {
-    const m = fakeMachine({ sessions: [live({ status: "busy" })], panes: [PANTHEON_PANE], transcripts: new Map([[SID, BASIC]]) });
+    // A reply that asks nothing (BASIC's replies say "Waiting on Karl", which F2 raises as a reply question).
+    const m = fakeMachine({ sessions: [live({ status: "busy" })], panes: [PANTHEON_PANE], transcripts: new Map([[SID, Buffer.from(turnLines(1))]]) });
     const h = harness([machine("Mac-Mini")], { "Mac-Mini": m });
     await h.poller.tick();
     expect(h.store.listCards({ needsYouOnly: true })).toEqual([]);
@@ -798,7 +806,7 @@ describe("createConsolePoller — sessions, needs-you and health", () => {
     h.clock.now += 5000;
     await h.poller.tick();
     const flagged = h.store.listCards({ needsYouOnly: true });
-    expect(flagged.map((c) => c.turnUuid.slice(0, 8))).toEqual([BASIC_TURN1]);
+    expect(flagged.map((c) => c.turnUuid)).toEqual(["a-1"]);
     expect(flagged[0]?.needsKind).toBe("menu_on_screen");
     expect(flagged[0]?.kind).toBe("menu");
     const version = flagged[0]?.version;
@@ -815,7 +823,7 @@ describe("createConsolePoller — sessions, needs-you and health", () => {
   });
 
   it("an empty status is UNKNOWN, never idle", async () => {
-    const m = fakeMachine({ sessions: [live({ status: undefined })], panes: [PANTHEON_PANE], transcripts: new Map([[SID, BASIC]]) });
+    const m = fakeMachine({ sessions: [live({ status: undefined })], panes: [PANTHEON_PANE], transcripts: new Map([[SID, Buffer.from(turnLines(1))]]) });
     const h = harness([machine("Mac-Mini")], { "Mac-Mini": m });
     await h.poller.tick();
     expect(h.store.listSessions("Mac-Mini")[0]?.state).toBe("unknown");
@@ -1018,7 +1026,8 @@ async function surfaces(h: Harness, machines: DevMachine[]): Promise<{ readonly 
       throw new Error("test: no expand");
     },
     mask: maskSecrets,
-    loginEnabled: false
+    loginEnabled: false,
+    stepUp: new StepUpWindow()
   });
   const res = await app.inject({ method: "GET", url: "/console/api/state" });
   await app.close();
@@ -1066,7 +1075,7 @@ describe("createConsolePoller — final review fixes", () => {
 
   it("M1(a): a status is masked, then clipped to 40, before it is stored; the page's UNKNOWN STATUS shows that stored value", async () => {
     const token = "ghp_" + "Z".repeat(36);
-    const m = fakeMachine({ sessions: [live({ status: "x".repeat(30) + token })], panes: [PANTHEON_PANE], transcripts: new Map([[SID, BASIC]]) });
+    const m = fakeMachine({ sessions: [live({ status: "x".repeat(30) + token })], panes: [PANTHEON_PANE], transcripts: new Map([[SID, Buffer.from(turnLines(1))]]) });
     const h = harness([machine("Mac-Mini")], { "Mac-Mini": m });
     await h.poller.tick();
     const row = h.store.listSessions("Mac-Mini")[0];
@@ -1210,9 +1219,299 @@ describe("createConsolePoller — final review fixes", () => {
     expect(row?.endedAt).toBe(iso(T0 + 10_000));
     expect(row?.transcriptOffset).toBe(BASIC.length);
     expect(h.store.listCards({}).map((c) => c.turnUuid.slice(0, 8)).sort()).toEqual([BASIC_TURN1, BASIC_TURN2].sort());
+    const versions = h.store.listCards({}).map((c) => c.version);
     h.clock.now += 5000;
     await h.poller.tick();
     expect(h.store.listCards({})).toHaveLength(2);
-    expect(h.store.listCards({}).every((c) => c.version === 1)).toBe(true);
+    expect(h.store.listCards({}).map((c) => c.version)).toEqual(versions);
+  });
+});
+
+describe("createConsolePoller — reply-question flag and F1 carries (F2 Task 10)", () => {
+  const ASKING = (i: number): string => turnLines(i, "Which way?\n\nA1: keep it\nA2: change it\n\n**TL;DR:** Waiting on you: reply A1 or A2.");
+  const SCHEMA2 = fixture("sentinel-schema2.json").toString("utf8");
+  const latestOf = (h: Harness): NonNullable<ReturnType<SqliteConsoleStore["latestCard"]>> => {
+    const c = h.store.latestCard("Mac-Mini", SID);
+    if (c === undefined) throw new Error("test: no card");
+    return c;
+  };
+  const asking = (): { h: Harness; m: FakeMachine } => {
+    const m = fakeMachine({ sessions: [live({ status: "idle" })], panes: [PANTHEON_PANE], transcripts: new Map([[SID, Buffer.from(ASKING(1))]]) });
+    return { h: harness([machine("Mac-Mini")], { "Mac-Mini": m }), m };
+  };
+  const next = async (h: Harness): Promise<void> => {
+    h.clock.now += 5000;
+    await h.poller.tick();
+  };
+
+  it("a last reply that waits on Karl flags the latest card reply_question with its lettered ids; the session is NEEDS YOU", async () => {
+    const { h } = asking();
+    await h.poller.tick();
+    const c = latestOf(h);
+    expect(c).toMatchObject({ needsYou: true, needsKind: "reply_question", asksYou: true, options: ["A1", "A2"], kind: "reply", answeredAt: null, dismissedAt: null });
+    expect(h.store.listSessions("Mac-Mini")[0]?.state).toBe("needs_you");
+  });
+
+  it("the flag is sticky: ticks with no new bytes keep it, without rewriting the card each time", async () => {
+    const { h } = asking();
+    await h.poller.tick();
+    const v = latestOf(h).version;
+    await next(h);
+    await next(h);
+    expect(latestOf(h)).toMatchObject({ needsYou: true, needsKind: "reply_question", asksYou: true, options: ["A1", "A2"], version: v });
+    expect(h.store.listSessions("Mac-Mini")[0]?.state).toBe("needs_you");
+  });
+
+  it("markAnswered: the next tick does not flag the card again", async () => {
+    const { h } = asking();
+    await h.poller.tick();
+    h.store.markAnswered(latestOf(h).id, iso(T0 + 1000));
+    await next(h);
+    expect(latestOf(h)).toMatchObject({ needsYou: false, asksYou: true, options: ["A1", "A2"] });
+    expect(latestOf(h).answeredAt).not.toBeNull();
+    expect(h.store.listSessions("Mac-Mini")[0]?.state).not.toBe("needs_you");
+  });
+
+  it("markDismissed: the next ticks do not flag the card again", async () => {
+    const { h } = asking();
+    await h.poller.tick();
+    h.store.markDismissed(latestOf(h).id, iso(T0 + 1000));
+    await next(h);
+    await next(h);
+    expect(latestOf(h).needsYou).toBe(false);
+    expect(latestOf(h).dismissedAt).not.toBeNull();
+    expect(h.store.listSessions("Mac-Mini")[0]?.state).not.toBe("needs_you");
+  });
+
+  it("a stronger signal wins while present and reply_question returns when it disappears", async () => {
+    const { h, m } = asking();
+    await h.poller.tick();
+    m.sentinels.set(SID, SCHEMA2);
+    await next(h);
+    expect(latestOf(h)).toMatchObject({ needsYou: true, needsKind: "sentinel", kind: "commit_approval", asksYou: true, options: ["A1", "A2"] });
+    m.sentinels.delete(SID);
+    await next(h);
+    expect(latestOf(h)).toMatchObject({ needsYou: true, needsKind: "reply_question", kind: "reply", asksYou: true, options: ["A1", "A2"] });
+  });
+
+  it("T10-3: a non-commit sentinel with other ids: its ids are the options while up, asksYou stays, reply_question returns after", async () => {
+    const other = JSON.stringify({
+      schema: 2,
+      question: "Pick one?",
+      options: [
+        { id: "B1", text: "first", approves: "none" },
+        { id: "B2", text: "second", approves: "none" }
+      ]
+    });
+    const { h, m } = asking();
+    await h.poller.tick();
+    expect(latestOf(h).options).toEqual(["A1", "A2"]);
+    m.sentinels.set(SID, other);
+    await next(h);
+    expect(latestOf(h)).toMatchObject({ needsKind: "sentinel", asksYou: true, options: ["B1", "B2"] });
+    m.sentinels.delete(SID);
+    await next(h);
+    // Residual (accepted): the sticky return keeps the stored ids, which are the sentinel's.
+    expect(latestOf(h)).toMatchObject({ needsYou: true, needsKind: "reply_question", asksYou: true, options: ["B1", "B2"] });
+    // A fresh card with the sentinel already up on its first tick: asksYou from the reply, ids from the sentinel.
+    const m2 = fakeMachine({
+      sessions: [live({ status: "idle" })],
+      panes: [PANTHEON_PANE],
+      transcripts: new Map([[SID, Buffer.from(ASKING(1))]]),
+      sentinels: new Map([[SID, other]])
+    });
+    const h2 = harness([machine("Mac-Mini")], { "Mac-Mini": m2 });
+    await h2.poller.tick();
+    expect(latestOf(h2)).toMatchObject({ needsKind: "sentinel", asksYou: true, options: ["B1", "B2"] });
+  });
+
+  it("T10-3: a new non-asking card never keeps stale ids from the previous card", async () => {
+    const { h, m } = asking();
+    await h.poller.tick();
+    m.transcripts.set(SID, Buffer.concat([Buffer.from(ASKING(1)), Buffer.from(turnLines(2))]));
+    await next(h);
+    expect(latestOf(h)).toMatchObject({ turnUuid: "a-2", asksYou: false, options: [] });
+  });
+
+  it("F1 carry, pid reuse: a procStart the mask alters still matches its own stored row (no spurious end)", async () => {
+    const token = "ghp_" + "Q".repeat(36);
+    const m = fakeMachine({ sessions: [live({ procStart: token })], panes: [PANTHEON_PANE], transcripts: new Map([[SID, BASIC]]) });
+    const h = harness([machine("Mac-Mini")], { "Mac-Mini": m });
+    await h.poller.tick();
+    expect(h.store.listSessions("Mac-Mini")[0]?.procStart).toBe("[masked]");
+    m.sessions = [live({ sessionId: SID2, tmux: "Other:@2.%2", procStart: token })];
+    await next(h);
+    expect(h.store.listSessions("Mac-Mini").find((r) => r.sessionId === SID)?.endedAt).toBeNull();
+  });
+
+  it("ruling T11-19 (I-2): a sent Submit through the real route answers a sentinel question — the card stays raised while the sentinel is up; once CDF removes it, the next tick leaves the card and the session out of NEEDS YOU", async () => {
+    const { h, m } = asking();
+    m.sentinels.set(SID, SCHEMA2);
+    await h.poller.tick();
+    const card = latestOf(h);
+    expect(card).toMatchObject({ needsYou: true, needsKind: "sentinel", asksYou: true });
+    // The Submit route over the poller's own store; the machine's delivery script reports `sent`.
+    const sessions = new SessionStore();
+    const sid = sessions.create();
+    const stepUp = new StepUpWindow();
+    stepUp.elevate(sid);
+    const app = Fastify();
+    registerConsoleRoutes(app, {
+      registry: registryOf([machine("Mac-Mini")]),
+      store: h.store,
+      poller: h.poller,
+      settings: { ok: true, settings: DEFAULT_CONSOLE_SETTINGS },
+      exec: async () => ({ code: 0, stdout: `${DELIVER_SENTINEL}result:sent:idle:${"0".repeat(16)}:${"1".repeat(16)}:\n`, stderr: "" }),
+      mask: maskSecrets,
+      loginEnabled: true,
+      stepUp,
+      sessions,
+      operatorPassword: "unused here",
+      log: fakeLogger([])
+    });
+    const res = await app.inject({ method: "POST", url: `/console/api/cards/${card.id}/submit`, headers: { cookie: `pantheon_session=${sid}` }, payload: { text: "A1", key: randomUUID() } });
+    await app.close();
+    expect(res.json()).toMatchObject({ outcome: "sent" });
+    // While the sentinel is up the card keeps its flag: a sentinel leaves when its file does.
+    expect(latestOf(h)).toMatchObject({ needsYou: true, needsKind: "sentinel", answeredAt: expect.any(String) as string });
+    m.sentinels.delete(SID);
+    await next(h);
+    expect(latestOf(h).needsYou).toBe(false);
+    expect(h.store.listSessions("Mac-Mini")[0]?.state).not.toBe("needs_you");
+    await next(h);
+    expect(latestOf(h).needsYou).toBe(false);
+  });
+
+  it("triage 2 (DI-5): a sentinel in a folder two live sessions share gives neither card send buttons (options []) — the needs-you flag stays; one session in the folder keeps the ids", async () => {
+    const OTHER_PANE = { session: "Other", paneId: "%2" } as const;
+    const both = (cwd2: string): FakeMachine =>
+      fakeMachine({
+        sessions: [live({ status: "idle" }), live({ sessionId: SID2, status: "idle", tmux: "Other:@2.%2", pid: 4343, cwd: cwd2 })],
+        panes: [PANTHEON_PANE, OTHER_PANE],
+        transcripts: new Map([
+          [SID, Buffer.from(turnLines(1))],
+          [SID2, Buffer.from(turnLines(2))]
+        ]),
+        // The probe reads `<cwd>/.claude/pending-approval.json` for every session, so a shared folder reports it twice.
+        sentinels: new Map([
+          [SID, SCHEMA2],
+          [SID2, SCHEMA2]
+        ])
+      });
+    const shared = harness([machine("Mac-Mini")], { "Mac-Mini": both(CWD) });
+    await shared.poller.tick();
+    for (const sid of [SID, SID2]) {
+      expect(shared.store.latestCard("Mac-Mini", sid), sid).toMatchObject({ needsYou: true, needsKind: "sentinel", options: [] });
+    }
+    expect(shared.store.listSessions("Mac-Mini").every((s) => s.state === "needs_you")).toBe(true);
+    // Another folder for the second session: the sentinel is the first session's alone, and its ids are its buttons.
+    const apart = both("/Users/karl/Documents/Claude Projects/Other");
+    apart.sentinels.delete(SID2);
+    const h = harness([machine("Mac-Mini")], { "Mac-Mini": apart });
+    await h.poller.tick();
+    expect(h.store.latestCard("Mac-Mini", SID)).toMatchObject({ needsYou: true, needsKind: "sentinel", options: ["A1", "A2"] });
+  });
+
+  it("a stronger signal does not bring a reply_question back once the card was answered", async () => {
+    const { h, m } = asking();
+    await h.poller.tick();
+    m.sentinels.set(SID, SCHEMA2);
+    await next(h);
+    h.store.markAnswered(latestOf(h).id, iso(T0 + 7000));
+    m.sentinels.delete(SID);
+    await next(h);
+    expect(latestOf(h).needsYou).toBe(false);
+    await next(h);
+    expect(latestOf(h).needsYou).toBe(false);
+  });
+
+  it("T10-1: a sentinel on a card that asks nothing stores the sentinel's option ids and is not asksYou", async () => {
+    const m = fakeMachine({
+      sessions: [live({ status: "idle" })],
+      panes: [PANTHEON_PANE],
+      transcripts: new Map([[SID, Buffer.from(turnLines(1))]]),
+      sentinels: new Map([[SID, SCHEMA2]])
+    });
+    const h = harness([machine("Mac-Mini")], { "Mac-Mini": m });
+    await h.poller.tick();
+    expect(latestOf(h)).toMatchObject({ needsYou: true, needsKind: "sentinel", asksYou: false, options: ["A1", "A2"] });
+    // Appearing later, with no new face, stores them too.
+    const m2 = fakeMachine({ sessions: [live({ status: "idle" })], panes: [PANTHEON_PANE], transcripts: new Map([[SID, Buffer.from(turnLines(1))]]) });
+    const h2 = harness([machine("Mac-Mini")], { "Mac-Mini": m2 });
+    await h2.poller.tick();
+    expect(latestOf(h2).options).toEqual([]);
+    m2.sentinels.set(SID, SCHEMA2);
+    await next(h2);
+    expect(latestOf(h2)).toMatchObject({ needsKind: "sentinel", asksYou: false, options: ["A1", "A2"] });
+  });
+
+  it("a newer turn supersedes: the old card is unflagged and the new latest gets its own flags", async () => {
+    const { h, m } = asking();
+    await h.poller.tick();
+    const oldId = latestOf(h).id;
+    m.transcripts.set(SID, Buffer.concat([Buffer.from(ASKING(1)), Buffer.from(turnLines(2))]));
+    await next(h);
+    expect(h.store.getCard(oldId)).toMatchObject({ needsYou: false, needsKind: null });
+    expect(latestOf(h)).toMatchObject({ turnUuid: "a-2", needsYou: false, asksYou: false, options: [] });
+    await next(h);
+    expect(h.store.getCard(oldId)?.needsYou).toBe(false);
+    expect(latestOf(h).needsYou).toBe(false);
+  });
+
+  it("only the LAST turn's reply is asked: a question in an earlier turn of the same tick raises nothing", async () => {
+    const m = fakeMachine({
+      sessions: [live({ status: "idle" })],
+      panes: [PANTHEON_PANE],
+      transcripts: new Map([[SID, Buffer.concat([Buffer.from(ASKING(1)), Buffer.from(turnLines(2))])]])
+    });
+    const h = harness([machine("Mac-Mini")], { "Mac-Mini": m });
+    await h.poller.tick();
+    expect(h.store.listCards({}).some((c) => c.needsYou || c.asksYou)).toBe(false);
+  });
+
+  it("F1 carry, pid reuse: a live file with the same pid and a new procStart ends the old row at once and starts a new one", async () => {
+    const m = fakeMachine({ sessions: [live()], panes: [PANTHEON_PANE], transcripts: new Map([[SID, BASIC]]) });
+    const h = harness([machine("Mac-Mini")], { "Mac-Mini": m });
+    await h.poller.tick();
+    m.sessions = [live({ sessionId: SID2, tmux: "Other:@2.%2", procStart: "Sun Oct 18 09:00:00 2026" })];
+    await next(h);
+    const rows = new Map(h.store.listSessions("Mac-Mini").map((r) => [r.sessionId, r]));
+    expect(rows.size).toBe(2);
+    expect(rows.get(SID)?.endedAt).toBe(iso(T0 + 5000));
+    expect(rows.get(SID2)?.endedAt).toBeNull();
+    expect(h.store.listCards({}).map((c) => c.turnUuid.slice(0, 8)).sort()).toEqual([BASIC_TURN1, BASIC_TURN2].sort());
+  });
+
+  it("F1 carry, pid reuse: the same pid with the same procStart under another session id does not end the old row", async () => {
+    const m = fakeMachine({ sessions: [live()], panes: [PANTHEON_PANE], transcripts: new Map([[SID, BASIC]]) });
+    const h = harness([machine("Mac-Mini")], { "Mac-Mini": m });
+    await h.poller.tick();
+    m.sessions = [live({ sessionId: SID2, tmux: "Other:@2.%2" })];
+    await next(h);
+    expect(h.store.listSessions("Mac-Mini").find((r) => r.sessionId === SID)?.endedAt).toBeNull();
+  });
+
+  it("F1 carry, retry starvation: a busy session whose too-long open turn did not grow gets no retry probe", async () => {
+    const transcript = Buffer.from(bigTurn("big", 600, false));
+    expect(transcript.length).toBeGreaterThan(256 * 1024);
+    const store = new SqliteConsoleStore(":memory:");
+    store.upsertSession(seedRow({ transcriptSize: transcript.length }), iso(T0 - 5000));
+    const m = fakeMachine({ sessions: [live()], panes: [PANTHEON_PANE], transcripts: new Map([[SID, transcript]]) });
+    const h = harness([machine("Mac-Mini")], { "Mac-Mini": m }, { store });
+    await h.poller.tick();
+    expect(h.exec).toHaveBeenCalledTimes(1);
+    expect(h.asks[0]?.panes).toEqual(["%9"]);
+    expect(h.store.listSessions("Mac-Mini")[0]?.transcriptOffset).toBe(0);
+    expect(h.poller.health()[0]?.turnsTooLong).toBe(0);
+  });
+
+  it("F1 carry, retry starvation: the same open turn after it grew is still retried", async () => {
+    const transcript = Buffer.from(bigTurn("big", 600, false));
+    const store = new SqliteConsoleStore(":memory:");
+    store.upsertSession(seedRow({ transcriptSize: transcript.length - 100 }), iso(T0 - 5000));
+    const m = fakeMachine({ sessions: [live()], panes: [PANTHEON_PANE], transcripts: new Map([[SID, transcript]]) });
+    const h = harness([machine("Mac-Mini")], { "Mac-Mini": m }, { store });
+    await h.poller.tick();
+    expect(h.exec.mock.calls.length).toBeGreaterThan(1);
   });
 });

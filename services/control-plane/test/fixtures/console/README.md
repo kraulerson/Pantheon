@@ -1,14 +1,17 @@
 # Maestro Console fixtures
 
 Test inputs for the Maestro Console F1 session reader (Task 5 turn splitter, Task 6 card builder).
-Every fixture file here (all but this README) was scrubbed with maskSecrets on 2026-10-17: each one was written by a one-off Node
+Every fixture file here (all but this README) was scrubbed with maskSecrets on 2026-10-17, and `pane-trust-prompt-new-folder.txt`
+on 2026-10-19 by the same method: each one was written by a one-off Node
 script that imports `src/console/masking.ts` and passes the whole file text through `maskSecrets`
 (no secret was removed by hand; the pass masked nothing, because the excerpts and synthetic files
 contain no token-shaped text). The same scripts rewrite any `/Users/<other>` path to `/Users/karl`
 (none occurred) and the transcripts' Git hosting handle to `karl`.
 
-Machine: Mac-Mini (the registered dev machine). Date: 2026-10-17. Claude Code on the machine:
-2.1.302 (`claude --version`); the running sessions were on 2.1.284, 2.1.292, 2.1.301 and 2.1.302.
+For the F1 files (everything captured or written on 2026-10-17): machine Mac-Mini (the registered dev
+machine), date 2026-10-17, Claude Code on the machine 2.1.302 (`claude --version`); the running sessions were on
+2.1.284, 2.1.292, 2.1.301 and 2.1.302. Rows added later (F2) carry their own date, machine and version in their
+table row.
 
 "Captured" means copied from a real file or a real tmux pane on Mac-Mini. "Synthetic" means written
 by hand, modeled on Claude Code 2.1.302, because a real capture would have meant driving a Claude
@@ -69,6 +72,7 @@ on the 2.1.292 capture. Every Claude UI line is exactly as captured: rules,
 | File | Origin | What it exercises |
 |---|---|---|
 | `pane-trust-prompt.txt` | captured, Claude 2.1.302: `claude` started in an empty scratch directory in a new tmux window, no prompt sent; prompt region kept exactly as captured (the two lines above it, a startup warning quoting a rule from the operator's global settings, were dropped) | The real folder-trust prompt: one-space indent (` ❯ No, exit`), unnumbered options, footer ` Enter to confirm · Esc to cancel`. |
+| `pane-trust-prompt-new-folder.txt` | captured 2026-10-19 on this Mac (F2 ruling T8-1), Claude 2.1.304 (`claude --version`): `claude` started in an EMPTY throwaway folder under the session scratchpad, inside a detached throwaway tmux session (153×40) that was killed afterwards; no key, text or Enter sent; `capture-pane -p -J -S -40` after 8 s; scrubbed on 2026-10-19 by a one-off Node script through `maskSecrets` (nothing masked, no `/Users/<other>` path occurred); prompt region kept exactly as captured (the two lines above it — a startup warning quoting a permission rule from the operator's global settings, and a blank line — were dropped, as for `pane-trust-prompt.txt`), except line 4, the workspace path, a non-anchor line: the local scratch path it showed (uid, user, project path and the capturing session's id) was replaced on 2026-10-20 by the neutral placeholder `/Users/karl/scratch/new-folder` (Task 11, DI-7), keeping its one-space indent | The folder-trust prompt a NEW project folder shows on the F2 New Project path (spec §14.1, Task 8): on 2.1.304 the same shape as `pane-trust-prompt.txt` — one-space indent, ` ❯ No, exit`, `   Yes, I trust this folder`, footer ` Enter to confirm · Esc to cancel`; the workspace path fits on one line at this width. Must match the F1 trust fixture rule (`menuOnScreen` → `"trust"`). |
 | `pane-permission-prompt.txt` | captured, Claude 2.1.301 (another project's pane, content lines replaced) | A real permission prompt raised by a background agent: ` Do you want to proceed?`, ` ❯ 1. Yes`, `   2. No`, footer ` Esc to cancel · Tab to amend · ctrl+x ctrl+k twice to stop background agents`. All one-space indented. |
 | `pane-permission-while-busy.txt` | captured, Claude 2.1.292 (another project's pane, content lines replaced) | The same prompt on 2.1.292, raised by a background agent while the session runs agents (the `ctrl+x ctrl+k twice to stop background agents` footer). That session's file read `status: "waiting"`, `waitingFor: "permission prompt"` at capture time. Its warning line differs from the 2.1.301 one. |
 | `pane-askuserquestion.txt` | captured, Claude 2.1.292 (another project's pane, content lines replaced) | A real AskUserQuestion menu. Unlike the permission and trust prompts it is at column 0: `❯ 1. … (Recommended)`, `  2. …`, `  3. Type something.`, `  4. Chat about this`, footer `Enter to select · ↑/↓ to navigate · Esc to cancel`. |
@@ -94,3 +98,16 @@ Both permission captures carry the tail, so a footer anchor must accept the line
 |---|---|---|
 | `sentinel-schema2.json` | synthetic | Schema 2: `options[]` objects with `id`, `text`, `approves` (`commit` / `none`). |
 | `sentinel-v1.json` | synthetic | The older shape: `options` are strings (`"A1: …"`), no `schema` key. |
+
+## Delivery script outputs (F2)
+
+Inputs for `parseDeliverOutput` (`src/console/deliver-command.ts`): the stdout of the minted delivery
+command, captured on 2026-10-19 on this Mac (F2 ruling P-3: the registered Mac-Mini) against a throwaway
+tmux session `f2-deliver-test` running `cat`, with `HOME` pointed at a scratchpad directory holding a
+fabricated `.claude/sessions/<pid>.json` (`status: "idle"`, the `cat` pid). Nothing under the real
+`~/.claude` was read or written; the session was killed afterwards. The file holds hashes only — there was
+nothing to mask.
+
+| File | Origin | What it exercises |
+|---|---|---|
+| `deliver-sent.txt` | captured, tmux 3.6a, macOS 26.6 (`sha256sum` branch, `base64 -d`) | The one `sent` record: status `idle`, both 16-hex tail hashes (they differ: `cat` echoed the pasted text), empty detail. |

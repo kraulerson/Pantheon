@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { consoleSettingsFrom, loadConsoleSettings } from "../src/console/settings.js";
+import { consoleSettingsFrom, DEFAULT_CONSOLE_SETTINGS, loadConsoleSettings, projectsRootFor } from "../src/console/settings.js";
 
 const SPEC_EXAMPLE = `{
   "pollSeconds": 5,
@@ -128,5 +128,127 @@ describe("console settings", () => {
     if (r.ok) return;
     expect(r.entry).toBe("retention.cardDays");
     expect(r.message).not.toContain("30");
+  });
+});
+
+describe("console settings — machines (F2 Task 7: machine shells)", () => {
+  const ROOT = "/Users/karl/Documents/Claude Projects";
+  const withRoot = (root: unknown): string => `{"machines":{"Mac-Mini":{"projectsRoot":${JSON.stringify(root)}}}}`;
+
+  it("accepts two machine entries; projectsRootFor answers each and is undefined for an unlisted machine", () => {
+    const r = consoleSettingsFrom(`{"machines":{"Mac-Mini":{"projectsRoot":${JSON.stringify(ROOT)}},"linux.box":{"projectsRoot":"/srv/projects"}}}`);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.settings.machines).toEqual({ "Mac-Mini": { projectsRoot: ROOT }, "linux.box": { projectsRoot: "/srv/projects" } });
+    expect(projectsRootFor(r.settings, "Mac-Mini")).toBe(ROOT);
+    expect(projectsRootFor(r.settings, "linux.box")).toBe("/srv/projects");
+    expect(projectsRootFor(r.settings, "homelab")).toBeUndefined();
+  });
+
+  it("the F1 file (no machines key) stays valid with machines {} — no machine has a root; the defaults agree", () => {
+    const r = consoleSettingsFrom(SPEC_EXAMPLE);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.settings.machines).toEqual({});
+    expect(projectsRootFor(r.settings, "Mac-Mini")).toBeUndefined();
+    expect(DEFAULT_CONSOLE_SETTINGS.machines).toEqual({});
+  });
+
+  it("a machine key that is not a logical name is refused, naming the (clipped) key only", () => {
+    const bad = consoleSettingsFrom('{"machines":{"bad key":{"projectsRoot":"/x"}}}');
+    expect(bad.ok).toBe(false);
+    if (bad.ok) return;
+    expect(bad.entry).toBe('machines["bad key"]');
+    expect(bad.message).not.toContain("/x");
+    for (const key of ["-lab", ".lab"]) {
+      const r = consoleSettingsFrom(`{"machines":{"${key}":{"projectsRoot":"/x"}}}`);
+      expect(r.ok).toBe(false);
+      if (r.ok) return;
+      expect(r.entry).toBe(`machines["${key}"]`);
+    }
+    const long = consoleSettingsFrom(`{"machines":{"${"a".repeat(65)}":{"projectsRoot":"/x"}}}`);
+    expect(long.ok).toBe(false);
+    if (long.ok) return;
+    expect(long.entry).toBe(`machines["${"a".repeat(40)}…"]`);
+  });
+
+  it("a machine key takes the registry's logical-name shape (ruling T7-1): a leading '_' is accepted, and a __proto__ key is stored as data", () => {
+    const lab = consoleSettingsFrom('{"machines":{"_lab":{"projectsRoot":"/srv/lab"}}}');
+    expect(lab.ok).toBe(true);
+    if (!lab.ok) return;
+    expect(projectsRootFor(lab.settings, "_lab")).toBe("/srv/lab");
+    const proto = consoleSettingsFrom('{"machines":{"__proto__":{"projectsRoot":"/x"}}}');
+    expect(proto.ok).toBe(true);
+    if (!proto.ok) return;
+    expect(Object.keys(proto.settings.machines)).toEqual(["__proto__"]);
+    expect(Object.getPrototypeOf(proto.settings.machines)).toBe(Object.prototype);
+    expect(projectsRootFor(proto.settings, "__proto__")).toBe("/x");
+    expect(({} as Record<string, unknown>)["projectsRoot"]).toBeUndefined();
+  });
+
+  it.each([
+    ["a relative root", "Users/karl/Projects"],
+    ["an empty root", ""],
+    ["a root containing a single quote", "/Users/karl/it's"],
+    ["a root with a .. segment", "/Users/karl/../root"],
+    ["a root with a control character", "/Users/karl/a\u0007b"],
+    ["a root over 512 bytes", `/${"x".repeat(512)}`],
+    ["a missing root", undefined],
+    ["a non-string root", 5],
+    // Ruling T11-5: tmux expands formats in `new-session -c`, so the shared rule refuses '#' (and C1, lone surrogates, bidi).
+    ["a root with a tmux format '#S'", "/Users/karl/C#Sharp"],
+    ["a root with '##'", "/Users/karl/a##b"],
+    ["a root with '#{'", "/Users/karl/a#{session_name}"],
+    ["a root with '#('", "/Users/karl/a#(id)"],
+    ["a root with a C1 control", "/Users/karl/a\u0085b"],
+    ["a root with a lone surrogate", "/Users/karl/a\ud800b"],
+    ["a root with a bidi override", "/Users/karl/a\u202eb"]
+  ])('%s is refused as machines["Mac-Mini"].projectsRoot, never echoing the value', (_label, root) => {
+    const r = consoleSettingsFrom(root === undefined ? '{"machines":{"Mac-Mini":{}}}' : withRoot(root));
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.entry).toBe('machines["Mac-Mini"].projectsRoot');
+    expect(r.message).not.toContain("karl");
+    expect(r.message).not.toContain("xxxx");
+  });
+
+  it("a '#' root is refused by the rule's own words (T11-5), whichever tmux format it carries", () => {
+    for (const root of ["/Users/karl/C#Sharp", "/Users/karl/a##b", "/Users/karl/a#{session_name}", "/Users/karl/a#(id)"]) {
+      expect(consoleSettingsFrom(withRoot(root))).toEqual({
+        ok: false,
+        entry: 'machines["Mac-Mini"].projectsRoot',
+        message: `machines["Mac-Mini"].projectsRoot must not contain '#'`
+      });
+    }
+  });
+
+  it("an unknown field inside a machine entry is refused, naming the entry only", () => {
+    const r = consoleSettingsFrom('{"machines":{"Mac-Mini":{"projectsRoot":"/x","projectRoot":"SECRET-VALUE"}}}');
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.entry).toBe('machines["Mac-Mini"].projectRoot');
+    expect(r.message).toMatch(/not a known machine setting/);
+    expect(r.message).not.toContain("SECRET-VALUE");
+  });
+
+  it("machines and each machine entry must be JSON objects", () => {
+    const list = consoleSettingsFrom('{"machines":[]}');
+    expect(list.ok).toBe(false);
+    if (list.ok) return;
+    expect(list.entry).toBe("machines");
+    const text = consoleSettingsFrom('{"machines":{"Mac-Mini":"/x"}}');
+    expect(text.ok).toBe(false);
+    if (text.ok) return;
+    expect(text.entry).toBe('machines["Mac-Mini"]');
+  });
+
+  it("projectsRootFor consults own entries only (no prototype walk)", () => {
+    expect(projectsRootFor(DEFAULT_CONSOLE_SETTINGS, "constructor")).toBeUndefined();
+    expect(projectsRootFor(DEFAULT_CONSOLE_SETTINGS, "__proto__")).toBeUndefined();
+    const r = consoleSettingsFrom('{"machines":{"constructor":{"projectsRoot":"/x"}}}');
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(projectsRootFor(r.settings, "constructor")).toBe("/x");
+    expect(Object.getPrototypeOf(r.settings.machines)).toBe(Object.prototype);
   });
 });

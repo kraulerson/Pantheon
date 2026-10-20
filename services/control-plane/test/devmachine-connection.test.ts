@@ -328,4 +328,35 @@ describe("runRemoteCommand (capture — used for `tmux list-sessions`)", () => {
     const r = await runRemoteCommand(TARGET, "harness", cmd("printf"), { custody, clientFactory: () => client });
     expect(r.stdout).toBe("é");
   });
+
+  // Ruling T11-18 (L2): whether the exec request had been sent decides whether the command may have run.
+  it("every failure says its phase: before_exec when nothing was sent (connect error, connect throw, handshake timeout), after_exec once exec() was asked (exec refused, command timed out)", async () => {
+    const phaseOf = async (client: FakeClient, timeoutMs = 20): Promise<unknown> => {
+      try {
+        await runRemoteCommand(TARGET, "harness", cmd("tmux ls"), { custody, clientFactory: () => client }, { timeoutMs });
+      } catch (err) {
+        expect(err).toBeInstanceOf(SshConnectionError);
+        return (err as SshConnectionError).phase;
+      }
+      throw new Error("test: expected a rejection");
+    };
+    expect(await phaseOf(new FakeClient({ outcome: "error" }))).toBe("before_exec");
+    expect(await phaseOf(new FakeClient({ connectThrows: true }))).toBe("before_exec");
+    // The handshake never completes: the timer fires before any exec request.
+    const silent = new FakeClient();
+    silent.connect = () => undefined;
+    expect(await phaseOf(silent)).toBe("before_exec");
+    expect(await phaseOf(new FakeClient({ execError: true }))).toBe("after_exec");
+    expect(await phaseOf(new FakeClient({ channelHang: true }))).toBe("after_exec");
+    expect(await phaseOf(new FakeClient({ exec: { hang: true } }))).toBe("after_exec");
+  });
+
+  it("the phase is additive: the message stays first-party and a terminal's SshConnectionError carries none", async () => {
+    const client = new FakeClient({ exec: { hang: true } });
+    const err = await runRemoteCommand(TARGET, "harness", cmd("sleep 9"), { custody, clientFactory: () => client }, { timeoutMs: 20 }).catch((e: unknown) => e);
+    expect(err).toMatchObject({ name: "SshConnectionError", message: "remote command on mac-studio timed out after 20 ms", phase: "after_exec" });
+    const pty = await connectTerminal(TARGET, "harness", { custody, clientFactory: () => new FakeClient({ outcome: "error" }) }).catch((e: unknown) => e);
+    expect(pty).toBeInstanceOf(SshConnectionError);
+    expect((pty as SshConnectionError).phase).toBeUndefined();
+  });
 });

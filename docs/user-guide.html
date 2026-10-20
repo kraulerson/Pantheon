@@ -179,7 +179,7 @@ sidebar — hiding it gives the terminal the full width — and the page remembe
           from the admin address it offers a link instead, because a browser will not sign you in
           inside a page from a different address).</td></tr>
   <tr><td><strong>Console</strong></td>
-      <td>Opens the Console: every Claude session on every machine, as cards, read-only — see
+      <td>Opens the Console: every Claude session on every machine, as cards; reply, answer and start sessions from it — see
           <a href="#console">The Console</a>.</td></tr>
   <tr><td><strong>Configuration</strong></td>
       <td>Opens the Configuration page, where everything is registered and set up.</td></tr>
@@ -333,7 +333,7 @@ can never leak anything and can never be tricked into running anything.</p>
 <p><strong>Deciding</strong> is not on this page yet: the approve / reject buttons arrive with the
 M2 approval surface. Until then the page is a read-only inbox.</p>
 
-<h3 id="console">The Console (Maestro Console, first step)</h3>
+<h3 id="console">The Console (Maestro Console)</h3>
 
 <p>The <strong>Console</strong> link at the top of the harness page opens one page that shows every
 Claude Code session running in tmux on every registered dev machine. Nothing has to be installed or
@@ -355,18 +355,175 @@ use, so a new session appears by itself.</p>
       reached you see <em>Can't load the full text now</em> and the card itself stays.</li>
   <li><strong>Open terminal ↗</strong> takes you to the Terminals tab, where you attach to that
       session to answer it.</li>
+  <li><strong>A reply box under each card</strong> lets you answer from the page. Cards that ask a
+      question get answer buttons and a <strong>Dismiss</strong> button. The next sections explain
+      them.</li>
 </ul>
 
-<h4>What it never does (in this first step)</h4>
+<h4 id="console-reply">Replying from a card</h4>
+<ol>
+  <li>Type your reply in the box under the card. A counter shows <em>n / 4096 bytes</em>. The
+      <strong>Submit</strong> button is off while the box is empty or the text is over 4,096 bytes.</li>
+  <li>Press <strong>Submit</strong>. The first send in a quarter-hour asks for your passphrase (see
+      <a href="#console-stepup">The passphrase prompt</a>).</li>
+  <li>The line under the box says what happened. On success the box empties. In every other case your
+      text stays in the box so nothing you typed is lost.</li>
+</ol>
+<p>The harness checks the text before it sends anything. It <strong>refuses</strong> text it does not like
+and never quietly changes it. An empty reply, one over 4,096 bytes, text that is not valid UTF-8, and
+text with control characters or the Escape character are all turned away with a message. Before it
+types, the harness also looks at the session on the machine again. The session must still be the same
+one, the process must be alive, no permission or trust menu may be on its screen and tmux must not be in
+copy mode. If anything is different it refuses and sends nothing.</p>
+<p>A card whose session is showing a prompt has its box switched off with the words
+<em>the session is showing a prompt — answer it in the Claude session</em>. A machine shell, an ended
+session and a session that is not in tmux have their boxes switched off too, with the reason
+(<em>this is a machine shell — replies are not sent to it</em>,
+<em>the session has ended — nothing to reply to</em> and
+<em>not reachable — start it in tmux to reply from here</em>).</p>
+<table>
+  <tr><th>The line under the box says</th><th>It means, and what to do</th></tr>
+  <tr><td><strong>✓ answered by you, HH:MM</strong> or <strong>✓ sent — waiting for the session, HH:MM</strong></td>
+      <td>Your text was typed into the session and Enter was pressed. The card is marked answered only when its reply was asking you something, and so is the session's latest card when that one asks.</td></tr>
+  <tr><td><strong>… queued — the session is busy, HH:MM</strong></td>
+      <td>Claude was busy. Your text is waiting in its input and has not been read yet. Nothing more to do.</td></tr>
+  <tr><td><strong>⚠ The session this card came from has ended or was cleared</strong></td>
+      <td>The session is gone or was restarted. Nothing was sent; your text is still in the box.</td></tr>
+  <tr><td><strong>⚠ This session is showing a prompt — open its Claude session</strong></td>
+      <td>A menu is on the session's screen. Answer it in the Claude session view. Nothing was sent.</td></tr>
+  <tr><td><strong>⚠ the session is in copy mode — press q in the Claude session, then Submit again</strong></td>
+      <td>tmux was scrolling or selecting in that pane, which would swallow the Enter. Press <kbd>q</kbd> in
+          the Claude session, then press Submit again.</td></tr>
+  <tr><td><strong>✕ Send failed — the text is still in the box</strong></td>
+      <td>The text did not go in. Try again.</td></tr>
+  <tr><td><strong>⚠ Could not confirm the send — check the Claude session before sending again</strong></td>
+      <td>This is the <code>unconfirmed</code> result. The harness started the send but could not learn
+          whether it finished (a timeout, a dropped connection). <strong>Your text may already be in the
+          session.</strong> Open the Claude session view and look. If the reply is there, do nothing and
+          clear the box. If it is not, press Submit again. Sending without looking can type it twice.</td></tr>
+  <tr><td><strong>⚠ A send with this key did not finish — check the session before retrying</strong></td>
+      <td>An earlier send with this request did not finish. Check the session first, as above.</td></tr>
+  <tr><td><strong>⚠ step-up expired — confirm again, then press Submit</strong></td>
+      <td>The 15-minute window closed. Press Submit again and enter the passphrase.</td></tr>
+  <tr><td><strong>✕ can't reach the harness — nothing was confirmed; try again to retry</strong></td>
+      <td>The page lost the connection. A retry is recognised as the same send, so it cannot type twice.</td></tr>
+  <tr><td><strong>⚠ session not reachable</strong>, <strong>⚠ this card is gone — nothing was sent</strong>,
+      <strong>⚠ the text contains characters that cannot be sent</strong>,
+      <strong>⚠ too long — 4096 bytes max</strong></td>
+      <td>The session, the card or the text cannot be used. Nothing was sent.</td></tr>
+</table>
+
+<h4 id="console-options">Option buttons and Dismiss</h4>
 <ul>
-  <li><strong>It cannot send anything to a session.</strong> There is no reply box, no Submit and no
-      answer button. Every question, permission prompt or approval is answered in the terminal.</li>
-  <li><strong>It never answers a menu for you</strong> — not a permission prompt, not a "trust this
-      folder" prompt, not a multiple-choice question. It only shows that one is waiting.</li>
+  <li><strong>A question that lists lettered options</strong> (A1, A2 and so on) shows one button per
+      option. A click only <strong>copies the letter into the box</strong>. Nothing is sent until you
+      press Submit. You can add words after it.</li>
+  <li><strong>An approval waiting on a button choice</strong> (for example a pending-approval file with
+      option ids) shows buttons that <strong>send</strong> that one id when clicked, after the
+      passphrase. The button sends only its id, never text from the session.</li>
+  <li><strong>A commit approval has no buttons.</strong> You type its id yourself (see
+      <a href="#console-commit">The commit-approval screen</a>).</li>
+  <li><strong>Dismiss</strong> removes a card's NEEDS YOU mark when you do not need to answer it. The
+      console raises a card as a question when a reply says it is waiting on you, and it can be wrong
+      (when 30 of its alarms were checked by hand, 23 were real asks, 3 were not and 4 were unclear). Dismiss a false alarm. The line says
+      <em>✓ dismissed</em>. Dismiss sends nothing to the session and needs no passphrase.</li>
+</ul>
+
+<h4 id="console-stepup">The passphrase prompt and "Drop elevation"</h4>
+<p>Typing into a session is the one risky thing the Console does, so it asks you to prove it is you.
+The first Submit, button send, <em>New session</em> or <em>Create project</em> opens a dialog called
+<strong>Confirm it is you</strong>. Enter the console passphrase and press <strong>Confirm</strong>.
+That opens a <strong>15-minute window</strong>. The header shows <em>✓ elevated until HH:MM</em> and a
+<strong>Drop elevation</strong> button that closes the window at once. Outside the window the header
+reads <em>○ not elevated</em>. The window belongs to your browser sign-in, so a reload keeps it.</p>
+<ul>
+  <li><em>✕ passphrase refused — try again</em>: wrong passphrase. Wrong guesses are logged.</li>
+  <li><em>✕ step-up needs a signed-in browser session — a bearer token cannot elevate</em>: the admin token
+      alone can never type into a session. Sign in with the passphrase.</li>
+  <li><em>✕ step-up unavailable — login is disabled</em>: the harness has no passphrase set, so these
+      controls are off.</li>
+</ul>
+
+<h4 id="console-commit">The commit-approval screen and the second confirmation</h4>
+<p>A commit approval is the one answer the Console makes you type twice. Type its id (for example
+<em>A1</em>) and press Submit. The card then opens <strong>The session's screen (masked)</strong>: the
+last 60 lines (and at most 8 KiB) of what the session is showing, read from the machine, with secrets
+replaced by <code>[masked]</code>. It is held only while the view is open and is never saved. The
+line under the box says <em>… A1 sent, HH:MM — reading the session's screen</em>, and then
+<em>⚠ Check the staged change above, then type A1 again and press Submit to confirm</em>. The box is
+left empty on purpose. Read the staged change, then type the id again and press Submit. The line then
+reads <em>✓ A1 sent again to confirm, HH:MM — the screen above shows what the session did</em>.</p>
+<ul>
+  <li><strong>Refresh</strong> reads the screen again. The commit summary appears only after the
+      session's hooks finish, so the first read can be early. The card reads again about two seconds
+      later by itself, and you can press Refresh.</li>
+  <li><strong>Hide</strong> closes the view. The line then says the screen <em>is not shown here</em>
+      and points you to the Claude session view to see the staged change.</li>
+  <li>If the read fails you see <em>✕ Can't show the session's screen now — …</em>. If the capture is
+      empty you see <em>⚠ the session's screen came back empty — the pane may have closed</em>. In both
+      cases the line gives the same pointer to the Claude session.</li>
+  <li>Characters that can flip the direction of text are shown as visible marks such as
+      <code>⟦U+202E⟧</code> instead of being obeyed, so a staged change cannot read as something it is not.</li>
+  <li>The view closes every time you press Submit on that card. Press <strong>Show the session's
+      screen</strong> to open it again.</li>
+</ul>
+
+<h4 id="console-drawer">The machine shell drawer</h4>
+<p>A drawer at the bottom of the page holds a plain shell on the selected machine, started in that
+machine's projects root. Open it with <kbd>Ctrl</kbd>+<kbd>`</kbd> (the key above Tab) or with the
+<strong>Open shell</strong> button on its bar. The same key or <strong>▾ Minimise</strong> hides it, and
+<strong>▴ Restore</strong> brings it back. The shell keeps running while hidden. Drag the grip above
+the bar to change its height (the height is remembered).</p>
+<ul>
+  <li><kbd>Esc</kbd> inside the drawer <strong>minimises it and is not sent to the shell</strong>, so
+      programs in the drawer shell (vim, less, fzf) never receive it. The drawer's own toggle,
+      <kbd>Ctrl</kbd>+<kbd>`</kbd>, is not sent to the shell either. Karl kept the Esc behaviour
+      (A1, 2026-10-20).</li>
+  <li>Every time you open a machine shell the harness first writes an audit row, then connects.</li>
+  <li>The drawer needs a window at least 900 px wide, and the machine needs a
+      <code>projectsRoot</code> in the settings file. Without one the drawer does not start, and
+      New session says <em>⚠ no projects root configured for this machine</em>.</li>
+</ul>
+
+<h4 id="console-claude">The Claude-session view</h4>
+<p>Above the cards, <strong>Claude session</strong> switches the selected project from its cards to
+the live Claude session, as a terminal in the page. Use it to answer a menu, to read what a session is
+doing, or to see the staged change of a commit approval. <strong>Cards</strong> switches back.
+Opening it and typing in it need only your sign-in, not the passphrase. A card's <strong>Open Claude
+session</strong> button jumps straight to it. If the project has no tmux pane the switch is off and
+says <em>no Claude session to attach to — it has no tmux pane (or is a machine shell)</em>.</p>
+
+<h4 id="console-new">New Session and New Project</h4>
+<p>On a machine's project row, <strong>+ New session</strong> opens a dialog that lists the folders in
+that machine's projects root. Click a folder marked <em>○ start Claude here</em> to start Claude in
+it, or one marked <em>● running — open it</em> to jump to the session already there. To make a new
+folder, type its name under <em>New project (a folder under the projects root)</em> and press
+<strong>Create project</strong> (letters, digits, space, <code>.</code> <code>_</code> <code>-</code>,
+64 characters at most). Both ask for the passphrase. A brand-new folder makes Claude ask whether you
+trust it. The page shows <em>The new session is asking you to trust the folder — answer it in the
+Claude session.</em> The console never answers that for you. Messages: <em>⚠ no projects root
+configured for this machine</em>, <em>⚠ that folder is outside the projects root — refused</em>,
+<em>⚠ that name is not allowed</em>, and <em>⚠ Could not confirm the start — check the machine's tmux
+sessions</em> (look before trying again).</p>
+
+<h4 id="console-never">What the Console never sends or stores</h4>
+<ul>
+  <li><strong>It never answers a menu for you.</strong> That covers a permission prompt, a "trust this
+      folder" prompt and a multiple-choice question. It shows the options read-only and sends you to
+      the Claude session.</li>
+  <li><strong>It never sends anything a session wrote back into a session.</strong> A button sends at
+      most an option id of eight characters. Everything else sent is what you typed.</li>
+  <li><strong>It never sends without the passphrase window.</strong> Typing in the Claude
+      session view or the drawer needs only your sign-in. The admin token alone can never send.</li>
   <li><strong>It does not keep a copy of your sessions.</strong> It saves only each card's short
       summary, with anything that looks like a password, token or key replaced by
       <code>[masked]</code>. A masked value cannot be shown again on this page; the terminal shows the
       real text. Cards are deleted after 90 days (adjustable in the settings file).</li>
+  <li><strong>It keeps one record of every send, forever.</strong> Each send, new session and shell
+      open is written to an audit table before it happens and again with its result. For a reply, the
+      record holds a more heavily masked copy of your text (up to 8,192 bytes). The table cannot be
+      edited or deleted from, and it is backed up with the database. The passphrase, the session screen
+      and the full text of a card are never stored.</li>
 </ul>
 
 <h4>States: symbol and word, never colour alone</h4>
@@ -448,6 +605,15 @@ harness.</strong> Every field is optional; anything you leave out uses the defau
       <td>names from <code>areas</code>; default <code>fleet-sessions</code>, <code>general</code></td></tr>
   <tr><td><code>skills</code></td><td>Which areas each skill belongs to.</td>
       <td>skill name → list of areas</td></tr>
+  <tr><td><code>machines.</code><em>name</em></td>
+      <td>One entry per registered dev machine; <em>name</em> is the machine's registered logical name.</td>
+      <td>a registered machine name</td></tr>
+  <tr><td>&nbsp;&nbsp;<code>projectsRoot</code></td>
+      <td>The folder that holds that machine's projects. The shell drawer starts there and New session
+          lists it.</td>
+      <td>an absolute path of at most 512 bytes, with no single quote, <code>#</code>, control character,
+          lone surrogate, bidirectional control or <code>..</code> segment (a space or a double quote is allowed); no
+          default (without it the drawer and New session are off for that machine)</td></tr>
 </table>
 <p>The areas and skills are checked now but not shown yet — they drive the suggestions and cheat sheet
 of a later step. A project entry with a field this list does not have is refused (so a typo is
@@ -764,11 +930,10 @@ restart the piece it belongs to.</p>
   <tr><td>Approve / reject buttons on the Approvals page</td>
       <td>The inbox shows what is waiting on you (added 2026-08-26) but cannot decide it yet.</td>
       <td>M2 approval surface (C.3)</td></tr>
-  <tr><td>Answering from the Console</td>
-      <td>The Console (added 2026-10-17) shows every session and what waits on you, but cannot send a
-          reply, press an answer button or start a session yet — answer in the terminal. Reminders
-          (page banner, Telegram), suggestions and "Ask Maestro" come later.</td>
-      <td>Console steps F2–F5</td></tr>
+  <tr><td>Console reminders, suggestions and Ask Maestro</td>
+      <td>The Console already sends replies and option ids and starts sessions (F2, 2026-10-20). Reminders
+          (page banner, Telegram), suggestions and "Ask Maestro" are not built; they come later.</td>
+      <td>Console steps F3 to F5</td></tr>
   <tr><td>Checking a machine is really itself</td>
       <td>The harness does not yet verify a machine's identity before connecting (bug #17).</td>
       <td>Bug fix, pending</td></tr>
@@ -798,6 +963,11 @@ restart the piece it belongs to.</p>
       <td>The Console lists Claude sessions on registered, provisioned and enabled machines. A session
           outside tmux, or in a tmux session named <code>sh-…</code>, is listed as not reachable; start
           Claude inside a named tmux session.</td></tr>
+  <tr><td>The Console says <em>Could not confirm the send</em></td>
+      <td>Open the Claude session view and look before sending again.</td></tr>
+  <tr><td>New session says <em>no projects root configured</em></td>
+      <td>Add <code>machines.</code><em>name</em><code>.projectsRoot</code> to the console settings file and
+          restart the harness.</td></tr>
 </table>
 
 <p>Known problems are tracked in <code>BUGS.md</code>, decisions in <code>APPROVAL_LOG.md</code>, and

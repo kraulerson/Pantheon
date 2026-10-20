@@ -27,7 +27,7 @@ import type { DevMachine } from "../registry/types.js";
 import { withBase } from "./base-path.js";
 import { pageHead } from "./theme.js";
 import { BUILD_ID, withBuild } from "./build-id.js";
-import { TERMINAL_OPTIONS_JS, TERMINAL_CLIPBOARD_JS, TERMINAL_ADDONS_JS } from "./terminal-client.js";
+import { TERMINAL_CLIPBOARD_JS, TERMINAL_ADDONS_JS, TERMINAL_OPEN_JS } from "./terminal-client.js";
 
 export interface HarnessFrameModel {
   readonly devMachines: readonly DevMachine[];
@@ -57,6 +57,7 @@ export const HARNESS_CLIENT_JS = `
   var doc = document;
 ${TERMINAL_CLIPBOARD_JS}
 ${TERMINAL_ADDONS_JS}
+${TERMINAL_OPEN_JS}
   // Mount prefix + chat address, rendered on <html> by the server (design 2026-08-27).
   var BASE = doc.documentElement.getAttribute('data-base') || '';
   var CHAT_URL = doc.documentElement.getAttribute('data-chat-url') || '';
@@ -132,51 +133,12 @@ ${TERMINAL_ADDONS_JS}
     status.setAttribute('role', 'status'); status.textContent = '[~] Connecting to ' + label + '…';
     t.panel.appendChild(status);
     var host = doc.createElement('div'); host.className = 'term-host'; t.panel.appendChild(host);
-    var term; var fit;
-    try {
-      term = new window.Terminal(${TERMINAL_OPTIONS_JS});
-      fit = new window.FitAddon.FitAddon();
-      term.loadAddon(fit);
-      term.open(host);
-    } catch (e) {
-      // Fail closed AND labeled: no engine → no socket, and the tab says why.
-      status.setAttribute('data-state', 'error');
-      status.textContent = '[!] terminal engine failed to load — reload the page';
-      return t;
-    }
-    t.term = term;
-    // Size the grid to the host (operator report 2026-08-27: xterm's 80×24 default filled ~60% of the
-    // width and never grew). Only while visible — a hidden panel measures 0×0 and would shrink the PTY.
-    var renderer = pantheonLoadAddons(term); // OSC-52 clipboard + GPU renderer (operator report 2026-08-30)
-    if (host.setAttribute) host.setAttribute('data-renderer', renderer);
-    pantheonWireClipboard(term, host); // selection + ⌘C / Ctrl+Shift+C (operator report 2026-08-29)
-    t.fit = function () { if (!t.panel.hidden) fit.fit(); };
-    t.fit();
-    if (window.ResizeObserver) { t.ro = new window.ResizeObserver(function () { t.fit(); }); t.ro.observe(host); }
-    var ws = new WebSocket(wsUrl(name, tmux)); t.ws = ws;
-    ws.onmessage = function (ev) {
-      var f; try { f = JSON.parse(ev.data); } catch (e) { return; }
-      if (f.t === 'ready') {
-        status.setAttribute('data-state', 'connected');
-        status.textContent = '[✓] connected to ' + label + (renderer === 'software' ? PANTHEON_SOFTWARE_NOTE : '');
-        // The first fit ran before the socket was open, so tell the PTY the size explicitly now.
-        t.fit();
-        if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'r', c: term.cols, r: term.rows }));
-      }
-      else if (f.t === 'o') { term.write(f.d); }
-      else if (f.t === 'x') { status.setAttribute('data-state', 'disconnected'); status.textContent = '[x] disconnected — close tab to dismiss'; }
-      else if (f.t === 'e') { status.setAttribute('data-state', 'error'); status.textContent = '[!] ' + f.m; }
-    };
-    ws.onclose = function () {
-      // A dropped socket must be SAID, not just attributed: keystrokes are silently dropped otherwise.
-      if (status.getAttribute('data-state') !== 'error') {
-        status.setAttribute('data-state', 'disconnected');
-        status.textContent = '[x] disconnected — close tab to dismiss';
-      }
-    };
-    ws.onerror = function () { status.setAttribute('data-state', 'error'); status.textContent = '[!] connection failed'; };
-    term.onData(function (d) { if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'i', d: d })); });
-    if (term.onResize) term.onResize(function (s) { if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'r', c: s.cols, r: s.rows })); });
+    var h = pantheonOpenTerminal(host, wsUrl(name, tmux), {
+      label: label,
+      hidden: function () { return t.panel.hidden; },
+      status: function (state, text) { status.setAttribute('data-state', state); status.textContent = text; }
+    });
+    if (h.term) { t.term = h.term; t.fit = h.fit; t.ro = h.ro; t.ws = h.ws; }
     return t;
   }
   function openChatTab(label) {

@@ -184,6 +184,57 @@ systemctl cat pantheon-admin@pantheon   # expect a drop-in with ExecStart=/usr/b
 After a deploy, check the build stamp (below), then open `/harness/console` signed in. A machine
 shows "… no data yet" until its first poll finishes, then its sessions.
 
+## Maestro Console F2: deploy notes (2026-10-20)
+
+F2 lets the Console type into sessions, start sessions and open a machine shell. It adds one key to
+the settings file, one table to the database and two machine prerequisites.
+
+**The `machines` key.** A machine with no entry has no shell drawer and no New Session flow
+(the page says *no projects root configured*). Each key is a registered machine's logical name;
+`projectsRoot` is an absolute path. The two roots in use:
+
+| Machine | `projectsRoot` |
+|---|---|
+| Mac-Mini | `/Users/karl/Documents/Claude Projects` |
+| Linux-Dev | `/development/Claude Projects` |
+
+```json
+{
+  "machines": {
+    "Mac-Mini":  { "projectsRoot": "/Users/karl/Documents/Claude Projects" },
+    "Linux-Dev": { "projectsRoot": "/development/Claude Projects" }
+  }
+}
+```
+
+Add this beside the existing keys in the same settings file (it is read once at start, so restart the
+admin service afterwards). A root that is not an absolute path, is longer than 512 bytes,
+contains a single quote, a `#`, a control character, a lone surrogate, a bidirectional control or a `..`
+segment is refused by rule and disables the Console module only, with a banner naming the entry. A space
+in the path is allowed, and so is a double quote.
+
+**The submit log.** The first F2 start creates `console_submit_log` in the same SQLite file (additive,
+no migration). It is **append-only** (two triggers abort every UPDATE and DELETE) and **kept
+forever**: it holds the write-ahead and result rows of every send, new session and shell open, with a
+masked copy of each reply. It is backed up with the database. Back the database file up before the first
+F2 start, as for any deploy.
+
+**tmux locale (ruling T8-6).** A tmux server that the console's create script starts cold, over a
+non-login SSH command, has no locale variables, so shells inside it run without a locale until the
+server is restarted. Avoid it by starting tmux from a login shell on the machine first (open a
+terminal on the machine and run `tmux`, or attach to an existing session), so the server already
+exists when the console creates a session in it.
+
+**Linux-Dev prerequisites to verify at deploy** (not yet checked on that machine):
+- **tmux 3.2 or later.** The create script passes `tmux new-session -e` so `claude` resolves on a
+  running server. Check with `tmux -V` on the machine.
+- **`claude` on `$HOME/.local/bin`.** The create script prepends that directory to `PATH` and fails
+  with the labelled record `claude not found` when it is missing. Check with `ls "$HOME/.local/bin/claude"`
+  as the login user the harness connects as.
+
+Also check at deploy: a first live Submit against a throwaway session on each machine, and that the
+6 s Submit budget and the 0.5 s settle hold on a machine that is waking up.
+
 ## Which build is live?
 
 `curl -sI https://pantheon.ferrumcorde.com/harness/assets/harness.css | grep -i x-pantheon-build`

@@ -126,6 +126,8 @@ Leaving the queue: signal 0/1/2 items leave only when the signal disappears (a s
 - **Reply-borne decision cards** (signal 3): option lines that parse cleanly (`Option A – …`) become buttons that **copy the literal letter into the reply box** for Karl to read; nothing hidden is sent.
 - Every reachable card: reply box (≤ 4 KiB) + **Submit**; Enter adds a newline; "Open ‹project› terminal ↗ (Pantheon)".
 
+**Note 2026-10-20 (§6.4, commit-approval screen built as Task 12).** The plan omitted the commit approval's second step (whole-branch review I-3); Karl ruled "Build it" and it is plan Task 12. `GET /console/api/cards/:id/pane` returns the session's screen for a `commit_approval` card: masked, the last 60 lines and at most 8 KiB, behind the operator guard with no step-up (read-only, never stored, the expand posture). After the first id is sent the card opens the view and says "… ‹id› sent, HH:MM — reading the session's screen" until the read succeeds, then "Check the staged change above, then type ‹id› again and press Submit to confirm"; the box is not prefilled (D5). The view reads again about two seconds later (CDF draws its render after the hooks finish), and bidi formatting characters are shown as `⟦U+XXXX⟧`. When the screen is not shown (Hide, or a failed or empty read) the card says it "is not shown here" and points to the Claude session.
+
 ### 6.5 Left panel
 "Suggested now" (All) / "Suggested for ‹glyph› ‹project›"; fixed event→skill rules (PR opened → `/merge-gate`; session ending → `/handoff`; credential needed → `/secret-intake`; deleting → `/change-card`). Cheat sheet below: skills whose areas intersect the tab's (All = fleet-sessions + general); project-local skills only on their tab; untagged everywhere, labelled; proposed-but-missing skills labelled "not installed".
 
@@ -143,6 +145,8 @@ Leaving the queue: signal 0/1/2 items leave only when the signal disappears (a s
 6. Card shows "answered by you, HH:MM" (signal-3 items) or "sent — waiting for the session" (sentinels); a send while `busy` shows "queued" (Claude Code queues typed input).
 
 **Residual (threat model):** a sub-second race between step 4c and 4d remains; prompts raised by background agents are not reflected in `status`.
+
+**Note 2026-10-20 (§6.6.4a, as built in F2).** Step 4a compares `procStart` as the **raw stored string**, byte for byte, not as epoch seconds. The poller stores the value masked, so ruling T6-0 pins that the mask leaves ISO-8601 timestamps (several shapes, fractional seconds and `Z`) unchanged, and the poller's own pid-reuse comparison is masked-versus-masked (ruling T10-4). Recorded deviation; the script refuses `target_changed` on any difference. Also as built: step 4c refuses a pane in tmux copy mode (`refused_menu_visible`, detail "pane in copy mode"), the buffer name is fresh per Submit, and a command that was requested but cannot be confirmed is recorded `unconfirmed` (rulings T11-11, T11-18).
 
 ### 6.7 Reminders (F3)
 - **Page:** banner every 30 min while anything waits; tab title count.
@@ -280,6 +284,8 @@ Settings: a per-machine projectsRoot. Mac-Mini "/Users/karl/Documents/Claude Pro
 
 Safety, same rules as Submit: R4 step-up; one allow-listed remote script; names travel base64, never shell-interpolated; append-only audit row (created_session / created_project + refusals). A brand-new folder triggers Claude Code's "trust this folder" prompt; it must surface as a read-only menu card (R5) with Open terminal; never auto-answer it. Unverified: whether the existing harness dialog's "Claude CLI (terminal)" path can be reused (it opens only a shell).
 
+**Note 2026-10-20 (§14.1.4, as built).** The name rule for "New project" is `PROJECT_NAME_RE`, the letter of the text above, so it admits a **trailing space or dot** (`"a "`, `"a."`). Plan-mandated and recorded as a residual, not corrected. Also as built: the one admissibility rule for an existing folder (resolved under the root, no dot-segment below it, `remoteDirProblem` clean including no `#`, basename matches `PROJECT_NAME_RE`) is shared by the project list and the create route, so parent folders are not held to the name rule; a tmux name that would start with `sh-` (the machine-shell namespace) is rewritten `p-sh-…`; `has-session` runs before `mkdir`.
+
 *Settings impact:* the console settings file (§7) needs per-machine entries (`projectsRoot`). F1's
 settings schema accepts unknown top-level keys, so the F2 key can be added without breaking an F1 file.
 
@@ -295,6 +301,8 @@ not to be planned from. Mock: artifact `GuCSoGZ1KqdmZM7rKT3Pnj` v2 (source copie
 4. Card buttons "Open Claude session" (incl. menu cards, R5) switch to that view in place; nothing navigates to another browser tab; R5 menus are answered in the Claude session view on the same page.
 5. Access = today's Terminals tab (operator sign-in, no extra step-up: Karl types directly); Submit and New Session keep the R4 step-up; audit row when a machine shell is created.
 6. Desktop only (D11). Tests: Ctrl+` toggles even with focus inside xterm (or document the exception); switching project tabs keeps the same shell; switching machines swaps shells; reload re-attaches both; sh-* never appear as project tabs.
+
+Note 2026-10-20: Esc inside the shell drawer minimises it and is not forwarded to the shell; Karl kept this behaviour (A1, 2026-10-20).
 
 **What F1 already does about this.** F1 never makes a tmux session named `sh-*` a project tab. The
 poller files such a session under `<cwd basename>@<machine>` as not reachable, so the name stays
