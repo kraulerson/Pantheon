@@ -14,13 +14,14 @@
     "harness-under-chat-address",
     "machines-sidebar",
     "session-waker-guardrails",
-    "maestro-console-f1"
+    "maestro-console-f1",
+    "maestro-console-f2"
   ],
-  "features_since_last_test": 1,
-  "features_since_last_health_check": 0,
+  "features_since_last_test": 2,
+  "features_since_last_health_check": 1,
   "test_interval": 2,
   "last_test_session": "2026-10-16",
-  "testing_required": false,
+  "testing_required": true,
   "tester_count": 1,
   "bug_tracker": "github_issues",
   "sessions_completed": 7
