@@ -123,16 +123,11 @@
           },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/framework/hooks/marker-guard.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Write|Edit|NotebookEdit",
-        "hooks": [
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/framework/hooks/enforce-superpowers.sh"
+          },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/framework/hooks/enforce-superpowers.sh"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/framework/hooks/marker-guard.sh"
           },
           {
             "type": "command",

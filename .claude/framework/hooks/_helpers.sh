@@ -137,6 +137,8 @@ is_source_file() {
     # .claude/approvals.jsonl (record-approval, marker-tracker) and Solo's
     # .claude/tdd-warn-ledger.jsonl (owner ruling, 2026-10-07).
     .csv|.tsv|.parquet|.avro|.jsonl|.ndjson) return 1 ;;
+    # Logs and command output (#39): `make 2>&1 | tee build.log`, `npm run build > build.out`.
+    .log|.out) return 1 ;;
   esac
 
   # 5. Default: treat unknown extensions as source
@@ -438,37 +440,62 @@ is_lone_command() {
 # backslashes removed, so a caller can treat it as data (git_commit_text, when only
 # data readers took it) or as commands (the others). A body
 # line with $(...) or a backtick under an unquoted delimiter is flagged subst: the shell
-# runs it.
+# runs it. A here-string's word (<<< word) is printed the same way, as a one-line body:
+# it is stdin, not an argument. A << inside arithmetic ($((…)), ((…)), $[…]) is a shift.
+# With a second argument `targets` (bash_write_targets, #39): the word an output
+# redirection (>, >>, >|, N>, >&file; &> splits at the & first) writes is prefixed
+# \003, and a word the shell expands (a $ or backtick outside single quotes) or cut
+# short by an unquoted $( or backtick \005; the digits of an N> and the fd of a
+# duplication (2>&1, >&2, <&-) are dropped, >| does not split, a > inside arithmetic
+# or [[ ]] marks nothing, and each here-document body line and here-string word is also
+# printed raw as \004<count>\037<line>.
 shell_segments() {
-  printf '%s' "$1" | awk '
+  printf '%s' "$1" | awk -v tg="${2:-}" '
     function flag(f) { flags[f] = 1 }
-    function endword() {
-      if (hw) { gsub(/[\n\t]/, " ", w); line = line (nw ? "\037" : "") w; nw++ }
-      w = ""; hw = 0
+    function endword(   p) {
+      if (hw && hsw) { hn++; hd[hn] = ""; ht[hn] = 1; hs[hn] = w; hsw = 0 }
+      else if (hw) {
+        gsub(/[\n\t]/, " ", w); p = (wbad || wdyn) ? "\005" : ((pm == 1 || (pm == 2 && w ~ /[\/.]/)) ? "\003" : "")
+        line = line (nw ? "\037" : "") p w; nw++; pm = 0
+      }
+      w = ""; hw = 0; wbad = 0; wdyn = 0
     }
-    function endseg() { endword(); if (nw) { print line; ls++ } line = ""; nw = 0 }
-    # The bodies of the here-documents opened on the line just ended, from pos; returns
-    # the position after the last delimiter line.
-    function bodies(pos,    k, e, ln, cl, m, parts, x, out) {
+    function endseg() { if (tg && hw && cut) wbad = 1; endword(); hsw = 0; if (nw) { print line; ls++ } line = ""; nw = 0; pm = 0; cut = 0 }
+    # One body line: its words, split at blanks and ; & | ( ) < >, quotes and
+    # backslashes removed, each after a \037.
+    function bodyline(ln,    m, parts, x, out) {
+      m = split(ln, parts, /[ \t\n;&|()<>]+/); out = ""
+      for (x = 1; x <= m; x++) { gsub(/["\047\\]/, "", parts[x]); if (parts[x] != "") out = out "\037" parts[x] }
+      return out
+    }
+    # The bodies of the here-documents and here-strings opened on the line just ended,
+    # from pos; returns the position after the last delimiter line. A body whose
+    # delimiter line never comes runs to the end of the input; its lines carry a u after
+    # the count, for git_commit_text to read them as commands (a << the split misread
+    # swallows the lines after it).
+    function bodies(pos,    k, e, ln, cl, x, out, bl, nb, shut) {
       for (k = hi + 1; k <= hn; k++) {
+        if (ht[k]) { if (tg) print "\004" ls "\037" hs[k]; out = bodyline(hs[k]); if (out != "") print "\002" ls out; continue }
+        nb = 0; shut = 0
         while (pos <= n) {
           e = index(substr(s, pos), "\n")
           ln = e ? substr(s, pos, e - 1) : substr(s, pos)
           pos += e ? e : length(ln) + 1
           cl = ln; if (hx[k]) sub(/^\t+/, "", cl)
-          if (cl == hd[k]) break
+          if (cl == hd[k]) { shut = 1; break }
+          if (tg) print "\004" ls "\037" ln
           if (!hq[k] && (index(ln, "$(") || index(ln, "`"))) flag("subst")
-          m = split(ln, parts, /[ \t;&|()<>]+/); out = ""
-          for (x = 1; x <= m; x++) { gsub(/["\047\\]/, "", parts[x]); if (parts[x] != "") out = out "\037" parts[x] }
-          if (out != "") print "\002" ls out
+          out = bodyline(ln)
+          if (out != "") bl[++nb] = out
         }
+        for (x = 1; x <= nb; x++) print "\002" ls (shut ? "" : "u") bl[x]
       }
       hi = hn
       return pos
     }
     { s = s (NR > 1 ? "\n" : "") $0 }
     END {
-      n = length(s); q = ""; w = ""; hw = 0; line = ""; nw = 0; hn = 0; hi = 0; ls = 0
+      n = length(s); q = ""; w = ""; hw = 0; line = ""; nw = 0; hn = 0; hi = 0; ls = 0; ad = 0; ab = 0
       for (i = 1; i <= n; i++) {
         c = substr(s, i, 1); nx = substr(s, i + 1, 1)
         if (q == "\047") { if (c == "\047") q = ""; else w = w c; continue }
@@ -477,20 +504,27 @@ shell_segments() {
           if (c == "`" || (c == "$" && nx == "(")) flag("subst")
           if (c == "\\" && (nx == "$" || nx == "`" || nx == "\"" || nx == "\\")) { w = w nx; i++; continue }
           if (c == "\\" && nx == "\n") { i++; continue }
+          if (tg && (c == "$" || c == "`")) wdyn = 1
           w = w c; continue
         }
         if (c == "\\") { flag("backslash"); i++; if (nx != "\n") { w = w nx; hw = 1 } continue }
         if (c == "\047" || c == "\"") { if (c == "\047" && substr(s, i - 1, 1) == "$") flag("ansi"); q = c; hw = 1; continue }
-        if (c == "`") { flag("subst"); endseg(); continue }
-        if (c == "$" && nx == "(") { flag("subst"); endseg(); i++; continue }
+        if (c == "`") { flag("subst"); cut = 1; endseg(); continue }
+        # Arithmetic ($((…)), ((…)), $[…]) is followed by its open parentheses (ad) and
+        # brackets (ab): a << inside it is a shift, not a here-document.
+        if (c == "$" && nx == "(") { flag("subst"); cut = 1; endseg(); if (ad) ad++; else if (substr(s, i + 2, 1) == "(") ad = 1; i++; continue }
         if (c == "#" && !hw) { flag("comment"); while (i < n && substr(s, i + 1, 1) != "\n") i++; continue }
         if (c == " " || c == "\t") { endword(); continue }
         if (c == "\n") { endseg(); if (hn > hi) i = bodies(i + 1) - 1; ls = 0; continue }
         if (c == "|") { if (nx == "|") i++; else flag("pipe"); endseg(); continue }
+        if (c == "(") { if (ad) ad++; else if (nx == "(") ad = 1 }
+        if (c == ")" && ad) ad--
         if (c == ";" || c == "&" || c == "(" || c == ")") { endseg(); continue }
-        # A here-document (<< or <<-, not <<<): read its delimiter; the body follows the
-        # end of this line.
-        if (c == "<" && nx == "<" && substr(s, i + 2, 1) != "<") {
+        # A here-string (<<<) is a redirection: the word after it is its body.
+        if (c == "<" && nx == "<" && substr(s, i + 2, 1) == "<") { flag("redirect"); endword(); hsw = 1; i += 2; continue }
+        # A here-document (<< or <<-) outside arithmetic: read its delimiter; the body
+        # follows the end of this line.
+        if (c == "<" && nx == "<" && !ad && !ab) {
           flag("redirect"); endword()
           j = i + 2; dash = 0
           if (substr(s, j, 1) == "-") { dash = 1; j++ }
@@ -513,13 +547,248 @@ shell_segments() {
         # A redirection to or from a file descriptor (2>&1, <&3, &>file) does not end the
         # simple command.
         if (c == "&" && nx == ">") { flag("redirect"); endword(); i++; continue }
-        if (c == "<" || c == ">") { flag("redirect"); if (nx == "(") flag("subst"); else if (nx == "&") i++; endword(); continue }
+        if (c == "<" || c == ">") {
+          flag("redirect")
+          # In targets mode a > inside [[ ]] (after if, while, ...) compares: no file. Inside
+          # (( )) it shifts or compares, unless a nested subshell writes, so only a word
+          # with a / or . is marked there (pm 2).
+          ar = ad || ab || (line ~ /^((if|then|elif|else|while|until|do|!|\{)\037)*\[\[(\037|$)/ && line !~ /\037\]\]$/ && w != "]]")
+          if (tg && c == ">" && !ar && w ~ /^[0-9]+$/) { w = ""; hw = 0 }
+          endword(); pm = 0
+          if (tg && nx == "&" && substr(s, i + 2, 1) ~ /[0-9-]/) { i += 2; while (i < n && substr(s, i + 1, 1) ~ /[0-9]/) i++; continue }
+          if (tg && c == ">" && nx != "(" && (!ar || ad)) { pm = ar ? 2 : 1; if (nx == "|") i++ }
+          if (nx == "(") flag("subst"); else if (nx == "&") i++
+          continue
+        }
+        if (c == "[" && (ab || substr(s, i - 1, 1) == "$")) ab++
+        if (c == "]" && ab) ab--
+        if (tg && c == "$") wdyn = 1
         w = w c; hw = 1
       }
       if (q != "") flag("unterminated")
       endseg()
+      if (hn > hi) bodies(n + 1)
       for (f in flags) print "\001" f
     }'
+}
+
+# ---- Bash writes to source files (#39) ----
+
+# True when a Bash command could write a file in a form bash_write_targets reads: a
+# `>` anywhere, or one of the writing commands (or its GNU g-prefixed name on macOS) as
+# a word. A cheap test, so the gates
+# leave a plain command (`git status`) without splitting it.
+bash_may_write() {
+  local re='(^|[^[:alnum:]_.-])g?(tee|sed|perl|cp|mv|install|ln|python[0-9.]*|dd|truncate)([^[:alnum:]_.-]|$)'
+  case "$1" in *'>'*) return 0 ;; esac
+  [[ "$1" =~ $re ]]
+}
+
+# Print each literal file path a Bash command writes, one per line, for the source-edit
+# gates (#39): an output redirection's target (>, >>, >|, &>, N>, also with a
+# here-document); tee's files; the files of sed -i (GNU -i[SUFFIX], BSD -i '' and
+# -i .bak) and perl -i; the destination of cp, mv, install and ln (the last operand, or
+# -t DIR; a directory destination takes the source's name; install -d writes no file);
+# python code from -c or a here-document that makes a write call (open() with a w, a, x
+# or + mode or a non-literal mode=, .write_text/.write_bytes, shutil.copy*/move,
+# os.replace/rename): then every string literal in it that looks like a path (has a
+# `/`, or ends in a source extension) is printed, over-reporting on purpose; dd
+# of=PATH; and truncate's files. g-prefixed GNU names count too. A relative target is
+# printed joined to $2 (the agent's working directory) when given, and to a literal
+# `cd` before it in the command, with `.` and `..` segments resolved lexically;
+# otherwise as written. A glob or brace is printed as written (it fails closed).
+# Not printed: a target the shell expands ($ or backtick outside single quotes), a
+# substitution or a `~`, a relative target after a `cd` that is not literal, a source
+# that is a directory (a whole tree copied), and anything in a script the command runs
+# or a command longer than 65536 characters. Those are the R-23 residual, left to the
+# OS sandbox.
+bash_write_targets() {
+  local cmd="$1" t src dest how exts=""
+  [ "${#cmd}" -le 65536 ] || return 0
+  bash_may_write "$cmd" || return 0
+  # The source extensions (manifest or default), for python's path-like literals.
+  case "$cmd" in *python*) is_source_file x.x >/dev/null 2>&1 || true; exts=$(tr '\n' ' ' <<< "$_SOURCE_EXTS_CACHE") ;; esac
+  shell_segments "$cmd" targets | awk -F'\037' -v base="${2:-}" -v exts="$exts" '
+    BEGIN { ne = split(exts, ea, " "); for (j = 1; j <= ne; j++) kext[ea[j]] = 1 }
+    function lit(p) { return p != "" && p != "-" && p !~ /^\005/ && p !~ /^~/ }
+    # Resolve . and .. segments lexically; a trailing / is kept.
+    function norm(p,   lead, np, parts, st, k, x, r) {
+      lead = (p ~ /^\//) ? "/" : ""; np = split(p, parts, "/"); k = 0
+      for (x = 1; x <= np; x++) {
+        if (parts[x] == "" || parts[x] == ".") continue
+        if (parts[x] == "..") { if (k > 0 && st[k] != "..") k--; else if (lead == "") st[++k] = ".."; continue }
+        st[++k] = parts[x]
+      }
+      r = ""; for (x = 1; x <= k; x++) r = r (x > 1 ? "/" : "") st[x]
+      r = lead r; if (r == "") return lead == "" ? "." : "/"
+      return (p ~ /\/$/ && r != "/") ? r "/" : r
+    }
+    function at(p) { if (p ~ /^\//) return norm(p); if (base == "?") return ""; return norm(base == "" ? p : base "/" p) }
+    function out(p) { if (lit(p)) { p = at(p); if (p != "") print p } }
+    function bn(p) { sub(/\/+$/, "", p); sub(/.*\//, "", p); return p }
+    # A copy the shell finishes (it can test for a directory): source, destination, and
+    # whether the destination is a directory (into), may be one (maybe) or is a file.
+    function copy(s, d, how) { if (lit(s) && lit(d)) { s = at(s); d = at(d); if (s != "" && d != "") print "\006" s "\037" d "\037" how } }
+    function known(x) { return match(x, /\.[^.\/]+$/) && (substr(x, RSTART) in kext) }
+    # Python code that writes: every path-like string literal in it is a target (an
+    # absolute path, one whose last segment has an extension, or a source file name).
+    function pyscan(code,   qm, oa, m, t) {
+      # oa: the arguments of the open( call, one level of nested parentheses deep.
+      sub(/^\005/, "", code); qm = "[\"\047]"; oa = "open[ \t]*\\(([^()]|\\([^()]*\\))*"
+      if (code !~ (oa "(,[ \t]*|mode[ \t]*=[ \t]*)" qm "[rbt]*[wax+][rbt]*" qm) \
+          && code !~ ("\\.open[ \t]*\\([ \t]*" qm "[rbt]*[wax+][rbt]*" qm) && code !~ /\.rename[ \t]*\(/ \
+          && code !~ (oa "mode[ \t]*=[ \t]*[^\"\047 \t]") \
+          && code !~ /\.write_(text|bytes)[ \t]*\(/ && code !~ /shutil\.(copy[a-z0-9]*|move)[ \t]*\(/ \
+          && code !~ /os\.(replace|rename)[ \t]*\(/) return
+      m = code
+      while (match(m, "\"[^\"\n]*\"|\047[^\047\n]*\047")) {
+        t = substr(m, RSTART + 1, RLENGTH - 2); m = substr(m, RSTART + RLENGTH)
+        if (t !~ /:\/\// && (t ~ /^\// || t ~ /\/[^\/]*\.[^\/]+$/ || known(t))) out(t)
+      }
+    }
+    /^\001/ || /^\002/ { next }
+    # A here-document body line: python code when a python reading stdin opened it,
+    # scanned whole at the end.
+    /^\004/ {
+      k = substr($1, 2) + 0
+      for (j = nseg - k + 1; j <= nseg; j++) if (j > 0 && py[j]) { t = $0; sub(/^[^\037]*\037/, "", t); pyc[j] = pyc[j] t "\n"; break }
+      next
+    }
+    {
+      nseg++; py[nseg] = 0; pb[nseg] = base; na = 0
+      for (j = 1; j <= NF; j++) { if ($j ~ /^\003/) out(substr($j, 2)); else a[++na] = $j }
+      k = 1
+      while (k <= na && a[k] ~ /^(if|then|else|elif|fi|do|done|while|until|!|\{|\})$/) k++
+      while (k <= na && a[k] ~ /^[A-Za-z_][A-Za-z0-9_]*=/) k++
+      if (k > na) next
+      c = a[k]; sub(/.*\//, "", c)
+      n = 0; for (j = k + 1; j <= na; j++) v[++n] = a[j]
+      dd = 0; nf = 0; ip = 0; sc = 0; got = 0
+      if (c == "cd") {
+        t = (n == 1 && lit(v[1])) ? at(v[1]) : ""
+        base = (t == "") ? "?" : t
+      }
+      else if (c ~ /^g?tee$/) {
+        for (j = 1; j <= n; j++) { if (!dd && v[j] == "--") { dd = 1; continue }; if (!dd && v[j] ~ /^-./) continue; out(v[j]) }
+      }
+      else if (c == "sed" || c == "gsed") {
+        for (j = 1; j <= n; j++) {
+          w = v[j]
+          if (!dd && w == "--") { dd = 1; continue }
+          if (!dd && w ~ /^--in-place/) { ip = 1; continue }
+          if (!dd && w ~ /^--(expression|file)=/) { sc = 1; continue }
+          if (!dd && w ~ /^--(expression|file)$/) { sc = 1; j++; continue }
+          if (!dd && w ~ /^--/) continue
+          if (!dd && w ~ /^-./) {
+            for (x = 2; x <= length(w); x++) {
+              ch = substr(w, x, 1)
+              # BSD sed takes the suffix as the next word: an empty one, or one like .bak.
+              if (ch == "i") { ip = 1; if (x == length(w) && j < n && (v[j + 1] == "" || v[j + 1] ~ /^\.[^\/ ]*$/)) j++; break }
+              if (ch == "e" || ch == "f") { sc = 1; if (x == length(w)) j++; break }
+              if (ch == "l") { if (x == length(w)) j++; break }
+            }
+            continue
+          }
+          if (!sc && !got) { got = 1; continue }
+          f[++nf] = w
+        }
+        if (ip) for (j = 1; j <= nf; j++) out(f[j])
+      }
+      else if (c == "perl") {
+        for (j = 1; j <= n; j++) {
+          w = v[j]
+          if (!dd && w == "--") { dd = 1; continue }
+          if (!dd && w ~ /^-./) {
+            for (x = 2; x <= length(w); x++) {
+              ch = substr(w, x, 1)
+              if (ch == "i") { ip = 1; break }
+              if (ch == "e" || ch == "E") { sc = 1; if (x == length(w)) j++; break }
+              if (ch ~ /[MmIxdDFCl0-9]/) break
+            }
+            continue
+          }
+          dd = 1
+          if (!sc && !got) { got = 1; continue }
+          f[++nf] = w
+        }
+        if (ip) for (j = 1; j <= nf; j++) out(f[j])
+      }
+      else if (c ~ /^g?(cp|mv|install|ln)$/) {
+        td = ""; ft = 0; donly = 0
+        for (j = 1; j <= n; j++) {
+          w = v[j]
+          if (!dd && w == "--") { dd = 1; continue }
+          if (!dd && w ~ /^--target-directory=/) { td = substr(w, 20); if (td == "") td = "-"; continue }
+          if (!dd && w == "--target-directory") { td = (j < n) ? v[++j] : "-"; continue }
+          if (!dd && w == "--no-target-directory") { ft = 1; continue }
+          if (!dd && w == "--directory" && c ~ /install$/) { donly = 1; continue }
+          if (!dd && w ~ /^--(suffix|mode|owner|group|strip-program)$/) { j++; continue }
+          if (!dd && w ~ /^--/) continue
+          if (!dd && w ~ /^-./) {
+            for (x = 2; x <= length(w); x++) {
+              ch = substr(w, x, 1)
+              if (ch == "t") { td = (x < length(w)) ? substr(w, x + 1) : ((j < n) ? v[++j] : "-"); break }
+              if (ch == "T") { ft = 1; continue }
+              if (ch == "d" && c ~ /install$/) { donly = 1; continue }
+              if (ch == "S" || (c ~ /install$/ && ch ~ /[mogB]/)) { if (x == length(w)) j++; break }
+            }
+            continue
+          }
+          o[++nf] = w
+        }
+        if (donly) next
+        if (td != "") { for (j = 1; j <= nf; j++) copy(o[j], td, "into"); next }
+        if (nf == 1 && c ~ /ln$/) { if (lit(o[1])) out(bn(o[1])); next }
+        for (j = 1; j < nf; j++) copy(o[j], o[nf], ft ? "file" : (nf > 2 ? "into" : "maybe"))
+      }
+      else if (c ~ /^python[0-9.]*$/) {
+        # Code from -c, or from stdin (a here-document) when no script or module is named.
+        py[nseg] = 1
+        for (j = 1; j <= n; j++) {
+          w = v[j]
+          if (w == "-c") { py[nseg] = 0; if (j < n) pyscan(v[j + 1]); break }
+          if (w == "-") break
+          if (w ~ /^-[WX]$/) { j++; continue }
+          if (w ~ /^-/ && w != "-m") continue
+          py[nseg] = 0; break
+        }
+      }
+      else if (c ~ /^g?dd$/) { for (j = 1; j <= n; j++) if (v[j] ~ /^of=/) out(substr(v[j], 4)) }
+      else if (c == "truncate" || c == "gtruncate") {
+        for (j = 1; j <= n; j++) {
+          w = v[j]
+          if (!dd && w == "--") { dd = 1; continue }
+          if (!dd && (w ~ /^-[sr]$/ || w ~ /^--(size|reference)$/)) { j++; continue }
+          if (!dd && w ~ /^-/) continue
+          out(w)
+        }
+      }
+    }
+    END { for (j = 1; j <= nseg; j++) if (pyc[j] != "") { base = pb[j]; pyscan(pyc[j]) } }' | while IFS= read -r t; do
+    case "$t" in
+      $'\006'*)
+        IFS=$'\037' read -r src dest how <<< "${t#?}"
+        # A directory copied whole is not a literal file (R-23).
+        case "$src" in */) continue ;; esac
+        [ -d "$src" ] && continue
+        case "$how" in
+          into) printf '%s/%s\n' "${dest%/}" "${src##*/}" ;;
+          maybe)
+            if [ -d "$dest" ] || [ "${dest%/}" != "$dest" ]; then printf '%s/%s\n' "${dest%/}" "${src##*/}"
+            else printf '%s\n' "$dest"; fi ;;
+          *) printf '%s\n' "$dest" ;;
+        esac ;;
+      *) printf '%s\n' "$t" ;;
+    esac
+  done
+}
+
+# Print the bodies of a Bash command's here-documents, line by line as written: the
+# content a `cat > FILE <<EOF` writes, for enforce-context7 (#39).
+bash_heredoc_text() {
+  [ "${#1}" -le 65536 ] || return 0
+  case "$1" in *'<<'*) ;; *) return 0 ;; esac
+  shell_segments "$1" targets | awk '/^\004/ { sub(/^[^\037]*\037/, ""); print }'
 }
 
 # True when a Bash command runs `git commit`, and prints the commit as the shell runs
@@ -569,9 +838,10 @@ git_commit_text() {
       # A here-document body is data when every simple command on the line that opened
       # it only reads data or is git, which judges its own subcommand (commit -F -,
       # tag -F -). Otherwise its lines are read as commands; a shell or interpreter on
-      # stdin, source and awk -f - also fall back below.
+      # stdin, source and awk -f - also fall back below. A body whose delimiter line never
+      # comes (count ending in u) is read as commands whatever reads it.
       /^\002/ {
-        d = 1
+        d = ($1 !~ /u$/)
         for (x = nseg - substr($1, 2) + 1; x <= nseg; x++) if (!data[x]) d = 0
         if (d) next
         body = 1; $0 = substr($0, index($0, "\037") + 1)
@@ -908,7 +1178,7 @@ command_read_problem() {
       if (bad == "") bad = why
       next
     }
-    /^\002/ { if (bad == "") bad = "a here-document"; next }
+    /^\002/ { if (bad == "") bad = "a here-document or here-string"; next }
     {
       nseg++
       # Keywords that only open or close a compound command: judge what follows.
@@ -946,21 +1216,21 @@ command_read_problem() {
     END { if (bad == "" && nseg == 0) bad = "no command"; if (bad != "") print bad }'
 }
 
-# True when COMMAND is a lone invocation of the project's own mark-plan-closed.sh.
-# mark-evaluated.sh is not sanctioned for the agent: approval comes from the user's
-# pick of a recorded question (record-approval.sh), and the script is the user's own
-# override, run in a separate terminal (approval design B, D5). The first word must be a plain path, and that path — taken
+# True when COMMAND is a lone invocation of the project's own mark-plan-closed.sh or
+# mark-plan-active.sh (#38). mark-evaluated.sh is not sanctioned for the agent:
+# approval comes from the user's pick of a recorded question (record-approval.sh),
+# and the script is the user's own override, run in a separate terminal (approval design B, D5). The first word must be a plain path, and that path — taken
 # relative to $2, the agent's working directory from the hook input — must resolve
 # to <project>/.claude/framework/hooks/. A script of the same name anywhere else
 # does not count.
 is_sanctioned_mark_command() {
   local cmd="$1" base="${2:-${CLAUDE_PROJECT_DIR:-$PWD}}" path name dir hooks
   is_lone_command "$cmd" || return 1
-  [[ "$cmd" =~ ^[[:space:]]*(bash[[:space:]]+)?([[:alnum:]_./+@,:%-]*mark-plan-closed\.sh)([[:space:]]|$) ]] || return 1
+  [[ "$cmd" =~ ^[[:space:]]*(bash[[:space:]]+)?([[:alnum:]_./+@,:%-]*mark-plan-(closed|active)\.sh)([[:space:]]|$) ]] || return 1
   path="${BASH_REMATCH[2]}"
   case "$path" in /*) ;; *) path="$base/$path" ;; esac
   name="${path##*/}"
-  [ "$name" = "mark-plan-closed.sh" ] || return 1
+  case "$name" in mark-plan-closed.sh|mark-plan-active.sh) ;; *) return 1 ;; esac
   dir=$(cd "${path%/*}/" 2>/dev/null && pwd -P) || return 1
   hooks=$(cd "${CLAUDE_PROJECT_DIR:-$PWD}/.claude/framework/hooks" 2>/dev/null && pwd -P) || return 1
   [ "$dir" = "$hooks" ]
