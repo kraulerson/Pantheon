@@ -19,6 +19,17 @@ for handoff clarity. Categories are ordered by impact severity.
 
 ## [Unreleased]
 
+<!-- Dependency security fix in obsidian-mcp (BUGS #57, Karl A1 2026-10-20/21) -->
+
+### Security
+- 2026-10-21 **services/obsidian-mcp: MCP SDK 1.32.1 and express 4.22.3, exact pins** (BUGS #57; audit
+  `docs/security-audits/bugs-57-obsidian-mcp-deps-security-audit.md`). `npm audit --omit=dev` goes from 8 advisories
+  (1 critical, 2 high, 5 moderate) to 0. The one reached problem: SDK 1.29.0 accepted an unbounded JSON-RPC batch inside one
+  100 KB request (895 searches peaked at 1.4 GB of memory); 1.32.1 caps a batch at 100 messages. Pinned by
+  `test/dependency-advisories.test.ts`. The three production dependencies are now exact pins (they used `^` ranges), and the
+  flagged transitive packages are updated within range. The review's pre-existing findings in the server are BUGS #60–#64,
+  including #62 (the listener binds every interface with no authentication).
+
 <!-- Dependency security fix (BUGS #55, Karl A1 2026-10-20) -->
 
 ### Security
