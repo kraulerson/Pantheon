@@ -19,6 +19,22 @@ for handoff clarity. Categories are ordered by impact severity.
 
 ## [Unreleased]
 
+<!-- Dependency security fix (BUGS #55, Karl A1 2026-10-20) -->
+
+### Security
+- 2026-10-20 **fastify 5.12.7 and @modelcontextprotocol/sdk 1.32.1 in services/control-plane** (BUGS #55; audit
+  `docs/security-audits/bugs-55-dependency-advisories-security-audit.md`). Closes fastify GHSA-p68q-wchp-6fh7, the one
+  advisory this code reached: a malformed URL with an unrouted method (for example PATCH) skipped the operator and keycard
+  guards and reached the not-found handler. That handler only ever answered a fixed 404, so nothing leaked; the request now
+  gets 400 `bad_request`. Pinned by `test/dependency-advisories.test.ts`, which fails on fastify 5.8.5 and passes on
+  5.12.7. The other production advisories (fastify schema, trustProxy and HTTP/2 issues; proxy-addr, MCP SDK OAuth,
+  fast-uri, hono, ip-address, qs) need features this service does not use. In-range transitive updates: proxy-addr 2.0.8,
+  qs 6.16.1, ip-address 10.7.4, hono 4.13.13, fast-uri 3.1.9. `npm audit --omit=dev` now reports 0.
+
+### Changed
+- 2026-10-20 **A route parameter longer than 100 characters now answers 400 `bad_request`** (fastify 5.9 and later send it
+  to `frameworkErrors` before the guard). It still fails closed; no real id is near that length.
+
 <!-- CI fix (BUGS #54, Karl A1 2026-10-20) -->
 
 ### Infrastructure
