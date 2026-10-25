@@ -19,6 +19,21 @@ for handoff clarity. Categories are ordered by impact severity.
 
 ## [Unreleased]
 
+<!-- CI repair (BUGS #56, #57 CI coverage, #59; Karl A1 2026-10-20/21) -->
+
+### Infrastructure
+- 2026-10-25 **CI's security scans now really run** (audit `docs/security-audits/bugs-56-57-59-ci-security-audit.md`).
+  - **Semgrep (#56):** the archived `semgrep/semgrep-action`, which ran no rules and passed, is replaced by Semgrep's own
+    container (`semgrep/semgrep:1.181.0`, pinned by digest) running `semgrep scan --config p/owasp-top-ten --config
+    p/security-audit --error --metrics=off` at the repository root. It fails on a planted finding and passes the clean tree.
+  - **Pinned actions:** every `uses:` in ci.yml and release.yml is pinned to a commit SHA (checkout and setup-node v4.4.0,
+    action-gh-release v2.6.2); gitleaks is pinned to 8.30.1.
+  - **obsidian-mcp in CI (#57):** a second job runs `npm ci`, build, lint, test, `npm audit --audit-level=high` and
+    `npm audit signatures` in `services/obsidian-mcp`; its eslint config declares Node globals for `scripts/**/*.mjs`.
+  - **gitleaks fixture (#59):** the hostile-input test builds its fake token at run time.
+  - **Still red, as expected:** the dependency audit (the deferred dev-tool upgrade, plus new advisories #65 and #66), then
+    the governance steps (#58).
+
 <!-- Dependency security fix in obsidian-mcp (BUGS #57, Karl A1 2026-10-20/21) -->
 
 ### Security

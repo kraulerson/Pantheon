@@ -323,7 +323,8 @@ describe("parseDeliverOutput", () => {
   });
 
   it("detail is first-party text only: an unrecognised detail is withheld, never echoed", () => {
-    const hostile = "Permission denied (publickey) ghp_abcdefghijklmnopqrstuvwxyz0123456789";
+    // A GitHub-token-shaped string, built at runtime so no credential-shaped literal sits in source (BUGS #59).
+    const hostile = `Permission denied (publickey) ${"ghp_" + "a".repeat(36)}`;
     const report = parseDeliverOutput(record("refused_target_changed", "idle", "", "", hostile), 0);
     expect(report.outcome).toBe("refused_target_changed");
     expect(report.detail).toBe("the delivery script reported an unrecognised detail");
