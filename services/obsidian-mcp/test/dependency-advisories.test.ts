@@ -3,15 +3,20 @@
  * (1.29.0 -> 1.32.1) brings to this server: a JSON-RPC batch longer than 100 messages is refused
  * (SDK 1.30.1, MAX_BATCH_SIZE). On 1.29.0 one in-limit request could carry ~900 vault_search calls.
  *
+ * BUGS #66 — pins body-parser 1.20.9 (GHSA-27r3-jxmh-p828): on 1.20.8 a gzip body followed by
+ * trailing bytes made the finished decoder throw an uncaught error and the process exit.
+ *
  * server.ts listens on import, so the built server runs as a child process: `npm run build` first.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
+import { request } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { gzipSync } from "node:zlib";
 
 const SERVER_JS = fileURLToPath(new URL("../dist/server.js", import.meta.url));
 
@@ -96,5 +101,54 @@ describe("BUGS #57: SDK batch bound (amplification of one in-limit request)", ()
     const text = await r.text();
     expect(r.status).toBe(400);
     expect(JSON.parse(text).error.code).toBe(-32600);
+  });
+});
+
+// Kept last: on a vulnerable body-parser this kills the shared server.
+describe("BUGS #66: body-parser trailing bytes after a compressed body (GHSA-27r3-jxmh-p828)", () => {
+  it("survives a gzip body followed by 100 KB of trailing bytes and keeps answering", async () => {
+    // The advisory's shape: one gzip frame, a 0x00, then trailing bytes. 100 KB spans more than one
+    // socket read, so the tail reaches the decoder after it has finished. Session-less: parsing runs
+    // before routing, so no session or authentication is needed to reach it.
+    const body = Buffer.concat([
+      gzipSync(Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }))),
+      Buffer.from([0x00]),
+      Buffer.alloc(100 * 1024, 0x58)
+    ]);
+    const status = await new Promise<number | undefined>((resolve, reject) => {
+      const req = request(
+        base,
+        {
+          method: "POST",
+          headers: { ...HEADERS, "content-encoding": "gzip", "content-length": String(body.length) }
+        },
+        (res) => {
+          res.resume();
+          res.once("end", () => resolve(res.statusCode));
+        }
+      );
+      req.once("error", reject);
+      req.end(body);
+    });
+    expect(status).toBe(400);
+
+    const proc = child;
+    if (!proc) throw new Error("server not started");
+    const outcome = await new Promise<string>((resolve) => {
+      if (proc.exitCode !== null || proc.signalCode !== null) {
+        resolve(`exited code=${proc.exitCode} signal=${proc.signalCode}`);
+        return;
+      }
+      const t = setTimeout(() => resolve("alive"), 1_000);
+      proc.once("exit", (code, signal) => {
+        clearTimeout(t);
+        resolve(`exited code=${code} signal=${signal}`);
+      });
+    });
+    expect(outcome).toBe("alive");
+
+    const r = await fetch(base, { method: "POST", headers: { ...HEADERS, "mcp-session-id": sessionId }, body: batch(1) });
+    await r.text();
+    expect(r.status).toBe(200);
   });
 });

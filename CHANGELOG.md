@@ -19,6 +19,18 @@ for handoff clarity. Categories are ordered by impact severity.
 
 ## [Unreleased]
 
+<!-- Dependency security fix: body-parser and zod (BUGS #65, #66; Karl A1 2026-10-25/26) -->
+
+### Security
+- 2026-10-26 **body-parser 1.20.9/2.4.0 and zod 4.6.7 in both services** (BUGS #65, #66; audit
+  `docs/security-audits/bugs-65-66-deps-security-audit.md`). In obsidian-mcp the body-parser advisory (GHSA-27r3-jxmh-p828)
+  was real: one gzip request with trailing bytes crashed the server; it now answers 400 and keeps running, pinned by a new
+  regression test. obsidian-mcp moves from zod 3 to zod 4 (exact pin; its tool schemas needed no change; validation error
+  text now reads, for example, "Invalid input: expected string, received number"). control-plane takes the in-range updates in
+  its lockfile only; its running server loads neither package. `npm audit --omit=dev` reports 0 in both services. zod's
+  advisory fix does not bound obsidian-mcp's unbounded `clientInfo.icons` array, so that memory amplification stays open as
+  BUGS #68 (fix before the service is ever deployed).
+
 <!-- CI repair (BUGS #56, #57 CI coverage, #59; Karl A1 2026-10-20/21) -->
 
 ### Infrastructure
