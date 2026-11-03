@@ -124,7 +124,7 @@ ${TERMINAL_ADDONS_JS}
   window.addEventListener("resize", function () { fit.fit(); });
   var renderer = pantheonLoadAddons(term); // OSC-52 clipboard + GPU renderer (operator report 2026-08-30)
   if (host.setAttribute) host.setAttribute("data-renderer", renderer);
-  pantheonWireClipboard(term, host); // selection + ⌘C / Ctrl+Shift+C (operator report 2026-08-29)
+  pantheonWireClipboard(term, host); // selection, wheel + copy chords (2026-08-29, BUGS #84)
   var url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + WS_PATH;
   var ws = new WebSocket(url);
   setState("loading");

@@ -61,11 +61,20 @@ class FakeTerm {
   attachCustomKeyEventHandler(h: (e: KeyboardEvent) => boolean): void {
     this.keyHandler = h;
   }
+  /** BUGS #84: the shared wiring swallows the remote's mouse modes and reports the wheel itself. */
+  readonly parser = {
+    registerCsiHandler: (): { dispose(): void } => ({ dispose: () => undefined }),
+    registerEscHandler: (): { dispose(): void } => ({ dispose: () => undefined })
+  };
+  attachCustomWheelEventHandler(): void {}
   getSelection(): string {
     return this.selection;
   }
   hasSelection(): boolean {
     return this.selection.length > 0;
+  }
+  clearSelection(): void {
+    this.selection = "";
   }
   open(el: Element): void {
     this.host = el;
@@ -862,12 +871,17 @@ describe("terminal text handling (operator report 2026-08-29)", () => {
     expect(clipboardWrites).toHaveLength(2);
   });
 
-  it("plain Ctrl+C still interrupts the running program (it is never hijacked as copy)", () => {
-    const term = openTerm();
-    term.selection = "something selected";
-    const ev = { type: "keydown", key: "c", ctrlKey: true, metaKey: false, shiftKey: false, altKey: false } as KeyboardEvent;
-    expect(term.keyHandler!(ev)).toBe(true); // passed through to the PTY
-    expect(clipboardWrites).toEqual([]);
+  it("plain Ctrl+C on a Mac still interrupts the running program (it is never hijacked as copy — BUGS #84 ruling)", () => {
+    Object.defineProperty(window.navigator, "platform", { configurable: true, value: "MacIntel" });
+    try {
+      const term = openTerm();
+      term.selection = "something selected";
+      const ev = { type: "keydown", key: "c", ctrlKey: true, metaKey: false, shiftKey: false, altKey: false } as KeyboardEvent;
+      expect(term.keyHandler!(ev)).toBe(true); // passed through to the PTY
+      expect(clipboardWrites).toEqual([]);
+    } finally {
+      delete (window.navigator as unknown as { platform?: string }).platform; // back to jsdom's own
+    }
   });
 
   it("finishing a selection with the mouse copies it (copy on select)", () => {

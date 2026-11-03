@@ -906,6 +906,12 @@ class FakeTerm {
   attachCustomKeyEventHandler(fn: (e: KeyboardEvent) => boolean): void {
     this.keyHandler = fn;
   }
+  /** BUGS #84: the shared wiring swallows the remote's mouse modes and reports the wheel itself. */
+  readonly parser = {
+    registerCsiHandler: (): { dispose(): void } => ({ dispose: () => undefined }),
+    registerEscHandler: (): { dispose(): void } => ({ dispose: () => undefined })
+  };
+  attachCustomWheelEventHandler(): void {}
   getSelection(): string {
     return "";
   }
