@@ -1084,7 +1084,8 @@ describe("console client: reply box", () => {
     bootConsole(p);
     await api().refresh();
     expect(box(HEX_B).disabled).toBe(false);
-    expect(box(HEX_B).getAttribute("maxlength")).toBe("4096");
+    // BUGS #69: no maxlength — it counts UTF-16 units and cut an over-long paste silently; the byte counter and Submit gating do the work.
+    expect(box(HEX_B).hasAttribute("maxlength")).toBe(false);
     expect(submitBtn(HEX_B).textContent).toBe("Submit");
     expect(document.querySelector(`[data-card="${HEX_D}"] textarea`)).toBeNull(); // a menu has no box
     expect(textOf(`[data-card="${HEX_D}"] [data-options-readonly]`)).toContain("1");
@@ -2504,6 +2505,18 @@ describe("console client: fix round 1", () => {
     typeIn(HEX_B, "a".repeat(4097));
     expect(submitBtn(HEX_B).disabled).toBe(true);
     expect(textOf(`[data-card="${HEX_B}"] [data-byte-count]`)).toBe("4097 / 4096 bytes — over the limit, Submit is off until it is shorter");
+  });
+
+  it("an over-long paste is never cut: 4097 bytes shows 4097 / 4096 with Submit off, and clearing it shows 0 / 4096 (BUGS #69)", async () => {
+    bootConsole(fleet());
+    await api().refresh();
+    expect(box(HEX_B).hasAttribute("maxlength")).toBe(false);
+    typeIn(HEX_B, "x".repeat(4097));
+    // jsdom never applies maxlength to a scripted value: the hasAttribute check above is the guard.
+    expect(textOf(`[data-card="${HEX_B}"] [data-byte-count]`)).toMatch(/^4097 \/ 4096 bytes/);
+    expect(submitBtn(HEX_B).disabled).toBe(true);
+    typeIn(HEX_B, "");
+    expect(textOf(`[data-card="${HEX_B}"] [data-byte-count]`)).toBe("0 / 4096 bytes");
   });
 
   it("a commit_approval card that also asks a question still gets no option buttons (D5)", async () => {

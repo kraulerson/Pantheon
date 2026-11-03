@@ -1213,7 +1213,7 @@ ${TERMINAL_OPEN_JS}
       wrap.appendChild(mk('p', 'hint', isSentinel ? 'A button sends only its option id.' : 'A button copies its id into the box; you press Submit.'));
     }
     var ta = mk('textarea'); ta.setAttribute('data-reply-box', ''); ta.setAttribute('data-focus-key', 'box:' + c.id);
-    ta.setAttribute('maxlength', String(MAX_REPLY_BYTES)); ta.setAttribute('rows', '3'); ta.setAttribute('aria-label', 'Reply to: ' + str(c.title, 80));
+    ta.setAttribute('rows', '3'); ta.setAttribute('aria-label', 'Reply to: ' + str(c.title, 80));
     ta.value = ui.text; ta.disabled = reason !== '';
     ta.addEventListener('input', function () { ui.text = ta.value; syncReply(art, c.id); });
     wrap.appendChild(ta);
