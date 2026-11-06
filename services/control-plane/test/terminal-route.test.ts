@@ -120,6 +120,18 @@ describe("terminal WebSocket route", () => {
   });
 });
 
+describe("terminal WebSocket route — non-upgrade methods", () => {
+  it("HEAD /terminal/:name is a 404 like any method the route does not serve — Fastify's automatic HEAD route must not run the WebSocket handler (BUGS #80)", async () => {
+    const connect = vi.fn(async () => fakeSession());
+    app = Fastify();
+    await registerTerminalRoute(app, { registry: provisionedRegistry(true), terminals: new TerminalRegistry(), connect, log: QUIET });
+    await app.ready();
+    const res = await app.inject({ method: "HEAD", url: "/terminal/mac-studio" });
+    expect(res.statusCode).toBe(404);
+    expect(connect).not.toHaveBeenCalled();
+  });
+});
+
 describe("terminal WebSocket route — tmux attach (M1 task 1)", () => {
   /** Open a socket against a provisioned registry; return the first proactive frame. */
   async function firstFrame(url: string, connect: ReturnType<typeof vi.fn>): Promise<Record<string, unknown>> {

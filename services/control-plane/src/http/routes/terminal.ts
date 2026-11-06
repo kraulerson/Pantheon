@@ -234,6 +234,8 @@ export async function registerTerminalRoute(app: FastifyInstance, deps: Terminal
     "/terminal/:logicalName",
     {
       websocket: true,
+      // BUGS #80: the automatic HEAD twin of this GET would run the WebSocket handler on a plain request and answer 500.
+      exposeHeadRoute: false,
       // A contradictory query refuses the UPGRADE itself (400): the socket never opens, so nothing is dialled.
       preValidation: async (req, reply) => {
         if (isContradictoryShellQuery(req.query)) await reply.code(400).send({ error: "bad_request" });
