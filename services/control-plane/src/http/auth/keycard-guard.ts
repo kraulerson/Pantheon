@@ -26,7 +26,13 @@ export function isKeycardPath(path: string): boolean {
 
 export type KeycardGuardResult =
   | { readonly ok: true; readonly card: Keycard }
-  | { readonly ok: false; readonly status: 401 | 403 | 429 | 503; readonly reason: string };
+  | {
+      readonly ok: false;
+      readonly status: 401 | 403 | 429 | 503;
+      readonly reason: string;
+      /** A 403 whose token is a known (revoked / expired / corrupt) card names it, for the denial's log line (BUGS #79). */
+      readonly card?: Keycard;
+    };
 
 export function keycardGuard(service: KeycardService | undefined): (req: FastifyRequest) => KeycardGuardResult {
   return (req) => {
@@ -39,8 +45,9 @@ export function keycardGuard(service: KeycardService | undefined): (req: Fastify
     const presented = header.slice("Bearer ".length);
     const result = service.authenticate(presented);
     if (!result.ok) {
-      service.refuse(presented, result.reason);
-      return { ok: false, status: 403, reason: result.reason === "invalid" ? "invalid_keycard" : `keycard_${result.reason}` };
+      const known = service.refuse(presented, result.reason);
+      const reason = result.reason === "invalid" ? "invalid_keycard" : `keycard_${result.reason}`;
+      return known !== undefined ? { ok: false, status: 403, reason, card: known } : { ok: false, status: 403, reason };
     }
     if (!service.checkRate(result.card.id)) {
       service.noteRateLimited(result.card.id);

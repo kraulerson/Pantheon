@@ -161,11 +161,15 @@ export class KeycardService {
     if (cardId !== undefined) this.repo.recordUse(cardId, this.lastRefusedAt, true);
   }
 
-  /** Refuse a presented token: resolves the card (if the hash is known) so the replay is charged to it. */
-  refuse(presented: unknown, reason: KeycardRefusal): void {
+  /**
+   * Refuse a presented token: resolves the card (if the hash is known) so the replay is charged to it, and returns
+   * that card so the denial can name it in the log (BUGS #79) — never the token.
+   */
+  refuse(presented: unknown, reason: KeycardRefusal): Keycard | undefined {
     const known =
       typeof presented === "string" && TOKEN_RE.test(presented) ? this.repo.findByTokenHash(hashToken(presented)) : undefined;
     this.noteRefused(reason, known?.id);
+    return known;
   }
 
   noteRateLimited(cardId: string): void {

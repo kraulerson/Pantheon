@@ -126,6 +126,23 @@ describe("createServer — session keycards (M1 task 2)", () => {
     expect((await app.inject({ method: "GET", url: "/api/backends", headers: { authorization: `Bearer ${token}` } })).statusCode).toBe(403);
   });
 
+  it("the production logger tags the app's HTTP-layer lines module \"http\" (keycards, sign-in, unexpected 500s)", async () => {
+    const lines: string[] = [];
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(((chunk: unknown) => {
+      lines.push(...String(chunk).split("\n"));
+      return true;
+    }) as never);
+    try {
+      app = await makeServer();
+      expect((await app.inject({ method: "POST", url: "/api/keycards", headers: auth, payload: { principal: "cli-mac-mini", scopes: ["sessions:read"] } })).statusCode).toBe(201);
+    } finally {
+      stderr.mockRestore();
+    }
+    const minted = lines.filter((l) => l.startsWith("{")).map((l) => JSON.parse(l) as Record<string, unknown>).find((l) => l["event"] === "keycard.minted");
+    expect(minted).toMatchObject({ level: "info", module: "http", principal: "cli-mac-mini" });
+    expect(typeof minted?.["time"]).toBe("string");
+  });
+
   it("the Configuration page shows the Session Keycards section", async () => {
     app = await makeServer();
     const res = await app.inject({ method: "GET", url: "/admin/config", headers: auth });

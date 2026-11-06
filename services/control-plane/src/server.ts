@@ -203,6 +203,7 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
     ...(cfg.operatorPassword ? { operatorPassword: cfg.operatorPassword } : {}),
     ...(cfg.secureCookies !== undefined ? { secureCookies: cfg.secureCookies } : {}),
     ...(cfg.chatUrl !== undefined ? { chatUrl: cfg.chatUrl } : {}),
+    log: stderrLogger({ module: "http" }),
     console: {
       store: consoleStore,
       poller: consolePoller,

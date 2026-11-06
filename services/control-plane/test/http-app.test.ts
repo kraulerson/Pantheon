@@ -4,6 +4,7 @@ import { buildApp, bearerGuard, verifyStepUp } from "../src/http/app.js";
 import { SqliteRegistry, seedDefaults } from "../src/registry/sqlite-repository.js";
 import { RegistryService } from "../src/registry/service.js";
 import { McpRegistrationService } from "../src/registry/mcp-registration.js";
+import type { PollerLogger } from "../src/console/poller.js";
 
 const TOKEN = "super-strong-admin-token-0123456789abcdef";
 
@@ -589,5 +590,91 @@ describe("backend/service-endpoint Enabled checkbox is honoured (BUGS #18)", () 
   it("ticked checkbox on a service-endpoint form saves enabled:true", async () => {
     await app.inject({ method: "POST", url: "/api/service-endpoints", ...form("displayName=se1&key=gitea&endpoint=10.100.23.76:3000&enabled=on") });
     expect(registry.listServiceEndpoints().find((e) => e.displayName === "se1")!.enabled).toBe(true);
+  });
+});
+
+// BUGS #85: an unexpected 500 writes ONE error line `http.internal_error` — the error's class and code only (D13 L6,
+// triage 14 L12), the method, the matched route PATTERN, the status and the request id — never its message, a stack,
+// the raw path, the body or a header. The 4xx branches stay unlogged and their bodies unchanged.
+describe("unexpected 500s are logged without the error's text (BUGS #85)", () => {
+  interface Line {
+    readonly level: "info" | "warn" | "error";
+    readonly obj: Record<string, unknown>;
+    readonly msg: string | undefined;
+  }
+  const capture = (): { log: PollerLogger; lines: Line[] } => {
+    const lines: Line[] = [];
+    const at =
+      (level: Line["level"]) =>
+      (a: object | string, msg?: string): void => {
+        lines.push(typeof a === "string" ? { level, obj: {}, msg: a } : { level, obj: a as Record<string, unknown>, msg });
+      };
+    return { log: { info: at("info"), warn: at("warn"), error: at("error") }, lines };
+  };
+  const CARD = `pk1_${"ef".repeat(32)}`;
+  const appWith = (log: PollerLogger): FastifyInstance => {
+    const repo = new SqliteRegistry(":memory:");
+    seedDefaults(repo);
+    const mcp = new McpRegistrationService({ createServer: vi.fn(), getServers: vi.fn(async () => ({ success: true, servers: [] })) } as never);
+    const app = buildApp({ adminToken: TOKEN, registry: new RegistryService(repo), mcp, log });
+    app.get("/api/boom/:name", async () => {
+      throw Object.assign(new TypeError(`upstream 10.9.8.7:8443 refused ${CARD}`), { code: "EBOOM" });
+    });
+    return app;
+  };
+
+  it("a throwing route answers 500 internal_error and writes exactly one error line: class, code, method, route pattern, status, correlation id", async () => {
+    const { log, lines } = capture();
+    const app = appWith(log);
+    const res = await app.inject({ method: "GET", url: "/api/boom/raw-path-marker?q=hunter2-query", headers: { ...auth, "x-probe": "header-marker" } });
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toEqual({ error: "internal_error" });
+    expect(lines).toEqual([
+      {
+        level: "error",
+        msg: "http internal error",
+        obj: { event: "http.internal_error", errName: "TypeError", errCode: "EBOOM", method: "GET", route: "/api/boom/:name", status: 500, correlationId: expect.stringMatching(/^[0-9a-f-]{36}$/) }
+      }
+    ]);
+    const all = JSON.stringify(lines);
+    for (const leak of [CARD, "10.9.8.7", "upstream", "refused", "raw-path-marker", "hunter2-query", "header-marker", TOKEN, "at "]) expect(all).not.toContain(leak);
+  });
+
+  it("a logger that throws cannot break the 500 answer", async () => {
+    const boom = (): never => {
+      throw new Error("logger down");
+    };
+    const app = appWith({ info: boom, warn: boom, error: boom });
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const res = await app.inject({ method: "GET", url: "/api/boom/x", headers: auth });
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({ error: "internal_error" });
+      const written = stderr.mock.calls.map((c) => String(c[0])).join("");
+      expect(written).toContain('"event":"http.internal_error"');
+      expect(written).toContain('"loggerFailed":true');
+      expect(written).not.toContain(CARD);
+    } finally {
+      stderr.mockRestore();
+    }
+  });
+
+  it("the 4xx branches write no line and keep their bodies: ValidationError 400, a malformed JSON body 400, a non-UTF-8 body 400, an over-limit body 413", async () => {
+    const { log, lines } = capture();
+    const app = appWith(log);
+    const invalid = await app.inject({ method: "POST", url: "/api/backends", headers: auth, payload: { displayName: "A", kind: "local_alden1", endpoint: "no-port", enabled: true } });
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json()).toEqual({ error: "validation_error", detail: "malformed endpoint (expected host:port): no-port" });
+    const malformed = await app.inject({ method: "POST", url: "/api/backends", headers: { ...auth, "content-type": "application/json" }, payload: "{nope" });
+    expect(malformed.statusCode).toBe(400);
+    expect(malformed.json()).toEqual({ error: "bad_request" });
+    const json = { ...auth, "content-type": "application/json" };
+    const notUtf8 = await app.inject({ method: "POST", url: "/api/backends", headers: json, payload: Buffer.from([0x7b, 0x22, 0xff, 0x22, 0x7d]) });
+    expect(notUtf8.statusCode).toBe(400);
+    expect(notUtf8.json()).toEqual({ error: "invalid_utf8" });
+    const tooBig = await app.inject({ method: "POST", url: "/api/backends", headers: json, payload: Buffer.alloc(1024 * 1024 + 16, 0x20) });
+    expect(tooBig.statusCode).toBe(413);
+    expect(tooBig.json()).toEqual({ error: "payload_too_large" });
+    expect(lines).toEqual([]);
   });
 });

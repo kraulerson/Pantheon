@@ -4,6 +4,12 @@
  * guard accepts that cookie OR the admin bearer token, so browsers (which can't set an Authorization
  * header — including on the same-origin WebSocket handshake) authenticate by cookie, while scripts
  * keep using the bearer. The D6 privileged step-up (passkey/WebAuthn) is a separate future layer.
+ *
+ * Logging (BUGS #79): a sign-in is one info line `auth.login` (`outcome: "signed_in"`, the HASHED session id), a
+ * refused sign-in one warn line `auth.login` (`outcome: "refused"`, `reason: "wrong_password" | "no_password"`), a
+ * sign-out one info line `auth.logout` (the hashed id when a cookie came, and whether it named a live session). The
+ * request id is the correlation id. Never the password tried, never the session id (`sessionIdHash`, as
+ * `console.step_up` does it).
  */
 
 import { createHash, timingSafeEqual } from "node:crypto";
@@ -12,6 +18,8 @@ import { pageHead } from "../theme.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { AdminGuard } from "../app.js";
 import { SessionStore } from "./session.js";
+import { sessionIdHash } from "./step-up.js";
+import { STDERR_LOGGER, writeLog, type PollerLogger } from "../../console/poller.js";
 
 export const SESSION_COOKIE = "pantheon_session";
 /** Routes reachable while logged out (added to the app's guard exemptions). */
@@ -93,11 +101,14 @@ export interface AuthRoutesOptions {
   /** Add the `Secure` cookie attribute (set true when served over HTTPS). */
   readonly secureCookies?: boolean;
   readonly sessionTtlSec?: number;
+  /** Structured logger for the sign-in / sign-out lines (BUGS #79); default {@link STDERR_LOGGER}. */
+  readonly log?: PollerLogger;
 }
 
 /** Mount the public /login (GET form, POST authenticate) and /logout routes. */
 export function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesOptions): void {
   const ttl = opts.sessionTtlSec ?? 12 * 60 * 60;
+  const log = opts.log ?? STDERR_LOGGER;
 
   app.get("/login", async (req, reply) => {
     reply.type("text/html").send(renderLoginPage(false, requestBase(req)));
@@ -106,17 +117,22 @@ export function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesOptions
   app.post("/login", async (req, reply) => {
     const password = (req.body as { password?: unknown } | undefined)?.password;
     if (typeof password !== "string" || !timingSafeEqualStr(password, opts.operatorPassword)) {
+      const reason = typeof password === "string" ? "wrong_password" : "no_password";
+      writeLog(log, "warn", { event: "auth.login", outcome: "refused", reason, correlationId: req.id }, "operator sign-in refused");
       reply.code(401).type("text/html").send(renderLoginPage(true, requestBase(req)));
       return;
     }
     const id = opts.sessions.create();
+    writeLog(log, "info", { event: "auth.login", outcome: "signed_in", sessionIdHash: sessionIdHash(id), correlationId: req.id }, "operator signed in");
     setCookie(reply, id, ttl, opts.secureCookies ?? false, cookiePath(requestBase(req)));
     reply.redirect(withBase(requestBase(req), "/harness"));
   });
 
   app.post("/logout", async (req, reply) => {
     const sid = parseSessionCookie(req.headers.cookie);
+    const who = sid ? { sessionIdHash: sessionIdHash(sid), hadSession: opts.sessions.validate(sid) } : { hadSession: false };
     if (sid) opts.sessions.destroy(sid);
+    writeLog(log, "info", { event: "auth.logout", ...who, correlationId: req.id }, "operator signed out");
     // Cleared with the SAME Path it was set with, or the browser keeps the cookie.
     setCookie(reply, "", 0, opts.secureCookies ?? false, cookiePath(requestBase(req)));
     reply.redirect(withBase(requestBase(req), "/login"));

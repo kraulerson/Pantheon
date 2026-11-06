@@ -17,6 +17,13 @@
  * slot=<nonce>`) that reads-and-burns a short-lived in-memory slot — a browser reload cannot re-mint
  * and the token is never in a URL. Form validation errors and revocations redirect back to the
  * Configuration page with allow-listed `?error=` / `?notice=` codes (never reflected text).
+ *
+ * Logging (BUGS #79): a mint is one info line `keycard.minted` (card id, principal, scopes, expiry), a revoke one info
+ * line `keycard.revoked` (card id, principal, whether it was already revoked), a revoke of an id that names no card
+ * one warn line `keycard.revoke_unknown` (the id only when it is UUID-shaped — a pasted token is never echoed), and a
+ * wrong-scope use one warn line `keycard.denied` (route, required scope, card id, principal). The guard's refusals
+ * are logged by the app (app.ts). Every line carries the request id as `correlationId`; none carries the token or
+ * its hash. A served use writes no line: the card's `useCount` / `lastUsedAt` keep that.
  */
 
 import { randomBytes } from "node:crypto";
@@ -29,6 +36,7 @@ import { KEYCARD_PREFIX } from "../auth/keycard-guard.js";
 import { escapeHtml as esc } from "../config-page.js";
 import { requestBase, withBase } from "../base-path.js";
 import { pageHead } from "../theme.js";
+import { STDERR_LOGGER, writeLog, type PollerLogger } from "../../console/poller.js";
 
 export interface KeycardDoorDeps {
   readonly keycards: KeycardService;
@@ -38,12 +46,14 @@ export interface KeycardDoorDeps {
   readonly approvalsTimeoutMs?: number;
   /** Session metadata source; absent → labeled 503. */
   readonly sessionLedger?: { list(): Session[] };
+  /** Structured logger for the wrong-scope denial line (BUGS #79); default {@link STDERR_LOGGER}. */
+  readonly log?: PollerLogger;
 }
 
 const DEFAULT_APPROVALS_TIMEOUT_MS = 10_000;
 
 /** Per-route scope check. The guard already authenticated; this is authorization (exact scope). */
-function requireScope(keycards: KeycardService, scope: KeycardScope) {
+function requireScope(keycards: KeycardService, scope: KeycardScope, log: PollerLogger) {
   return async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
     const card = req.keycard;
     if (!card) {
@@ -51,6 +61,12 @@ function requireScope(keycards: KeycardService, scope: KeycardScope) {
       return;
     }
     if (!keycards.authorize(card, scope)) {
+      writeLog(
+        log,
+        "warn",
+        { event: "keycard.denied", reason: "insufficient_scope", route: req.routeOptions.url, requiredScope: scope, cardId: card.id, principal: card.principal, correlationId: req.id },
+        "keycard use denied"
+      );
       reply.code(403).send({ error: "insufficient_scope", required: scope });
     }
   };
@@ -60,6 +76,7 @@ export function registerKeycardDoor(app: FastifyInstance, deps: KeycardDoorDeps)
   const { keycards } = deps;
   const p = (path: string): string => `${KEYCARD_PREFIX}${path}`;
   const approvalsTimeoutMs = deps.approvalsTimeoutMs ?? DEFAULT_APPROVALS_TIMEOUT_MS;
+  const log = deps.log ?? STDERR_LOGGER;
 
   app.get(p("whoami"), async (req, reply) => {
     const card = req.keycard;
@@ -70,12 +87,12 @@ export function registerKeycardDoor(app: FastifyInstance, deps: KeycardDoorDeps)
     return { principal: card.principal, scopes: card.scopes, expiresAt: card.expiresAt };
   });
 
-  app.get(p("usage"), { preHandler: requireScope(keycards, "usage:read") }, async (_req, reply) => {
+  app.get(p("usage"), { preHandler: requireScope(keycards, "usage:read", log) }, async (_req, reply) => {
     reply.code(503);
     return { state: "unavailable", message: "the usage ledger is not built yet (M2 step 6) — nothing to read" };
   });
 
-  app.get(p("approvals"), { preHandler: requireScope(keycards, "approvals:read") }, async (_req, reply) => {
+  app.get(p("approvals"), { preHandler: requireScope(keycards, "approvals:read", log) }, async (_req, reply) => {
     const sources = deps.approvalSources ?? [];
     if (sources.length === 0) {
       reply.code(503);
@@ -94,7 +111,7 @@ export function registerKeycardDoor(app: FastifyInstance, deps: KeycardDoorDeps)
     return { approvals: ok.flatMap((r) => r.approvals), truncated: ok.some((r) => r.truncated), ...(failed.length > 0 ? { failed } : {}) };
   });
 
-  app.get(p("sessions"), { preHandler: requireScope(keycards, "sessions:read") }, async (_req, reply) => {
+  app.get(p("sessions"), { preHandler: requireScope(keycards, "sessions:read", log) }, async (_req, reply) => {
     if (!deps.sessionLedger) {
       reply.code(503);
       return { state: "unavailable", message: "the session ledger is not configured on this server" };
@@ -111,7 +128,12 @@ export interface KeycardAdminDeps {
   readonly keycards: KeycardService;
   /** Clock for the one-shot slots (tests). */
   readonly now?: () => number;
+  /** Structured logger for the mint / revoke lines (BUGS #79); default {@link STDERR_LOGGER}. */
+  readonly log?: PollerLogger;
 }
+
+/** Card ids are `randomUUID()`s: anything else in the revoke path names no card and is not echoed into the log. */
+const CARD_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 interface MintBody {
   principal?: unknown;
@@ -213,6 +235,7 @@ export function renderKeycardCollected(base = ""): string {
 export function registerKeycardAdminRoutes(app: FastifyInstance, deps: KeycardAdminDeps): void {
   const { keycards } = deps;
   const slots = new MintedTokenSlots(deps.now ?? Date.now);
+  const log = deps.log ?? STDERR_LOGGER;
 
   app.get("/api/keycards", async () => keycards.list());
 
@@ -233,6 +256,13 @@ export function registerKeycardAdminRoutes(app: FastifyInstance, deps: KeycardAd
       }
       throw err;
     }
+    const { card } = minted;
+    writeLog(
+      log,
+      "info",
+      { event: "keycard.minted", cardId: card.id, principal: card.principal, scopes: card.scopes, expiresAt: card.expiresAt, correlationId: req.id },
+      "keycard minted"
+    );
     if (form) {
       const nonce = slots.put(minted.card, minted.token);
       reply.header("cache-control", "no-store").redirect(withBase(requestBase(req), `/admin/keycards/minted?slot=${nonce}`), 303);
@@ -255,7 +285,10 @@ export function registerKeycardAdminRoutes(app: FastifyInstance, deps: KeycardAd
 
   app.post<{ Params: { id: string } }>("/api/keycards/:id/revoke", async (req, reply) => {
     const form = isUrlencodedForm(req);
-    if (!keycards.revoke(req.params.id)) {
+    const id = req.params.id;
+    const before = keycards.get(id);
+    if (!keycards.revoke(id)) {
+      writeLog(log, "warn", { event: "keycard.revoke_unknown", cardId: CARD_ID_RE.test(id) ? id : "[not a card id]", correlationId: req.id }, "keycard revoke: no such card");
       if (form) {
         reply.redirect(withBase(requestBase(req), "/admin/config?error=keycard_not_found"), 303);
         return;
@@ -263,6 +296,14 @@ export function registerKeycardAdminRoutes(app: FastifyInstance, deps: KeycardAd
       reply.code(404);
       return { error: "not_found" };
     }
+    const revoked = {
+      event: "keycard.revoked",
+      cardId: id,
+      ...(before !== undefined ? { principal: before.principal } : {}),
+      alreadyRevoked: before !== undefined && before.revokedAt !== null,
+      correlationId: req.id
+    };
+    writeLog(log, "info", revoked, "keycard revoked");
     if (form) {
       reply.redirect(withBase(requestBase(req), "/admin/config?notice=keycard_revoked"), 303);
       return;

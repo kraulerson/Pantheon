@@ -267,7 +267,7 @@ interface SubmitLogLine {
 const submitLevel = (outcome: SubmitOutcome): "info" | "warn" => (outcome === "sent" ? "info" : "warn");
 
 /** D13 (L6): what a log line may say about a caught error — its class and a code-shaped `code`, never its message. */
-function errorClass(err: unknown): { readonly errName: string; readonly errCode?: string } {
+export function errorClass(err: unknown): { readonly errName: string; readonly errCode?: string } {
   const errName = err instanceof Error ? err.name : typeof err;
   const code = typeof err === "object" && err !== null ? (err as { readonly code?: unknown }).code : undefined;
   return typeof code === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? { errName, errCode: code } : { errName };

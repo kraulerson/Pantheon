@@ -22,7 +22,7 @@ import { registerChatCompletionsRoute } from "./routes/chat-completions.js";
 import { registerInspectorRoute } from "./routes/inspector.js";
 import { registerApprovalsRoutes, registerApprovalsInbox, type ApprovalsBackend } from "./routes/approvals.js";
 import { registerHarnessRoutes, HARNESS_ASSET_PATHS, type TmuxLister } from "./routes/harness.js";
-import { registerConsoleRoutes, type ConsoleWiring } from "./routes/console.js";
+import { errorClass, registerConsoleRoutes, type ConsoleWiring } from "./routes/console.js";
 import { SessionStore } from "./auth/session.js";
 import { operatorGuard, registerAuthRoutes, AUTH_PUBLIC_PATHS } from "./auth/operator-auth.js";
 import { cookieSessionId } from "./auth/step-up.js";
@@ -35,6 +35,7 @@ import type { ApprovalSource } from "../approvals/projection.js";
 import { LOCAL_SOURCE_LABEL } from "../approvals/sources.js";
 import type { KeycardService } from "../keycard/service.js";
 import type { Session } from "../session/types.js";
+import { STDERR_LOGGER, writeLog, type PollerLogger } from "../console/poller.js";
 
 /** Result of an admin-tier check. `ok:false` carries the HTTP status to fail closed with. */
 export type GuardResult = { ok: true } | { ok: false; status: 401 | 403; reason: string };
@@ -103,6 +104,12 @@ export interface AppOptions {
    * while login is enabled (without login they answer 503). Omit → not mounted.
    */
   readonly console?: ConsoleWiring;
+  /**
+   * Structured logger for the app's own HTTP-layer lines: operator sign-in / sign-out and keycard mint, revoke and
+   * denials (BUGS #79), and unexpected 500s (BUGS #85). Production: `stderrLogger({ module: "http" })`; default
+   * {@link STDERR_LOGGER}.
+   */
+  readonly log?: PollerLogger;
 }
 
 /**
@@ -293,6 +300,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   const loginEnabled = typeof opts.operatorPassword === "string" && opts.operatorPassword.length > 0;
   const sessions = opts.sessions ?? (loginEnabled ? new SessionStore() : undefined);
   const guard: AdminGuard = opts.guard ?? operatorGuard(opts.adminToken, sessions);
+  const log = opts.log ?? STDERR_LOGGER;
 
   // Parse application/x-www-form-urlencoded so the login form (and config-page forms) submit.
   app.register(formbody);
@@ -348,6 +356,13 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     if (isKeycardPath(rawPath) || isKeycardPath(routePath)) {
       const kc = kcGuard(req);
       if (!kc.ok) {
+        // BUGS #79: an unknown / revoked / expired card is one warn line (the card when the token maps to one, never
+        // the token). Each 403 is a refusal the door-wide pre-auth budget counts, so the lines are bounded (120 a
+        // minute); the 401 (no bearer), 429 and 503 answers are not logged per request.
+        if (kc.status === 403) {
+          const card = kc.card !== undefined ? { cardId: kc.card.id, principal: kc.card.principal } : {};
+          writeLog(log, "warn", { event: "keycard.denied", reason: kc.reason, route: req.routeOptions.url ?? "(no route)", ...card, correlationId: req.id }, "keycard use denied");
+        }
         reply.code(kc.status).send({ error: kc.reason });
         return;
       }
@@ -380,12 +395,13 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     registerAuthRoutes(app, {
       operatorPassword: opts.operatorPassword as string,
       sessions,
+      log,
       ...(opts.secureCookies !== undefined ? { secureCookies: opts.secureCookies } : {})
     });
   }
 
   // Centralized error handling: ValidationError → 400 (no mutation happened, validation is pre-write).
-  app.setErrorHandler((err, _req, reply) => {
+  app.setErrorHandler((err, req, reply) => {
     if (err instanceof ValidationError) {
       reply.code(400).send({ error: "validation_error", detail: err.message });
       return;
@@ -402,7 +418,15 @@ export function buildApp(opts: AppOptions): FastifyInstance {
       reply.code(statusCode).send({ error: CLIENT_ERROR_BODIES[statusCode] ?? "bad_request" });
       return;
     }
-    // Never leak raw exception text toward the client.
+    // Never leak raw exception text toward the client. BUGS #85: one error line first — the error's class and code
+    // only (D13 L6, triage 14 L12), the method and the matched route PATTERN; never its message, a stack, the raw
+    // path, the body or a header.
+    writeLog(
+      log,
+      "error",
+      { event: "http.internal_error", ...errorClass(err), method: req.method, route: req.routeOptions.url ?? "(no route)", status: 500, correlationId: req.id },
+      "http internal error"
+    );
     reply.code(500).send({ error: "internal_error" });
   });
 
@@ -532,9 +556,10 @@ export function buildApp(opts: AppOptions): FastifyInstance {
 
   // ---- Session keycards (M1 task 2): admin mint/list/revoke (guarded above) + the keycard door ----
   if (opts.keycards) {
-    registerKeycardAdminRoutes(app, { keycards: opts.keycards });
+    registerKeycardAdminRoutes(app, { keycards: opts.keycards, log });
     registerKeycardDoor(app, {
       keycards: opts.keycards,
+      log,
       // The door gets a READER only — the decide verb is structurally out of its reach.
       approvalSources: approvalSources,
       ...(opts.approvalsTimeoutMs !== undefined ? { approvalsTimeoutMs: opts.approvalsTimeoutMs } : {}),

@@ -8,6 +8,7 @@
  *  - approvals via keycard are reference-only (D8): no arguments / diff / payload ever.
  */
 
+import { createHash } from "node:crypto";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../src/http/app.js";
@@ -18,6 +19,7 @@ import { McpRegistrationService } from "../src/registry/mcp-registration.js";
 import { SqliteKeycardStore } from "../src/keycard/sqlite-store.js";
 import { KeycardService } from "../src/keycard/service.js";
 import type { Session } from "../src/session/types.js";
+import type { PollerLogger } from "../src/console/poller.js";
 
 const TOKEN = "super-strong-admin-token-0123456789abcdef";
 const admin = { authorization: `Bearer ${TOKEN}` };
@@ -38,7 +40,7 @@ interface Made {
   approvals: { listApprovals: ReturnType<typeof vi.fn>; decideApproval: ReturnType<typeof vi.fn> };
 }
 
-function makeApp(opts: { keycards?: boolean; peta?: boolean; sessions?: boolean; login?: boolean; now?: () => number; sources?: Array<{ label: string; reader: { listApprovals: (f?: unknown) => Promise<unknown> } }> } = {}): Made {
+function makeApp(opts: { keycards?: boolean; peta?: boolean; sessions?: boolean; login?: boolean; now?: () => number; log?: PollerLogger; sources?: Array<{ label: string; reader: { listApprovals: (f?: unknown) => Promise<unknown> } }> } = {}): Made {
   const repo = new SqliteRegistry(":memory:");
   seedDefaults(repo);
   const registry = new RegistryService(repo);
@@ -53,7 +55,8 @@ function makeApp(opts: { keycards?: boolean; peta?: boolean; sessions?: boolean;
     ...(opts.peta === false ? {} : { peta: approvals }),
     ...(opts.sessions === false ? {} : { sessionLedger: { list: () => SESSIONS } }),
     ...(opts.login ? { operatorPassword: "correct horse", sessions: new SessionStore() } : {}),
-    ...(opts.sources ? { approvalSources: opts.sources } : {})
+    ...(opts.sources ? { approvalSources: opts.sources } : {}),
+    ...(opts.log ? { log: opts.log } : {})
   });
   return { app, keycards, approvals };
 }
@@ -536,5 +539,132 @@ describe("keycard door — approvals from every configured store (BUGS #42)", ()
     expect(body.approvals.map((a) => [a.id, a.source])).toEqual([["ap-1", "Pantheon"], ["2a2749b3", "Alden gateway"]]);
     expect(body.failed).toEqual(["broken"]);
     expect(res.body).not.toContain("NO");
+  });
+});
+
+// BUGS #79: mint, revoke and every refused use leave one structured line — card id, principal, scopes, reason, the
+// request id as correlation id — and never the token or its hash. A served use is not logged (use_count keeps it).
+describe("keycard events are logged, never the token (BUGS #79)", () => {
+  interface Line {
+    readonly level: "info" | "warn" | "error";
+    readonly obj: Record<string, unknown>;
+    readonly msg: string | undefined;
+  }
+  const capture = (): { log: PollerLogger; lines: Line[] } => {
+    const lines: Line[] = [];
+    const at =
+      (level: Line["level"]) =>
+      (a: object | string, msg?: string): void => {
+        lines.push(typeof a === "string" ? { level, obj: {}, msg: a } : { level, obj: a as Record<string, unknown>, msg });
+      };
+    return { log: { info: at("info"), warn: at("warn"), error: at("error") }, lines };
+  };
+  const sha256 = (t: string): string => createHash("sha256").update(t).digest("hex");
+  const noSecret = (lines: readonly Line[], ...tokens: string[]): void => {
+    const all = JSON.stringify(lines);
+    for (const t of tokens) {
+      expect(all).not.toContain(t);
+      expect(all).not.toContain(sha256(t));
+      expect(all).not.toContain(t.slice(4, 20));
+    }
+  };
+  const UUID = /^[0-9a-f-]{36}$/;
+
+  it("a JSON mint and a form mint each write one info line: card id, principal, scopes, expiry", async () => {
+    const { log, lines } = capture();
+    const made = makeApp({ log });
+    app = made.app;
+    const res = await app.inject({ method: "POST", url: "/api/keycards", headers: admin, payload: { principal: "uat-card-6", scopes: ["sessions:read", "usage:read"], ttlDays: 30 } });
+    expect(res.statusCode).toBe(201);
+    const { card, token } = res.json() as { card: { id: string; expiresAt: string }; token: string };
+    expect(lines).toEqual([
+      {
+        level: "info",
+        msg: "keycard minted",
+        obj: { event: "keycard.minted", cardId: card.id, principal: "uat-card-6", scopes: ["sessions:read", "usage:read"], expiresAt: card.expiresAt, correlationId: expect.stringMatching(UUID) }
+      }
+    ]);
+    const form = await app.inject({
+      method: "POST",
+      url: "/api/keycards",
+      headers: { ...admin, "content-type": "application/x-www-form-urlencoded" },
+      payload: "principal=cli-form&scopes=approvals%3Aread"
+    });
+    expect(form.statusCode).toBe(303);
+    const page = await app.inject({ method: "GET", url: String(form.headers.location), headers: admin });
+    const formToken = /pk1_[0-9a-f]{64}/.exec(page.body)?.[0] ?? "";
+    expect(formToken).not.toBe("");
+    expect(lines).toHaveLength(2);
+    expect(lines[1]?.obj).toMatchObject({ event: "keycard.minted", principal: "cli-form", scopes: ["approvals:read"] });
+    noSecret(lines, token, formToken);
+  });
+
+  it("a revoke is info with the principal; a revoke of an unknown id is warn; a non-id is never echoed", async () => {
+    const { log, lines } = capture();
+    const made = makeApp({ log });
+    app = made.app;
+    const { card, token } = made.keycards.mint({ principal: "uat-card-6", scopes: ["usage:read"] });
+    expect((await app.inject({ method: "POST", url: `/api/keycards/${card.id}/revoke`, headers: admin })).statusCode).toBe(204);
+    expect((await app.inject({ method: "POST", url: `/api/keycards/${card.id}/revoke`, headers: admin })).statusCode).toBe(204);
+    const ghost = "0b1c2d3e-4f50-4617-8899-aabbccddeeff";
+    expect((await app.inject({ method: "POST", url: `/api/keycards/${ghost}/revoke`, headers: admin })).statusCode).toBe(404);
+    expect((await app.inject({ method: "POST", url: `/api/keycards/${token}/revoke`, headers: admin })).statusCode).toBe(404);
+    expect(lines.map((l) => [l.level, l.msg])).toEqual([
+      ["info", "keycard revoked"],
+      ["info", "keycard revoked"],
+      ["warn", "keycard revoke: no such card"],
+      ["warn", "keycard revoke: no such card"]
+    ]);
+    expect(lines[0]?.obj).toEqual({ event: "keycard.revoked", cardId: card.id, principal: "uat-card-6", alreadyRevoked: false, correlationId: expect.stringMatching(UUID) });
+    expect(lines[1]?.obj).toMatchObject({ event: "keycard.revoked", cardId: card.id, alreadyRevoked: true });
+    expect(lines[2]?.obj).toEqual({ event: "keycard.revoke_unknown", cardId: ghost, correlationId: expect.stringMatching(UUID) });
+    expect(lines[3]?.obj).toEqual({ event: "keycard.revoke_unknown", cardId: "[not a card id]", correlationId: expect.stringMatching(UUID) });
+    noSecret(lines, token);
+  });
+
+  it("a refused use is warn with the route and reason, and the card when the token maps to one; a served use writes nothing", async () => {
+    let t = T0;
+    const { log, lines } = capture();
+    const made = makeApp({ log, now: () => t });
+    app = made.app;
+    const { card, token } = made.keycards.mint({ principal: "uat-card-6", scopes: ["usage:read"], ttlDays: 1 });
+    const unknown = `pk1_${"9".repeat(64)}`;
+    expect((await app.inject({ method: "GET", url: "/keycard/v1/whoami", headers: bearer(token) })).statusCode).toBe(200);
+    expect((await app.inject({ method: "GET", url: "/keycard/v1/usage", headers: bearer(token) })).statusCode).toBe(503);
+    expect(lines).toEqual([]);
+
+    expect((await app.inject({ method: "GET", url: "/keycard/v1/sessions", headers: bearer(token) })).statusCode).toBe(403);
+    expect((await app.inject({ method: "GET", url: "/keycard/v1/whoami", headers: bearer(unknown) })).statusCode).toBe(403);
+    t = T0 + 2 * 86_400_000;
+    expect((await app.inject({ method: "GET", url: "/keycard/v1/whoami", headers: bearer(token) })).statusCode).toBe(403);
+    t = T0;
+    made.keycards.revoke(card.id);
+    expect((await app.inject({ method: "GET", url: "/keycard/v1/approvals", headers: bearer(token) })).statusCode).toBe(403);
+
+    expect(lines.every((l) => l.level === "warn" && l.msg === "keycard use denied")).toBe(true);
+    const corr = { correlationId: expect.stringMatching(UUID) };
+    expect(lines.map((l) => l.obj)).toEqual([
+      { event: "keycard.denied", reason: "insufficient_scope", route: "/keycard/v1/sessions", requiredScope: "sessions:read", cardId: card.id, principal: "uat-card-6", ...corr },
+      { event: "keycard.denied", reason: "invalid_keycard", route: "/keycard/v1/whoami", ...corr },
+      { event: "keycard.denied", reason: "keycard_expired", route: "/keycard/v1/whoami", cardId: card.id, principal: "uat-card-6", ...corr },
+      { event: "keycard.denied", reason: "keycard_revoked", route: "/keycard/v1/approvals", cardId: card.id, principal: "uat-card-6", ...corr }
+    ]);
+    noSecret(lines, token, unknown);
+  });
+
+  it("the denial lines are bounded by the door-wide pre-auth budget: no line for a missing bearer or a 429, exactly 120 for a 121-token burst", async () => {
+    const { log, lines } = capture();
+    const made = makeApp({ log });
+    app = made.app;
+    expect((await app.inject({ method: "GET", url: "/keycard/v1/whoami" })).statusCode).toBe(401);
+    const statuses: number[] = [];
+    for (let i = 0; i < 121; i++) {
+      const bad = `pk1_${i.toString(16).padStart(64, "0")}`;
+      statuses.push((await app.inject({ method: "GET", url: "/keycard/v1/whoami", headers: bearer(bad) })).statusCode);
+    }
+    expect(statuses.filter((s) => s === 403)).toHaveLength(120);
+    expect(statuses[120]).toBe(429);
+    expect(lines).toHaveLength(120);
+    expect(lines.every((l) => l.level === "warn" && l.obj["event"] === "keycard.denied" && l.obj["reason"] === "invalid_keycard")).toBe(true);
   });
 });
