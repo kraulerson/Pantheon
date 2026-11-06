@@ -6,12 +6,14 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Fastify from "fastify";
 import { JSDOM } from "jsdom";
 import { describe, expect, it, vi } from "vitest";
-import { SshConnectionError, type RemoteCommand } from "../src/devmachine/connection.js";
+import { SshConnectionError, runRemoteCommand, type RemoteCommand, type SshFailureCause } from "../src/devmachine/connection.js";
+import { FileKeyCustody } from "../src/devmachine/custody.js";
 import type { SshTarget } from "../src/devmachine/provisioning.js";
 import type { RemoteCommandResult, RemoteExec } from "../src/devmachine/tmux.js";
 import type { DevMachine } from "../src/registry/types.js";
@@ -1513,5 +1515,159 @@ describe("createConsolePoller — reply-question flag and F1 carries (F2 Task 10
     const h = harness([machine("Mac-Mini")], { "Mac-Mini": m }, { store });
     await h.poller.tick();
     expect(h.exec.mock.calls.length).toBeGreaterThan(1);
+  });
+});
+
+// BUGS #72: a machine that drops to UNREACHABLE leaves ONE warn line saying why (from the SshConnectionError's
+// phase and ssh2 cause: class, level, code — never a message, D13 L6 / L12), and ONE info line when a poll answers
+// again — never a line per failed 5-second poll.
+// A fake key for the custody fixtures, built at run time so secret scanners do not read it as a real key (as in BUGS #59).
+const KEY_LABEL = `OPENSSH ${"PRIVATE"} KEY`;
+const FAKE_PRIVATE_KEY = `-----BEGIN ${KEY_LABEL}-----\nSECRET-DO-NOT-LEAK\n-----END ${KEY_LABEL}-----\n`;
+
+describe("createConsolePoller — unreachable / reachable-again log lines (BUGS #72)", () => {
+  const CARD = `pk1_${"cd".repeat(32)}`;
+  const SECRET_TEXT = `connect ECONNREFUSED 10.9.8.7:22 replayed ${CARD}`;
+  // A cause shaped like the pre-ruling one (with ssh2's text): nothing in the poller may copy that text into a line.
+  const refused = (): SshConnectionError =>
+    new SshConnectionError("SSH connection to Mac-Mini (karl@mac-mini.lan) failed", "before_exec", {
+      errName: "Error",
+      level: "client-socket",
+      code: "ECONNREFUSED",
+      message: SECRET_TEXT
+    } as SshFailureCause);
+  const events = (logs: readonly LogCall[]): unknown[] => logs.map((l) => l.obj?.["event"]);
+  const noText = (logs: readonly LogCall[]): void => {
+    const all = JSON.stringify(logs);
+    for (const leak of [CARD, "10.9.8.7", "replayed", "karl@", "SSH connection to", "PRIVATE KEY", "SECRET-DO-NOT-LEAK"]) expect(all).not.toContain(leak);
+  };
+
+  it("reachable → unreachable writes one warn line; the failed polls after it write none; recovery writes one info line with the outage length", async () => {
+    const m = fakeMachine({ sessions: [live()], panes: [PANTHEON_PANE], transcripts: new Map([[SID, BASIC]]) });
+    const h = harness([machine("Mac-Mini")], { "Mac-Mini": m });
+    const answer = h.exec.getMockImplementation()!;
+    await h.poller.tick();
+    expect(h.logs).toEqual([]);
+
+    h.exec.mockImplementation(async () => {
+      throw refused();
+    });
+    h.clock.now += 5000;
+    await h.poller.tick();
+    h.clock.now += 5000;
+    await h.poller.tick();
+    h.clock.now += 5000;
+    await h.poller.tick();
+    expect(h.poller.health()[0]?.state).toBe("unreachable");
+    expect(h.logs).toHaveLength(1);
+    expect(h.logs[0]?.level).toBe("warn");
+    expect(h.logs[0]?.msg).toBe("console machine unreachable");
+    expect(h.logs[0]?.obj).toEqual({
+      event: "console.machine_unreachable",
+      correlationId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      at: iso(T0 + 5000),
+      machine: "Mac-Mini",
+      phase: "before_exec",
+      reason: "connect_failed",
+      errName: "SshConnectionError",
+      sshLevel: "client-socket",
+      sshCode: "ECONNREFUSED"
+    });
+    expect(h.logs[0]?.obj).not.toHaveProperty("sshMessage");
+
+    h.exec.mockImplementation(answer);
+    h.clock.now += 5000;
+    await h.poller.tick();
+    h.clock.now += 5000;
+    await h.poller.tick();
+    expect(h.poller.health()[0]?.state).toBe("ok");
+    expect(events(h.logs)).toEqual(["console.machine_unreachable", "console.machine_reachable"]);
+    expect(h.logs[1]?.level).toBe("info");
+    expect(h.logs[1]?.msg).toBe("console machine reachable again");
+    expect(h.logs[1]?.obj).toEqual({
+      event: "console.machine_reachable",
+      correlationId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      at: iso(T0 + 20000),
+      machine: "Mac-Mini",
+      downSince: iso(T0 + 5000),
+      downMs: 15000
+    });
+    // Never the token, the IP from the ssh2 text, user@host or the SshConnectionError's own text.
+    noText(h.logs);
+  });
+
+  it("a machine unreachable from its first poll is logged too; a timeout says so, with its phase", async () => {
+    const h = harness([machine("Mac-Mini")], {});
+    h.exec.mockRejectedValue(new SshConnectionError("remote command on Mac-Mini timed out after 4000 ms", "after_exec"));
+    await h.poller.tick();
+    expect(h.logs).toHaveLength(1);
+    expect(h.logs[0]?.obj).toMatchObject({ event: "console.machine_unreachable", machine: "Mac-Mini", phase: "after_exec", reason: "timeout", errName: "SshConnectionError" });
+    expect(h.logs[0]?.obj).not.toHaveProperty("sshMessage");
+  });
+
+  it("a non-SSH failure (custody) logs its class only — never its text", async () => {
+    const h = harness([machine("Mac-Mini")], {});
+    // The key header is built at run time so secret scanners do not read the fixture as a real key (as in BUGS #59).
+    h.exec.mockRejectedValue(new TypeError(`-----BEGIN OPENSSH ${"PRIVATE"} KEY----- SECRET-DO-NOT-LEAK karl@192.168.1.192 ${SECRET_TEXT}`));
+    await h.poller.tick();
+    expect(h.logs).toHaveLength(1);
+    expect(h.logs[0]?.obj).toMatchObject({ event: "console.machine_unreachable", reason: "connect_failed", errName: "TypeError" });
+    expect(h.logs[0]?.obj).not.toHaveProperty("phase");
+    expect(h.logs[0]?.obj).not.toHaveProperty("sshMessage");
+    noText(h.logs);
+  });
+
+  it("through the real connection path, an ssh2 error's text (a fake secret and an IP) never reaches any line", async () => {
+    const custodyDir = mkdtempSync(join(tmpdir(), "pantheon-poll72-"));
+    try {
+      const custody = new FileKeyCustody(custodyDir);
+      await custody.storeKeyPair("key-Mac-Mini", FAKE_PRIVATE_KEY, "ssh-ed25519 AAAA test\n");
+      const failing = {
+        on(ev: string, cb: (...a: unknown[]) => void) {
+          if (ev === "error") queueMicrotask(() => cb(Object.assign(new Error(SECRET_TEXT), { level: "client-socket", code: "ECONNREFUSED" })));
+          return failing;
+        },
+        connect: () => undefined,
+        shell: () => undefined,
+        exec: () => undefined,
+        end: () => undefined
+      };
+      const h = harness([machine("Mac-Mini")], {}, { exec: createProbeExec({ custody, clientFactory: () => failing as never }) });
+      await h.poller.tick();
+      expect(h.logs).toHaveLength(1);
+      expect(h.logs[0]?.obj).toMatchObject({ event: "console.machine_unreachable", sshLevel: "client-socket", sshCode: "ECONNREFUSED", errName: "SshConnectionError" });
+      expect(h.logs[0]?.obj).not.toHaveProperty("sshMessage");
+      noText(h.logs);
+    } finally {
+      rmSync(custodyDir, { recursive: true, force: true });
+    }
+  });
+});
+
+// Final review: the overall timer firing BEFORE the exec request (the handshake never completed) is still `timeout`,
+// with phase `before_exec` — `remoteCommandFailure` alone would call it `connect_failed`.
+describe("createConsolePoller — a before-exec timeout is reason timeout (BUGS #72)", () => {
+  it("through the real connection path, a handshake that never completes logs phase before_exec, reason timeout", async () => {
+    const custodyDir = mkdtempSync(join(tmpdir(), "pantheon-poll72t-"));
+    try {
+      const custody = new FileKeyCustody(custodyDir);
+      await custody.storeKeyPair("key-Mac-Mini", FAKE_PRIVATE_KEY, "ssh-ed25519 AAAA test\n");
+      const silent = {
+        on: () => silent,
+        connect: () => undefined,
+        shell: () => undefined,
+        exec: () => undefined,
+        end: () => undefined
+      };
+      const exec: RemoteExec = (target, handle, command) => runRemoteCommand(target, handle, command, { custody, clientFactory: () => silent as never }, { timeoutMs: 20 });
+      const h = harness([machine("Mac-Mini")], {}, { exec });
+      await h.poller.tick();
+      expect(h.poller.health()[0]?.message).toBe("Mac-Mini unreachable — timed out waiting for the machine");
+      expect(h.logs).toHaveLength(1);
+      expect(h.logs[0]?.obj).toMatchObject({ event: "console.machine_unreachable", phase: "before_exec", reason: "timeout", errName: "SshConnectionError" });
+      expect(h.logs[0]?.obj).not.toHaveProperty("sshLevel");
+    } finally {
+      rmSync(custodyDir, { recursive: true, force: true });
+    }
   });
 });

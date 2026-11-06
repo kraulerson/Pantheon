@@ -87,6 +87,8 @@ interface FakeClientOpts {
   /** connect() throws synchronously (ssh2 does this for e.g. an unparseable private key). */
   connectThrows?: boolean;
   exec?: FakeExecScript;
+  /** The error object emitted on `error` (default: a plain "connection refused"). */
+  error?: Error;
 }
 
 class FakeClient implements SshClient {
@@ -105,7 +107,7 @@ class FakeClient implements SshClient {
     if (this.opts.connectThrows) throw new Error("Cannot parse privateKey: SECRET-DO-NOT-LEAK");
     this.connectCfg = cfg;
     queueMicrotask(() => {
-      if (this.opts.outcome === "error") this.emit("error", new Error("connection refused"));
+      if (this.opts.outcome === "error") this.emit("error", this.opts.error ?? new Error("connection refused"));
       else this.emit("ready");
     });
   }
@@ -358,5 +360,65 @@ describe("runRemoteCommand (capture — used for `tmux list-sessions`)", () => {
     const pty = await connectTerminal(TARGET, "harness", { custody, clientFactory: () => new FakeClient({ outcome: "error" }) }).catch((e: unknown) => e);
     expect(pty).toBeInstanceOf(SshConnectionError);
     expect((pty as SshConnectionError).phase).toBeUndefined();
+  });
+});
+
+// BUGS #72 (controller ruling: D13 L6 / L12 — class and code only, never a message): the ssh2 error behind a
+// failure is kept on the SshConnectionError for the log as its class, its ssh2 level and a code-shaped code only;
+// the first-party message the page shows is unchanged, and the ssh2 error's own text is never copied anywhere.
+describe("SshConnectionError keeps the ssh2 cause for the log (BUGS #72)", () => {
+  const CARD = `pk1_${"ab".repeat(32)}`;
+  const ssh2Error = (message: string, level: unknown, code?: unknown): Error => Object.assign(new Error(message), { level, ...(code !== undefined ? { code } : {}) });
+  const SECRET_TEXT = `connect ECONNREFUSED 10.9.8.7:22 replayed ${CARD}`;
+  const noText = (err: unknown): void => {
+    const all = JSON.stringify(err);
+    for (const leak of [CARD, "10.9.8.7", "ECONNREFUSED 10", "replayed", "SECRET-DO-NOT-LEAK"]) expect(all).not.toContain(leak);
+  };
+
+  it("runRemoteCommand: class and level ride on the error, never the ssh2 text; the message stays first-party", async () => {
+    const client = new FakeClient({ outcome: "error", error: ssh2Error(SECRET_TEXT, "client-authentication") });
+    const err = await runRemoteCommand(TARGET, "harness", cmd("tmux ls"), { custody, clientFactory: () => client }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SshConnectionError);
+    expect((err as SshConnectionError).message).toBe("SSH connection to mac-studio (karl@192.168.1.192) failed");
+    expect((err as SshConnectionError).sshCause).toEqual({ errName: "Error", level: "client-authentication" });
+    noText(err);
+  });
+
+  it("connectTerminal: a socket error keeps its level and code, never its text", async () => {
+    const error = ssh2Error(SECRET_TEXT, "client-socket", "ECONNREFUSED");
+    const err = await connectTerminal(TARGET, "harness", { custody, clientFactory: () => new FakeClient({ outcome: "error", error }) }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SshConnectionError);
+    expect((err as SshConnectionError).message).toBe("SSH connection to mac-studio (karl@192.168.1.192) failed");
+    expect((err as SshConnectionError).sshCause).toEqual({ errName: "Error", level: "client-socket", code: "ECONNREFUSED" });
+    noText(err);
+  });
+
+  it("an unshaped level or code is dropped", async () => {
+    const client = new FakeClient({ outcome: "error", error: ssh2Error(SECRET_TEXT, "Client Socket!", 42) });
+    const err = (await runRemoteCommand(TARGET, "harness", cmd("tmux ls"), { custody, clientFactory: () => client }).catch((e: unknown) => e)) as SshConnectionError;
+    expect(err.sshCause).toEqual({ errName: "Error" });
+    noText(err);
+  });
+
+  it("a synchronous connect() throw, a refused exec request and a refused PTY keep their class only; a timeout carries no cause", async () => {
+    const thrown = (await runRemoteCommand(TARGET, "harness", cmd("tmux ls"), { custody, clientFactory: () => new FakeClient({ connectThrows: true }) }).catch(
+      (e: unknown) => e
+    )) as SshConnectionError;
+    expect(thrown.sshCause).toEqual({ errName: "Error" });
+    noText(thrown);
+    const refused = (await runRemoteCommand(TARGET, "harness", cmd("tmux ls"), { custody, clientFactory: () => new FakeClient({ execError: true }) }).catch(
+      (e: unknown) => e
+    )) as SshConnectionError;
+    expect(refused.sshCause).toEqual({ errName: "Error" });
+    expect(JSON.stringify(refused)).not.toContain("exec failed");
+    const pty = (await connectTerminal(TARGET, "harness", { custody, clientFactory: () => new FakeClient({ outcome: "ready", shellError: true }) }).catch(
+      (e: unknown) => e
+    )) as SshConnectionError;
+    expect(pty.sshCause).toEqual({ errName: "Error" });
+    expect(JSON.stringify(pty)).not.toContain("no pty");
+    const timeout = (await runRemoteCommand(TARGET, "harness", cmd("sleep 9"), { custody, clientFactory: () => new FakeClient({ exec: { hang: true } }) }, { timeoutMs: 20 }).catch(
+      (e: unknown) => e
+    )) as SshConnectionError;
+    expect(timeout.sshCause).toBeUndefined();
   });
 });

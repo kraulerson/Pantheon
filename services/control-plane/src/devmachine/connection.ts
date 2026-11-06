@@ -117,15 +117,43 @@ const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024;
  */
 export type SshFailurePhase = "before_exec" | "after_exec";
 
+/**
+ * What ssh2 said about a failure (BUGS #72), for the log only — never sent to a client: the error's class, its ssh2
+ * `level` (`client-socket`, `client-timeout`, `client-authentication`, `client-dns`, `client-ssh`, `protocol`) and a
+ * code-shaped `code` (`ECONNREFUSED`), each kept only when it has that shape. Never the error's message (D13 L6, triage
+ * 14 L12): ssh2's text can carry a host or address, and a key that does not parse can be quoted in it.
+ */
+export interface SshFailureCause {
+  readonly errName: string;
+  readonly level?: string;
+  readonly code?: string;
+}
+
+const CAUSE_LEVEL_RE = /^[a-z][a-z-]{0,31}$/;
+const CAUSE_CODE_RE = /^[A-Z][A-Z0-9_]{0,63}$/;
+
+function causeOf(err: unknown): SshFailureCause {
+  const errName = err instanceof Error ? err.name : typeof err;
+  const { level, code } = (typeof err === "object" && err !== null ? err : {}) as { readonly level?: unknown; readonly code?: unknown };
+  return {
+    errName,
+    ...(typeof level === "string" && CAUSE_LEVEL_RE.test(level) ? { level } : {}),
+    ...(typeof code === "string" && CAUSE_CODE_RE.test(code) ? { code } : {})
+  };
+}
+
 /** SSH connect / PTY failures. Carries no key material and no raw ssh2 internals toward a client. */
 export class SshConnectionError extends Error {
   /** Set by `runRemoteCommand` (additive; a terminal's failures and older callers carry none). */
   readonly phase?: SshFailurePhase;
+  /** The ssh2 error behind it, for the log only (BUGS #72); none for a timeout, which has no ssh2 error. */
+  readonly sshCause?: SshFailureCause;
 
-  constructor(message: string, phase?: SshFailurePhase) {
+  constructor(message: string, phase?: SshFailurePhase, sshCause?: SshFailureCause) {
     super(message);
     this.name = "SshConnectionError";
     if (phase !== undefined) this.phase = phase;
+    if (sshCause !== undefined) this.sshCause = sshCause;
   }
 }
 
@@ -214,19 +242,19 @@ export async function connectTerminal(
       clearTimeout(timer);
       fn();
     };
-    const fail = (message: string): void =>
+    const fail = (message: string, cause?: SshFailureCause): void =>
       finish(() => {
         try {
           client.end();
         } catch {
           /* best-effort teardown */
         }
-        reject(new SshConnectionError(message));
+        reject(new SshConnectionError(message, undefined, cause));
       });
     const timer = setTimeout(() => fail(`connection to ${target.logicalName} timed out after ${timeoutMs} ms`), timeoutMs);
     const onStream = (err: Error | undefined, stream: SshStream | undefined): void => {
       if (err || !stream) {
-        fail(`failed to open a PTY on ${target.logicalName}`);
+        fail(`failed to open a PTY on ${target.logicalName}`, err ? causeOf(err) : undefined);
         return;
       }
       finish(() => resolve(makeSession(client, stream)));
@@ -236,18 +264,18 @@ export async function connectTerminal(
       try {
         if (opts.command !== undefined) client.exec(opts.command, { pty: { term: "xterm-256color" } }, onStream);
         else client.shell({ term: "xterm-256color" }, onStream);
-      } catch {
-        fail(`failed to open a PTY on ${target.logicalName}`);
+      } catch (err) {
+        fail(`failed to open a PTY on ${target.logicalName}`, causeOf(err));
       }
     });
 
-    client.on("error", () => fail(`SSH connection to ${target.logicalName} (${target.user}@${target.host}) failed`));
+    client.on("error", (err: unknown) => fail(`SSH connection to ${target.logicalName} (${target.user}@${target.host}) failed`, causeOf(err)));
 
     // KEY-ONLY auth — no password, ever (#14b/TM-020). ssh2 can throw synchronously here.
     try {
       client.connect({ host: target.host, port: target.port, username: target.user, privateKey, readyTimeout: timeoutMs });
-    } catch {
-      fail(`SSH connection to ${target.logicalName} could not be started`);
+    } catch (err) {
+      fail(`SSH connection to ${target.logicalName} could not be started`, causeOf(err));
     }
   });
 }
@@ -288,9 +316,9 @@ export async function runRemoteCommand(
       }
       fn();
     };
-    const fail = (message: string): void => {
+    const fail = (message: string, cause?: SshFailureCause): void => {
       const phase: SshFailurePhase = execRequested ? "after_exec" : "before_exec";
-      finish(() => reject(new SshConnectionError(message, phase)));
+      finish(() => reject(new SshConnectionError(message, phase, cause)));
     };
     const timer = setTimeout(() => fail(`remote command on ${target.logicalName} timed out after ${timeoutMs} ms`), timeoutMs);
 
@@ -299,25 +327,25 @@ export async function runRemoteCommand(
         execRequested = true;
         client.exec(command, {}, (err, stream) => {
           if (err || !stream) {
-            fail(`failed to run a command on ${target.logicalName}`);
+            fail(`failed to run a command on ${target.logicalName}`, err ? causeOf(err) : undefined);
             return;
           }
           stream.on("data", (chunk: Buffer) => stdout.push(chunk));
           stream.stderr.on("data", (chunk) => stderr.push(chunk));
           stream.on("close", (code: number | null) => finish(() => resolve({ code: code ?? -1, stdout: stdout.text(), stderr: stderr.text() })));
         });
-      } catch {
-        fail(`failed to run a command on ${target.logicalName}`);
+      } catch (err) {
+        fail(`failed to run a command on ${target.logicalName}`, causeOf(err));
       }
     });
 
-    client.on("error", () => fail(`SSH connection to ${target.logicalName} (${target.user}@${target.host}) failed`));
+    client.on("error", (err: unknown) => fail(`SSH connection to ${target.logicalName} (${target.user}@${target.host}) failed`, causeOf(err)));
 
     // KEY-ONLY auth — no password, ever (#14b/TM-020). readyTimeout bounds the handshake too.
     try {
       client.connect({ host: target.host, port: target.port, username: target.user, privateKey, readyTimeout: timeoutMs });
-    } catch {
-      fail(`SSH connection to ${target.logicalName} could not be started`);
+    } catch (err) {
+      fail(`SSH connection to ${target.logicalName} could not be started`, causeOf(err));
     }
   });
 }

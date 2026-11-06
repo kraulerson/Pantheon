@@ -13,7 +13,11 @@ import { registerTerminalRoute, type TerminalRouteDeps } from "../src/http/route
 import { TerminalRegistry } from "../src/devmachine/terminal-gateway.js";
 import { SqliteRegistry } from "../src/registry/sqlite-repository.js";
 import { RegistryService } from "../src/registry/service.js";
-import { SshConnectionError, type TerminalSession } from "../src/devmachine/connection.js";
+import { SshConnectionError, connectTerminal, type TerminalSession } from "../src/devmachine/connection.js";
+import { FileKeyCustody } from "../src/devmachine/custody.js";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { SqliteConsoleStore, type SubmitLogInsert, type SubmitLogRow } from "../src/console/store.js";
 import type { PollerLogger } from "../src/console/poller.js";
 
@@ -587,5 +591,53 @@ describe("terminal WebSocket route — a failed open is logged (triage 14, L12)"
     expect(warn.mock.calls.every((c) => c[1] === "terminal open failed")).toBe(true);
     const logged = JSON.stringify(warn.mock.calls);
     for (const leak of ["@", "192.168", "secret-root", "x;id", "no dev machine"]) expect(logged).not.toContain(leak);
+  });
+});
+
+// Final review (BUGS #72): a failed open that is an SshConnectionError with an ssh2 cause adds its level and code to
+// `terminal.open_failed` — never the ssh2 error's text (D13 L6, triage 14 L12).
+describe("terminal WebSocket route — terminal.open_failed carries the ssh2 level and code (BUGS #72)", () => {
+  it("through the real connectTerminal, the line has sshLevel and sshCode and none of the ssh2 text (a fake secret, an IP)", async () => {
+    const CARD = `pk1_${"9a".repeat(32)}`;
+    const keyDir = mkdtempSync(join(tmpdir(), "pantheon-term72-"));
+    try {
+      const custody = new FileKeyCustody(keyDir);
+      await custody.storeKeyPair("harness", "-----BEGIN OPENSSH PRIVATE KEY-----\nSECRET-DO-NOT-LEAK\n-----END OPENSSH PRIVATE KEY-----\n", "ssh-ed25519 AAAA test\n");
+      const failing = {
+        on(ev: string, cb: (...a: unknown[]) => void) {
+          if (ev === "error") queueMicrotask(() => cb(Object.assign(new Error(`connect ECONNREFUSED 10.9.8.7:22 replayed ${CARD}`), { level: "client-socket", code: "ECONNREFUSED" })));
+          return failing;
+        },
+        connect: () => undefined,
+        shell: () => undefined,
+        exec: () => undefined,
+        end: () => undefined
+      };
+      const connect: TerminalRouteDeps["connect"] = (target, handle, command) =>
+        connectTerminal(target, handle, { custody, clientFactory: () => failing as never }, command === undefined ? {} : { command });
+      const warn = vi.fn();
+      app = Fastify();
+      await registerTerminalRoute(app, { registry: provisionedRegistry(true), terminals: new TerminalRegistry(), connect, log: { info: vi.fn(), warn, error: vi.fn() } });
+      await app.ready();
+      const q = frameQueue();
+      const client = await app.injectWS("/terminal/mac-studio", {}, { onInit: (ws) => ws.on("message", q.push) });
+      expect(await q.next()).toEqual({ t: "e", m: "terminal open failed" });
+      client.close();
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]?.[0]).toEqual({
+        event: "terminal.open_failed",
+        machine: "mac-studio",
+        shell: false,
+        reason: "connect_failed",
+        errName: "SshConnectionError",
+        sshLevel: "client-socket",
+        sshCode: "ECONNREFUSED",
+        correlationId: expect.any(String) as string
+      });
+      const logged = JSON.stringify(warn.mock.calls);
+      for (const leak of [CARD, "10.9.8.7", "replayed", "karl@", "192.168", "SECRET-DO-NOT-LEAK"]) expect(logged).not.toContain(leak);
+    } finally {
+      rmSync(keyDir, { recursive: true, force: true });
+    }
   });
 });

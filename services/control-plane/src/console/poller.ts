@@ -49,6 +49,11 @@
  * - every failure becomes a labeled machine state (CC1); a store error is logged (pino-shaped, with the
  *   tick's correlation id) and counted, never thrown out of `tick()`; `lastOkAt` advances whenever an ok
  *   report arrived in the tick, even if a later catch-up failed;
+ * - BUGS #72: a poll that ends `unreachable` while the machine is not already down writes ONE warn line
+ *   `console.machine_unreachable` (phase, reason, error class, ssh2 level and code — never a message: D13 L6,
+ *   triage 14 L12); the polls that fail after it write none; the
+ *   first poll that ends in any other state writes ONE info line `console.machine_reachable` with how long it was
+ *   down. A poll that broke on the store or an internal error says nothing about reachability and changes neither;
  * - after a tick with no store error, `purgeExpired` runs at most once per hour.
  *
  * Budget (controller ruling 1, stricter form): the probe output cap is 2 MiB and base64 inflates by 4/3.
@@ -128,6 +133,16 @@ export const STDERR_LOGGER: PollerLogger = (() => {
     };
   return { info: line("info"), warn: line("warn"), error: line("error") };
 })();
+
+/** One structured line on `log`; a logger that throws must not break the caller — the line then goes to stderr. */
+export function writeLog(log: PollerLogger, level: "info" | "warn" | "error", fields: Record<string, unknown>, msg: string): void {
+  const write = (sink: PollerLogger, f: Record<string, unknown>): void => (level === "error" ? sink.error(f, msg) : level === "warn" ? sink.warn(f, msg) : sink.info(f, msg));
+  try {
+    write(log, fields);
+  } catch {
+    write(STDERR_LOGGER, { ...fields, loggerFailed: true });
+  }
+}
 
 export interface ConsolePollerDeps {
   readonly registry: {
@@ -744,6 +759,8 @@ interface MachineMemory {
   skippedTicks: number;
   /** Per session: ticks in a row its file was missing from a reliable report (final review I3). */
   missedTicks: ReadonlyMap<string, number>;
+  /** BUGS #72: when the logged outage began; undefined while the machine is not logged as down. */
+  downSince: string | undefined;
 }
 
 export function createConsolePoller(deps: ConsolePollerDeps): ConsolePoller {
@@ -760,12 +777,28 @@ export function createConsolePoller(deps: ConsolePollerDeps): ConsolePoller {
   let timer: { unref?: () => void } | undefined;
 
   /** A logger that throws must not break the tick: the entry then goes to the stderr sink instead. */
-  const logError = (fields: Record<string, unknown>, msg: string): void => {
-    try {
-      logger.error(fields, msg);
-    } catch {
-      STDERR_LOGGER.error({ ...fields, loggerFailed: true }, msg);
+  const logError = (fields: Record<string, unknown>, msg: string): void => writeLog(logger, "error", fields, msg);
+
+  /** BUGS #72: one line when the machine goes down, one when a poll answers again (see the module doc). */
+  const logReachability = (m: MachineMemory, run: MachineRun, correlationId: string): void => {
+    const line = { correlationId, at: run.at, machine: run.name };
+    if (run.failure?.state === "unreachable") {
+      if (m.downSince !== undefined) return;
+      m.downSince = run.at;
+      const c = run.failure.cause;
+      const why = {
+        ...(c?.phase !== undefined ? { phase: c.phase } : {}),
+        ...(c !== undefined ? { reason: c.reason, errName: c.errName } : {}),
+        ...(c?.ssh?.level !== undefined ? { sshLevel: c.ssh.level } : {}),
+        ...(c?.ssh?.code !== undefined ? { sshCode: c.ssh.code } : {})
+      };
+      writeLog(logger, "warn", { event: "console.machine_unreachable", ...line, ...why }, "console machine unreachable");
+      return;
     }
+    if (m.downSince === undefined) return;
+    const downMs = Date.parse(run.at) - Date.parse(m.downSince);
+    writeLog(logger, "info", { event: "console.machine_reachable", ...line, downSince: m.downSince, downMs }, "console machine reachable again");
+    m.downSince = undefined;
   };
 
   const memFor = (machine: string, at: string): MachineMemory => {
@@ -782,7 +815,8 @@ export function createConsolePoller(deps: ConsolePollerDeps): ConsolePoller {
         turnsTooLong: new Map(),
         storeErrors: 0,
         skippedTicks: 0,
-        missedTicks: new Map()
+        missedTicks: new Map(),
+        downSince: undefined
       };
       memory.set(machine, m);
     }
@@ -839,6 +873,7 @@ export function createConsolePoller(deps: ConsolePollerDeps): ConsolePoller {
       } else {
         setState(name, at, "ok");
       }
+      logReachability(mem, run, correlationId);
       return true;
     } catch (err) {
       flush(run);

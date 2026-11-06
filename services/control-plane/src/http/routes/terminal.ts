@@ -33,8 +33,8 @@
  * and the frame is labelled (never the error text). `server.ts` has the one production mount and passes the store.
  *
  * Every failed open — terminal or shell — is one `warn` line `terminal.open_failed` (triage 14): the machine, the
- * correlation id, whether it was a shell, a fixed reason and the error's class name; never its message, a path or
- * user@host.
+ * correlation id, whether it was a shell, a fixed reason and the error's class name, plus the ssh2 level and code an
+ * SshConnectionError kept (BUGS #72); never its message, a path or user@host.
  *
  * The heavy lifting (resolve/fail-closed/connect, scrollback, framing) is the unit-tested gateway;
  * this file is the thin ws⇄DuplexSocket adapter. Mount it on an app that already has the #9/admin
@@ -183,13 +183,16 @@ export async function registerTerminalRoute(app: FastifyInstance, deps: Terminal
   };
 
   /**
-   * Triage 14 (L12): one warn line per failed open — a fixed reason and the error's class, never its message (an SSH
-   * error carries user@host), a path or the frame text.
+   * Triage 14 (L12): one warn line per failed open — a fixed reason and the error's class (and, BUGS #72, the ssh2
+   * `level` and `code` an SshConnectionError kept), never its message (an SSH error carries user@host), a path or the
+   * frame text.
    */
   const logOpenFailed = (logicalName: string, correlationId: string, shell: boolean, err: unknown): void => {
     const reason = err instanceof TerminalError || err instanceof TmuxError ? "refused" : err instanceof SshConnectionError ? "connect_failed" : "open_failed";
     const errName = err instanceof Error ? err.name : typeof err;
-    logLine("warn", { event: "terminal.open_failed", machine: logicalName, shell, reason, errName, correlationId }, "terminal open failed");
+    const ssh = err instanceof SshConnectionError ? err.sshCause : undefined;
+    const sshFields = { ...(ssh?.level !== undefined ? { sshLevel: ssh.level } : {}), ...(ssh?.code !== undefined ? { sshCode: ssh.code } : {}) };
+    logLine("warn", { event: "terminal.open_failed", machine: logicalName, shell, reason, errName, ...sshFields, correlationId }, "terminal open failed");
   };
 
   /**

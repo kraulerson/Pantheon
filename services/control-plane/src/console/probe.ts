@@ -16,7 +16,14 @@
  * record is re-joined to it; any other non-record line closes the record and is counted as foreign.
  */
 
-import { SshConnectionError, type RemoteCommand } from "../devmachine/connection.js";
+import {
+  SshConnectionError,
+  remoteCommandFailure,
+  type RemoteCommand,
+  type RemoteFailureReason,
+  type SshFailureCause,
+  type SshFailurePhase
+} from "../devmachine/connection.js";
 import { type SshTarget } from "../devmachine/provisioning.js";
 import { type RemoteCommandResult, type RemoteExec } from "../devmachine/tmux.js";
 import { PANE_ID_RE, PROBE_SENTINEL, ProbeError, SESSION_ID_RE, buildProbeCommand, type ProbePlan } from "./probe-command.js";
@@ -80,10 +87,22 @@ export interface ProbeReport {
   readonly ended: boolean;
 }
 
+/**
+ * Why a probe could not reach the machine, for the poller's log line only (BUGS #72) — never shown: the thrown
+ * error's class, the dial phase, a first-party reason (`timeout` whenever the timer fired, before the exec request
+ * or after it) and the ssh2 cause the SshConnectionError kept (class, level and code — never a message).
+ */
+export interface ProbeUnreachableCause {
+  readonly errName: string;
+  readonly reason: RemoteFailureReason;
+  readonly phase?: SshFailurePhase;
+  readonly ssh?: SshFailureCause;
+}
+
 /** Every outcome is labeled (CC1) — the page renders `state` + `message` as text, never a colour. */
 export type ProbeResult =
   | { readonly state: "ok"; readonly report: ProbeReport }
-  | { readonly state: "unreachable"; readonly message: string }
+  | { readonly state: "unreachable"; readonly message: string; readonly cause?: ProbeUnreachableCause }
   | {
       readonly state: "failed";
       /** First-party text only. */
@@ -357,8 +376,15 @@ export async function runProbe(target: SshTarget, handle: string, exec: RemoteEx
     result = await exec(target, handle, command);
   } catch (err) {
     const ssh = err instanceof SshConnectionError;
-    const why = ssh && /timed out/.test(err.message) ? "timed out waiting for the machine" : ssh ? "SSH connection failed" : "could not run the probe over SSH";
-    return { state: "unreachable", message: `${target.logicalName} unreachable — ${why}` };
+    const timedOut = ssh && /timed out/.test(err.message);
+    const why = timedOut ? "timed out waiting for the machine" : ssh ? "SSH connection failed" : "could not run the probe over SSH";
+    const cause: ProbeUnreachableCause = {
+      errName: err instanceof Error ? err.name : typeof err,
+      reason: timedOut ? "timeout" : remoteCommandFailure(err).reason,
+      ...(ssh && err.phase !== undefined ? { phase: err.phase } : {}),
+      ...(ssh && err.sshCause !== undefined ? { ssh: err.sshCause } : {})
+    };
+    return { state: "unreachable", message: `${target.logicalName} unreachable — ${why}`, cause };
   }
   return classify(target, result);
 }
