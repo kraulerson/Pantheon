@@ -19,6 +19,45 @@ for handoff clarity. Categories are ordered by impact severity.
 
 ## [Unreleased]
 
+<!-- UAT-6 remediation: BUGS #69 #80 #72 #79 #85 (Karl's triage A1 2026-10-29/30) -->
+
+### Security
+- 2026-10-30 **Keycard and operator sign-in events are logged** (BUGS #79; audit
+  `docs/security-audits/uat6-remediation-security-audit.md`). Minting, revoking (and revoking an unknown id) a keycard, a
+  refused keycard use (unknown, revoked or expired card, or the wrong scope), an operator sign-in, a refused sign-in and a
+  sign-out each write one structured line (`keycard.minted`, `keycard.revoked`, `keycard.revoke_unknown`, `keycard.denied`,
+  `auth.login`, `auth.logout`) with the request's correlation id. No line ever carries a keycard token or its hash, the
+  password tried or a raw session id (sign-in lines carry the hashed session id). Successful keycard uses are not logged per
+  request; the card's use count and last-used time keep that.
+- 2026-10-30 **An unexpected server error is logged** (BUGS #85). The app's error handler writes one `http.internal_error`
+  line — the error's class and code only, the method, the matched route pattern and the correlation id — before answering
+  500 `internal_error`; never the error's message, a stack, the raw path, the body or a header. The 4xx answers are unchanged.
+
+### Fixed
+- 2026-10-30 **Why a dev machine drops out is now in the log** (BUGS #72). When the console's poll first finds a machine
+  unreachable it writes one `console.machine_unreachable` warn line (phase, reason, the error class and ssh2's level and
+  code — never ssh2's message), and when the machine answers again one `console.machine_reachable` line with how long it
+  was down. Polls in between write nothing.
+- 2026-10-30 **An over-long reply is no longer cut silently** (BUGS #69). The console's reply box no longer carries a
+  `maxlength`, which counted UTF-16 units and truncated a pasted reply to 4096 characters with Submit still on; the byte
+  counter now shows the real size (e.g. `4097 / 4096 bytes`) and Submit stays off until it fits.
+- 2026-10-30 **`HEAD /terminal/:name` no longer answers 500** (BUGS #80). Fastify's automatic HEAD twin of the terminal
+  WebSocket route ran the WebSocket handler on a plain request; the route now exposes no HEAD route, so HEAD gets 404.
+
+<!-- Standard-terminal copy (BUGS #84; UAT-6, approved by Karl in chat 2026-10-29) -->
+
+### Changed
+- 2026-10-29 **Pantheon's terminals copy like a standard terminal** (BUGS #84; audit
+  `docs/security-audits/bugs-84-terminal-copy-security-audit.md`). In every terminal — the harness Terminals tabs, the
+  console's Claude-session view and its shell drawer — a plain drag, double-click or triple-click now highlights in the
+  browser even when the machine's tmux runs `mouse on`, so Option-drag is no longer needed. The browser terminal swallows the
+  remote's mouse-tracking requests but remembers them, and reports the mouse wheel to tmux itself (SGR only), so the wheel
+  still scrolls tmux history; the page under the terminal no longer scrolls or zooms with it. ⌘C copies on a Mac (Ctrl+C there
+  always interrupts); on Windows/Linux plain Ctrl+C copies while something is highlighted and then clears the highlight, and
+  interrupts otherwise; Ctrl+Shift+C copies everywhere; a finished highlight is still copied at once. Given up: tmux's own
+  mouse highlight, click-to-pick a pane, dragging pane borders and tmux's right-click menu. Known residual: a mouse-aware
+  program running in a terminal's normal screen without tmux (none in Pantheon today) gets no wheel reports.
+
 <!-- Dependency security fix: body-parser and zod (BUGS #65, #66; Karl A1 2026-10-25/26) -->
 
 ### Security

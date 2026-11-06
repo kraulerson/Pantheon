@@ -211,13 +211,12 @@ never by colour alone.</p>
 
 <h3 id="copying">Selecting and copying text in a terminal</h3>
 
-<p><strong>Drag across the text</strong> you want. With tmux's mouse mode on (set up 2026-09-01), a
-plain drag belongs to <em>tmux</em>: it selects in tmux's own copy mode and — because tmux now hands
-its copies over (below) — the text still lands on your Mac clipboard. To select in the harness's own
-layer instead, hold <kbd>Option</kbd> (<kbd>&#8997;</kbd>) while dragging on a Mac
-(<kbd>Shift</kbd> on Windows/Linux); that selection is copied the moment you let go. Double-click
-picks a word; right-click picks the word under the pointer. Either way the text reaches your
-clipboard — the difference is only which layer draws the highlight.</p>
+<p><strong>Drag across the text</strong> you want, as in any terminal: a plain drag highlights it,
+double-click picks a word, triple-click a line, and right-click the word under the pointer. This
+works in every Pantheon terminal whatever tmux's mouse setting on the machine (BUGS #84,
+2026-10-29): the harness keeps mouse drags and clicks for itself and passes only the wheel on to
+tmux. Given up for it: tmux's own mouse highlight, clicking to pick a pane, dragging pane borders and
+tmux's right-click menu.</p>
 
 <p><strong>The mouse wheel scrolls back through the session.</strong> That needs tmux's mouse mode:
 without it, a terminal running a full-screen program turns each wheel tick into an Up/Down arrow
@@ -226,8 +225,9 @@ your typed history instead of scrolling. With mouse mode on the wheel enters tmu
 press <kbd>q</kbd> (or just start typing) to return to the live prompt.</p>
 
 <p><strong>The moment you finish selecting, the text is already on your clipboard.</strong>
-<kbd>&#8984;C</kbd> (or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>) copies it too. Paste with
-<kbd>&#8984;V</kbd>.</p>
+<kbd>&#8984;C</kbd> on a Mac copies it too, and so does <kbd>Ctrl</kbd>+<kbd>C</kbd> on
+Windows/Linux while something is highlighted; <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> works
+everywhere. Paste with <kbd>&#8984;V</kbd>.</p>
 
 <p><strong>Letting tmux copy to your clipboard.</strong> tmux keeps its own paste buffer, so what it
 copies is invisible to your Mac unless you tell it to hand the text over. Add these two lines to
@@ -242,10 +242,13 @@ in <code>~/.tmux.conf</code> on the dev machine, outside this project — if tha
 rebuilt, put them back. (tmux 3.6 already advertises clipboard support for the harness's terminal
 type; on an older tmux add <code>set -as terminal-features ',xterm-256color:clipboard'</code> too.)</p>
 <p>The harness understands the resulting hand-over (OSC&nbsp;52) and puts the text on your real
-clipboard. Without it, use <kbd>Option</kbd>-drag so the harness — not tmux — makes the selection.</p>
+clipboard — that is what makes a copy taken with tmux's keyboard copy mode (<kbd>Ctrl</kbd>-<kbd>b</kbd>
+then <kbd>[</kbd>) reach your Mac.</p>
 
-<p><kbd>Ctrl</kbd>+<kbd>C</kbd> is <em>not</em> copy in a terminal — it interrupts whatever is
-running, and it still does exactly that here. That is why copying uses <kbd>&#8984;C</kbd>.</p>
+<p>On a Mac, <kbd>Ctrl</kbd>+<kbd>C</kbd> is <em>not</em> copy — it interrupts whatever is running,
+exactly as in Terminal; copy with <kbd>&#8984;C</kbd>. On Windows/Linux, <kbd>Ctrl</kbd>+<kbd>C</kbd>
+copies while text is highlighted and then clears the highlight, so the next
+<kbd>Ctrl</kbd>+<kbd>C</kbd> interrupts; with nothing highlighted it interrupts straight away.</p>
 
 <h3 id="tmux">tmux sessions on a machine</h3>
 
