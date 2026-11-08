@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Pantheon Harness — UAT Session 6 v2</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #0f0f17; color: #cdd6f4; line-height: 1.5; padding: 24px; max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 1.6rem; margin-bottom: 4px; }
+  .meta { color: #a6adc8; font-size: 0.9rem; margin-bottom: 24px; }
+  .progress-bar { background: #1e1e2e; border-radius: 8px; height: 8px; margin-bottom: 24px; overflow: hidden; }
+  .progress-fill { background: #a6e3a1; height: 100%; width: 0%; transition: width 0.3s; }
+  .progress-text { text-align: center; color: #a6adc8; font-size: 0.85rem; margin-bottom: 24px; }
+  h2 { font-size: 1.2rem; color: #89b4fa; margin: 32px 0 16px; padding-bottom: 8px; border-bottom: 1px solid #313244; }
+  .fixture-ref { background: #11111b; border: 1px solid #313244; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 0.85rem; color: #a6adc8; }
+  .fixture-ref strong { color: #cdd6f4; }
+  .fixture-ref code { background: #313244; padding: 2px 6px; border-radius: 3px; color: #f9e2af; }
+  .scenario { background: #1e1e2e; border-radius: 8px; margin-bottom: 12px; overflow: hidden; border-left: 4px solid #45475a; transition: border-color 0.2s; }
+  .scenario.pass { border-left-color: #a6e3a1; }
+  .scenario.fail { border-left-color: #f38ba8; }
+  .scenario-header { padding: 12px 16px; display: flex; align-items: center; gap: 12px; }
+  .scenario-num { background: #313244; color: #a6adc8; font-size: 0.8rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; min-width: 28px; text-align: center; }
+  .scenario-title { flex: 1; font-weight: 500; }
+  .btn-group { display: flex; gap: 4px; }
+  .btn { padding: 6px 14px; border: 1px solid #45475a; border-radius: 4px; background: transparent; color: #cdd6f4; cursor: pointer; font-size: 0.85rem; transition: all 0.15s; }
+  .btn:hover { background: #313244; }
+  .btn.pass-btn.active { background: #a6e3a1; color: #1e1e2e; border-color: #a6e3a1; font-weight: 600; }
+  .btn.fail-btn.active { background: #f38ba8; color: #1e1e2e; border-color: #f38ba8; font-weight: 600; }
+  .btn.skip-btn.active { background: #f9e2af; color: #1e1e2e; border-color: #f9e2af; font-weight: 600; }
+  .scenario-details { padding: 0 16px 8px 16px; display: none; }
+  .scenario-details.open { display: block; }
+  .steps { background: #11111b; padding: 10px 14px; border-radius: 4px; font-size: 0.85rem; color: #a6adc8; margin-bottom: 8px; }
+  .steps strong { color: #cdd6f4; }
+  .scenario-notes { padding: 4px 16px 12px 16px; }
+  .notes-input { width: 100%; background: #11111b; border: 1px solid #45475a; color: #cdd6f4; padding: 8px 12px; border-radius: 4px; font-size: 0.85rem; font-family: inherit; resize: vertical; min-height: 36px; }
+  .notes-input:focus { outline: none; border-color: #89b4fa; }
+  .toggle-details { background: none; border: none; color: #6c7086; cursor: pointer; font-size: 0.75rem; padding: 4px 8px; }
+  .toggle-details:hover { color: #89b4fa; }
+  .bugs-section { margin-top: 40px; }
+  .bug-entry { background: #1e1e2e; border-radius: 8px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #f38ba8; }
+  .bug-row { display: flex; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+  .bug-field { flex: 1; min-width: 200px; }
+  .bug-field label { display: block; color: #a6adc8; font-size: 0.8rem; margin-bottom: 4px; }
+  .bug-field input, .bug-field select, .bug-field textarea { width: 100%; background: #11111b; border: 1px solid #45475a; color: #cdd6f4; padding: 8px 12px; border-radius: 4px; font-size: 0.85rem; font-family: inherit; }
+  .bug-field textarea { resize: vertical; min-height: 60px; }
+  .bug-field input:focus, .bug-field select:focus, .bug-field textarea:focus { outline: none; border-color: #89b4fa; }
+  .bug-field select { appearance: auto; }
+  .add-bug-btn { background: #313244; border: 1px dashed #45475a; color: #a6adc8; padding: 10px; border-radius: 8px; width: 100%; cursor: pointer; font-size: 0.85rem; margin-bottom: 12px; }
+  .add-bug-btn:hover { border-color: #f38ba8; color: #f38ba8; }
+  .remove-bug { background: none; border: none; color: #f38ba8; cursor: pointer; font-size: 0.8rem; float: right; }
+  .overall-notes { margin-top: 32px; }
+  .overall-notes textarea { width: 100%; background: #11111b; border: 1px solid #45475a; color: #cdd6f4; padding: 12px; border-radius: 8px; font-size: 0.9rem; font-family: inherit; resize: vertical; min-height: 100px; }
+  .overall-notes textarea:focus { outline: none; border-color: #89b4fa; }
+  .export-section { margin-top: 32px; text-align: center; padding: 24px; }
+  .export-btn { background: #89b4fa; color: #1e1e2e; border: none; padding: 12px 32px; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; }
+  .export-btn:hover { background: #74c7ec; }
+  .export-btn:active { transform: scale(0.98); }
+  .copy-msg { color: #a6e3a1; margin-top: 8px; font-size: 0.85rem; display: none; }
+</style>
+</head>
+<body>
+
+
+<h1>Pantheon Harness — UAT Session 6 v2 (re-test)</h1>
+
+
+<div class="meta">Date: 2026-11-07 | Re-test of UAT-6: BUGS #69 #71 #72 #79 #80 #84 #85, scenarios 8 10 18 21 22 23, #78 by eye | Tester: <input id="tester-name" type="text" placeholder="Your name" style="background:#1e1e2e;border:1px solid #45475a;color:#cdd6f4;padding:4px 8px;border-radius:4px;font-size:0.85rem;width:140px;"></div>
+
+
+<div class="fixture-ref">
+<strong>Before you start — read this once.</strong><br><br>
+<strong>What you are testing:</strong> the UAT-6 fixes now live on build <code>2449999</code> — the over-long paste (BUGS #69), New project on Linux-Dev (#71), drop-out logging (#72), keycard and sign-in logging (#79), the terminal HEAD answer (#80) and error logging (#85), and standard-terminal copy (#84) — plus the UAT-6 scenarios that were invalid, mis-worded or not run (8, 10, 18, 21, 22 step 3, 23) and the signed-out line (#78) by eye.<br><br>
+<strong>System under test:</strong> VM 1093, build <code>2449999</code>, at <code>https://pantheon.ferrumcorde.com/harness/console</code> (LAN or NetBird only).<br><br>
+<strong>You need:</strong> the console passphrase, the Mac's Terminal and TextEdit, and Linux-Dev switched on (scenarios 3–6; press <strong>Skip</strong> on them if it is off).<br><br>
+<strong>One-time setup:</strong> none. Scenario 3 creates a throwaway project <code>uat6v2-scratch</code> on Linux-Dev; scenarios 4 and 5 use it and scenario 6 removes it. Scenario 2 is a real commit in the pantheon-harness repo, approved by you from the console.<br><br>
+<strong>Scenarios 9, 10, 12 and 14 end with a message to the pantheon-harness session</strong> so it can read the VM's journal and report the lines named in Expected.<br><br>
+<strong>How to use this page:</strong> do each scenario's steps in order, then click <strong>Pass</strong>, <strong>Fail</strong> or <strong>Skip</strong> and add a note if anything looked odd. When finished, press <strong>Copy Results to Clipboard</strong> and paste the text into the pantheon-harness session.
+</div>
+
+<div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+<div class="progress-text" id="progress-text">0 / 0 completed</div>
+
+
+<h2>Maestro Console F2 — re-tests</h2>
+<div id="feature16"></div>
+
+<h2>Terminals, keycards, sign-in and logging — re-tests</h2>
+<div id="feature3"></div>
+
+<div class="bugs-section">
+  <h2>Bugs Found</h2>
+  <div id="bugs-list"></div>
+  <button class="add-bug-btn" onclick="addBug()">+ Add Bug</button>
+</div>
+
+<div class="overall-notes">
+  <h2>Overall Notes</h2>
+  <textarea id="overall-notes" placeholder="Free-form observations, UX concerns, suggestions, things that felt wrong even if they technically worked..."></textarea>
+</div>
+
+<div class="export-section">
+  <button class="export-btn" onclick="exportResults()">Copy Results to Clipboard</button>
+  <div class="copy-msg" id="copy-msg">Copied! Paste into terminal or save to submissions folder.</div>
+</div>
+
+<script>
+// Each element MUST be an object with ALL of the following fields.
+// Do not omit any field. Do not add fields not listed here.
+// Do not modify any code outside the placeholder tokens (the ALL_CAPS
+// identifiers wrapped in double underscores, like the SCENARIOS_JSON one above).
+//
+// SCHEMA:
+// [
+//   {
+//     "id": number,        // Sequential integer starting at 1, unique across all features
+//     "title": string,     // Short imperative description, e.g., "Repair fills holes on open mesh"
+//     "steps": string,     // Numbered steps separated by \\n, e.g., "1. Open file\\n2. Click Analyze"
+//     "expected": string   // What should happen if the feature works correctly
+//   }
+// ]
+//
+// QUALITY CHECKLIST — every scenario MUST meet these before emission.
+// A scenario that fails any item is NOT READY for the tester; rewrite it.
+//
+// [ ] `steps` opens with a starting-state restatement. Use the same phrase
+//     project-wide, e.g., "You are in the project root with <runtime> active
+//     (see 'Before you start')." Without this, chained scenarios drift.
+// [ ] `steps` numbers every command. No "run the command from scenario N",
+//     no "see above", no "as before". Each scenario is self-contained.
+// [ ] `steps` commands are fully copy-pasteable. No placeholders, no
+//     "<project-path>", no shell pseudo-code, no `...` ellipses in the
+//     actual command lines.
+// [ ] `steps` prefers deterministic commands over ones whose output format
+//     varies across tool versions.
+// [ ] `expected` has a CONCRETE pass/fail anchor. At least ONE of:
+//       - an exact text string the tester can grep for;
+//       - an exit code the tester can read (the scenario should emit it:
+//         `echo "exit=$?"`);
+//       - a line count (`| wc -l`);
+//       - a deterministic single-value assertion.
+//     Prose like "works", "succeeds", "passes", "no errors" is NOT a
+//     concrete anchor. If you cannot write a concrete anchor, the
+//     scenario is not ready.
+// [ ] `expected` is ≥60 characters. Shorter is almost certainly
+//     underspecified.
+// [ ] If the scenario MUTATES repo/filesystem/env state, include numbered
+//     cleanup steps at the end AND a verification step (e.g.,
+//       git diff --exit-code <file> && echo RESTORED
+//     ). Informal parentheticals like "(restore)" are not acceptable.
+// [ ] If the scenario has an EXTERNAL dependency (Docker, a running
+//     service, network endpoint), include a probe step whose output tells
+//     the tester to proceed or Skip. Example:
+//       docker info >/dev/null 2>&1 && echo DOCKER_OK || echo SKIP_DOCKER_UNAVAILABLE
+//
+// ANTI-PATTERNS — do not emit scenarios matching these. The linter at
+// scripts/lint-uat-scenarios.sh will refuse any scenario whose:
+//   - `steps` does not open with a state-restatement keyword
+//     ("You are", "cd ", "Setup:", "Before starting", "Preconditions:");
+//   - `expected` contains only "works" / "succeeds" / "passes" /
+//     "no errors" / "builds successfully" / "completes" as its pass/fail
+//     description;
+//   - `steps` contains "command from scenario", "see above", "as before",
+//     "like scenario", "as in scenario";
+//   - `expected` is <60 characters;
+//   - `id` duplicates another scenario's id.
+//
+// BEFORE SAVING: run scripts/lint-uat-scenarios.sh on the populated file.
+// Must exit 0 before the UAT template is handed to a tester.
+//
+// EXAMPLE (do not copy verbatim — write scenarios specific to the features under test):
+// [
+//   {
+//     "id": 1,
+//     "feature": 7,
+//     "title": "Repair disabled after clean analysis on a simple cube",
+//     "steps": "You are in the app with the Mesh Repair panel open.\\n\\n1. Open examples/cube.stl via File > Open.\\n2. Click Analyze (keyboard: A).\\n3. Read the Repair button's disabled attribute via devtools OR confirm it appears greyed out.",
+//     "expected": "Analyze completes within 2 seconds and reports:\\n  Holes: 0\\n  Degenerate faces: 0\\nThe Repair button has the disabled attribute and is visually greyed out.\\n\\nPASS if both counts are 0 AND Repair is disabled. FAIL if either count is non-zero or Repair is enabled."
+//   }
+// ]
+const scenarios = [
+  {
+    "id": 1,
+    "feature": 16,
+    "title": "The console opens on the new build",
+    "steps": "You are signed in at https://pantheon.ferrumcorde.com/harness/console in one browser tab.\n1. Hard-reload the page (Cmd+Shift+R).\n2. Read the build stamp at the right of the harness header.\n3. Read the elevation line in the console header and the machine row.",
+    "expected": "The build stamp reads 2449999 (not 6594566). The elevation line reads '○ not elevated' or '✓ elevated until HH:MM'. The machine row shows 'Mac-Mini' and 'Linux-Dev', each with a glyph and a word for its state. If the stamp is not 2449999, stop and tell the pantheon-harness session."
+  },
+  {
+    "id": 2,
+    "feature": 16,
+    "title": "A real CDF commit approval is answered from the console by typing A1 twice (UAT-6 #8, BUGS #70)",
+    "steps": "You are on the console with Mac-Mini selected. Before starting: the pantheon-harness session (◆ Pantheon) has staged this page and written a commit approval, so its newest card asks you to approve that commit.\n1. Select the ◆ Pantheon project and look at its newest card.\n2. Type  A1  in its reply box and press Submit (if 'Confirm it is you' opens, enter the passphrase and press Confirm).\n3. Read the panel that opens above the box and the line under the box.\n4. Type  A1  again and press Submit.\n5. Wait up to 2 minutes, then in the Mac's Terminal run:  git -C \"$HOME/Documents/Claude Projects/Pantheon/pantheon-harness\" log -1 --format=%s",
+    "expected": "Step 1: the card is labelled '! COMMIT APPROVAL' and has NO option buttons. After step 2 the panel 'The session's screen (masked)' opens and the line reads '⚠ Check the staged change above, then type A1 again and press Submit to confirm'. After step 4 the line reads '✓ A1 sent again to confirm, HH:MM — the screen above shows what the session did.' and no card asks for a third A1. Step 5 prints a subject that contains 'UAT-6 v2'."
+  },
+  {
+    "id": 3,
+    "feature": 16,
+    "title": "New project on Linux-Dev finds claude and starts it (BUGS #71)",
+    "steps": "You are on the console with Linux-Dev selected in the machine row (if its state is not ready, press Skip and note its state).\n1. On Linux-Dev's project row press '+ New session'.\n2. Under 'New project' type  uat6v2-scratch  and press 'Create project' (if 'Confirm it is you' opens, enter the passphrase and press Confirm).\n3. When the uat6v2-scratch tab appears, press 'Claude session'. If Claude asks whether to trust the folder, choose Yes.\n4. Click into the terminal, type  Reply with exactly the word PONG and nothing else.  and press Enter.\n5. Press Ctrl+` to open Linux-Dev's drawer and run:  tmux ls | grep -c uat6v2-scratch; tmux display -p -t uat6v2-scratch '#{pane_current_command}'\n6. Press Esc, press 'Cards' and wait up to 60 seconds.",
+    "expected": "Step 2 shows no 'claude not found' error, and a project tab 'uat6v2-scratch' appears within about 10 seconds. Step 5 prints 1, then a command name that is NOT bash, zsh or sh (for example 'claude' or '2.1.317'). After step 6 uat6v2-scratch has a card whose text contains PONG."
+  },
+  {
+    "id": 4,
+    "feature": 16,
+    "title": "An over-long paste shows as over the limit and cannot be sent (BUGS #69)",
+    "steps": "You are on the console with uat6v2-scratch (Linux-Dev) selected and its Cards view showing a card with a reply box.\n1. In the Mac's Terminal run:  printf 'x%.0s' $(seq 1 4097) | pbcopy && echo COPIED\n2. Click into uat6v2-scratch's reply box and paste (Cmd+V).\n3. Read the counter and look at the Submit button.\n4. Select all the text in the box (Cmd+A) and delete it.",
+    "expected": "Step 1 prints COPIED. After pasting, the counter reads '4097 / 4096 bytes' (not 4096 / 4096) and the Submit button is switched off (greyed, cannot be pressed). Nothing is sent: no new card appears. After step 4 the counter reads '0 / 4096 bytes'."
+  },
+  {
+    "id": 5,
+    "feature": 16,
+    "title": "A reply question with one option per line gets copy-only A1/A2 buttons and can be dismissed (UAT-6 #10 reworded)",
+    "steps": "You are on the console with uat6v2-scratch (Linux-Dev) selected and its Cards view showing.\n1. In uat6v2-scratch's reply box type exactly:  Reply with exactly three lines and nothing else. Line one: A1 – keep. Line two: A2 – change. Line three: TL;DR: waiting on you to choose A1 or A2.\n2. Press Submit (if 'Confirm it is you' opens, enter the passphrase and press Confirm) and wait up to 60 seconds for the new card.\n3. Press the new card's A1 button, then read the reply box and its counter.\n4. Delete the text in the box, then press Dismiss on that card.",
+    "expected": "The new card's text has lines starting 'A1 – keep', 'A2 – change' and 'TL;DR:'. It is raised as a question (a '! NEEDS YOU' mark) with buttons A1 and A2 and a Dismiss button. Pressing A1 only puts A1 in the box (counter '2 / 4096 bytes'); nothing is sent and no new card appears. After Dismiss the line reads '✓ dismissed' and the NEEDS YOU mark is gone. If Claude's lines do not start with A1 and A2, press Skip and paste the card text in the note."
+  },
+  {
+    "id": 6,
+    "feature": 16,
+    "title": "Cleanup: remove the Linux-Dev throwaway session and folder",
+    "steps": "You are on the console with Linux-Dev selected. Press Ctrl+` to open Linux-Dev's drawer and run these one at a time.\n1. tmux kill-session -t uat6v2-scratch && echo KILLED\n2. rm -rf \"/development/Claude Projects/uat6v2-scratch\" && echo DELETED\n3. ls \"/development/Claude Projects/uat6v2-scratch\" 2>&1 | grep -c 'No such file'\n4. Press Esc and wait about 10 seconds.",
+    "expected": "Step 1 prints KILLED, step 2 prints DELETED and step 3 prints 1 (the folder is gone). uat6v2-scratch's session shows '○ ENDED' or the project leaves the project row within about 10 seconds. Linux-Dev's other tmux sessions are untouched."
+  },
+  {
+    "id": 7,
+    "feature": 3,
+    "title": "Copying works like a standard terminal in a Terminals tab (BUGS #84; UAT-6 #21)",
+    "steps": "You are attached to Mac-Mini's sh-Mac-Mini session in a harness Terminals tab (https://pantheon.ferrumcorde.com/harness/), with TextEdit open on the Mac.\n1. Run:  seq 1 200\n2. WITHOUT holding Option, drag across the numbers on two or three lines and let go.\n3. Paste (Cmd+V) into TextEdit.\n4. Drag across two different lines, press ⌘C, and paste into TextEdit again.\n5. Scroll the mouse wheel up over the terminal, then press q.\n6. Run:  sleep 30  and, while it runs, press Ctrl+C.",
+    "expected": "Step 2 shows a browser highlight while you drag. Step 3 pastes exactly the numbers you highlighted, not something copied earlier. Step 4 pastes the second selection. Step 5 scrolls back to earlier numbers (tmux shows a position marker such as '[12/200]' at the top right) and q returns to the prompt. Step 6: the sleep stops at once with '^C' and the prompt comes back — on the Mac, Ctrl+C is never taken as copy."
+  },
+  {
+    "id": 8,
+    "feature": 3,
+    "title": "Copying works the same in the machine-shell drawer (BUGS #84)",
+    "steps": "You are on the console with Mac-Mini selected and TextEdit open on the Mac.\n1. Press Ctrl+` to open Mac-Mini's drawer and run:  seq 1 100\n2. WITHOUT holding Option, drag across two or three numbers, let go, and paste (Cmd+V) into TextEdit.\n3. Drag across a different line, press ⌘C, and paste into TextEdit again.\n4. Press Esc.",
+    "expected": "Step 2 shows a browser highlight while you drag and pastes exactly the highlighted numbers. Step 3 pastes the second selection, not the first. Step 4 minimises the drawer to its bar ('▴ Restore') without sending Esc to the shell."
+  },
+  {
+    "id": 9,
+    "feature": 3,
+    "title": "A signed-in HEAD request to a terminal address answers 404 and is not a server error (BUGS #80, #85)",
+    "steps": "You are signed in on the console tab in Chrome.\n1. Open the developer console (Cmd+Option+J). If Chrome warns about pasting, type  allow pasting  and press Enter first.\n2. Paste and run:  fetch('/harness/terminal/Mac-Mini',{method:'HEAD'}).then(r=>console.log('status='+r.status))\n3. Close the developer console and tell the pantheon-harness session 'scenario 9 done' so it can read the journal.",
+    "expected": "Step 2 prints status=404 (not 500). The session then reports zero 'http.internal_error' lines and no 500 answers in the journal around that time. Any other status: mark Fail and put the number in the note."
+  },
+  {
+    "id": 10,
+    "feature": 3,
+    "title": "A revoked keycard is refused and every keycard step is logged (UAT-6 #22 step 3, BUGS #79)",
+    "steps": "You are on the harness Configuration page with the Mac's Terminal open.\n1. In Session Keycards, mint a card with principal  uat-card-6v2  and ONLY approvals:read ticked; copy its pk1_ code.\n2. In Terminal run:  read -rs KC  then paste the code and press Enter (nothing is shown).\n3. Run:  curl -s -w ' HTTP %{http_code}\\n' -H \"Authorization: Bearer $KC\" https://pantheon.ferrumcorde.com/harness/keycard/v1/approvals\n4. Back in Session Keycards, revoke uat-card-6v2 and check its row reads revoked.\n5. Run:  curl -s -w ' HTTP %{http_code}\\n' -H \"Authorization: Bearer $KC\" https://pantheon.ferrumcorde.com/harness/keycard/v1/approvals\n6. Run:  unset KC && echo CLEARED\n7. Tell the pantheon-harness session 'scenario 10 done' so it can read the journal.",
+    "expected": "Step 3 prints one line of JSON of the form {\"approvals\":[…],\"truncated\":false} followed by ' HTTP 200'. After step 4 uat-card-6v2 shows as revoked. Step 5 prints an error such as {\"error\":\"…\"} followed by ' HTTP 403' (never 200). Step 6 prints CLEARED. The session reports a keycard.minted and a keycard.revoked line for uat-card-6v2 and a keycard.denied line for step 5, none of them containing the pk1_ code."
+  },
+  {
+    "id": 11,
+    "feature": 3,
+    "title": "A malformed address is refused, not served (BUGS #55 regression; UAT-6 #18 reworded)",
+    "steps": "You are at the Mac's Terminal.\n1. Run:  curl --http1.1 -s -o /dev/null -w '%{http_code}\\n' -X PATCH 'https://pantheon.ferrumcorde.com/harness/api/%zz'\n2. Run:  curl -s -o /dev/null -w '%{http_code}\\n' 'https://pantheon.ferrumcorde.com/harness/console/api/step-up'",
+    "expected": "Step 1 prints 400 (a bad request — the address is refused before anything handles it; it must not be 200, 404 or 000). Step 2 prints 401 (the step-up route needs a signed-in browser). Any other numbers: mark Fail and note both numbers."
+  },
+  {
+    "id": 12,
+    "feature": 3,
+    "title": "Signing out in another tab shows the signed-out line, and sign-out and sign-in are logged (BUGS #78 by eye, #79)",
+    "steps": "You are signed in on the console in one browser tab (tab A).\n1. Open a second tab (tab B) at https://pantheon.ferrumcorde.com/harness/console and press 'Log out' in its header.\n2. Go back to tab A and wait 15 seconds without reloading.\n3. Read the status line near the top of tab A's console (it normally reads 'live … updated HH:MM:SS').\n4. Reload tab A, sign in with the passphrase, and close tab B.\n5. Tell the pantheon-harness session 'scenario 12 done' so it can read the journal.",
+    "expected": "Step 3 reads '✕ signed out — reload to sign in' and the cards stop updating. Step 4's reload goes to the sign-in page, and after signing in the console loads with build 2449999. The session reports one 'auth.logout' line and one 'auth.login' line with outcome 'signed_in', neither containing the passphrase or a raw session id."
+  },
+  {
+    "id": 13,
+    "feature": 3,
+    "title": "The chat page, the harness and Configuration still work together (UAT-5 #16; UAT-6 #23)",
+    "steps": "You are signed in at https://pantheon.ferrumcorde.com.\n1. Press 'Terminals' under the chat box, then 'Configuration' in the harness header, then 'Help', then 'Console'.\n2. Note the address bar on each page.",
+    "expected": "Each link opens the right page and the address always stays under https://pantheon.ferrumcorde.com/harness/. The pages use the chat page's colours and follow its light or dark setting; the Console page opens on the console, not an error."
+  },
+  {
+    "id": 14,
+    "feature": 3,
+    "title": "Machine drop-outs and server errors left a trace in the journal (BUGS #72, #85)",
+    "steps": "You are at the end of this session, still signed in.\n1. In this scenario's note, write whether you saw any '✕ UNREACHABLE' banner during the session, and for which machine.\n2. Tell the pantheon-harness session 'UAT-6 v2 done' so it can read the journal since the deploy (2026-11-08 02:24 UTC).",
+    "expected": "The session reports 0 'http.internal_error' lines. For every UNREACHABLE banner you noted there is a 'console.machine_unreachable' line for that machine carrying a phase and an ssh error class or code, followed by a 'console.machine_reachable' line. If you saw no banner, the session reports how many such lines exist; 0 is a Pass."
+  }
+];
+
+function renderScenarios() {
+  scenarios.forEach(s => {
+    const container = document.getElementById('feature' + s.feature);
+    if (!container) return;
+    container.innerHTML += '<div class="scenario" id="scenario-' + s.id + '">' +
+      '<div class="scenario-header">' +
+        '<span class="scenario-num">' + s.id + '</span>' +
+        '<span class="scenario-title">' + s.title + '</span>' +
+        '<button class="toggle-details" onclick="toggleDetails(' + s.id + ')">details</button>' +
+        '<div class="btn-group">' +
+          '<button class="btn pass-btn" onclick="setResult(' + s.id + ',\'pass\',this)">Pass</button>' +
+          '<button class="btn fail-btn" onclick="setResult(' + s.id + ',\'fail\',this)">Fail</button>' +
+          '<button class="btn skip-btn" onclick="setResult(' + s.id + ',\'skip\',this)">Skip</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="scenario-details open" id="details-' + s.id + '">' +
+        '<div class="steps"><strong>Steps:</strong><br>' + s.steps.replace(/\n/g,'<br>') + '</div>' +
+        '<div class="steps"><strong>Expected:</strong><br>' + s.expected + '</div>' +
+      '</div>' +
+      '<div class="scenario-notes">' +
+        '<textarea class="notes-input" id="notes-' + s.id + '" placeholder="Notes — observations, issues, anything worth recording"></textarea>' +
+      '</div>' +
+    '</div>';
+  });
+}
+
+const results = {};
+
+function setResult(id, result, btn) {
+  results[id] = result;
+  const sc = document.getElementById('scenario-' + id);
+  sc.className = 'scenario ' + (result === 'skip' ? '' : result);
+  sc.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  updateProgress();
+}
+
+function toggleDetails(id) {
+  document.getElementById('details-' + id).classList.toggle('open');
+}
+
+function updateProgress() {
+  const done = Object.keys(results).length;
+  const pct = (done / scenarios.length * 100).toFixed(0);
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('progress-text').textContent = done + ' / ' + scenarios.length + ' completed';
+}
+
+var bugCount = 0;
+// JS string fragment per feature being tested, concatenated into the select's innerHTML.
+// Example:
+//   '<option>7 - Mesh Repair</option><option>8 - Scale/Rotate/Mirror</option>'
+function addBug() {
+  bugCount++;
+  var n = bugCount;
+  document.getElementById('bugs-list').innerHTML +=
+    '<div class="bug-entry" id="bug-' + n + '">' +
+      '<button class="remove-bug" onclick="document.getElementById(\'bug-' + n + '\').remove()">remove</button>' +
+      '<div class="bug-row">' +
+        '<div class="bug-field"><label>Severity</label><select id="bug-sev-' + n + '">' +
+          '<option>SEV-1 (crash/data loss)</option><option>SEV-2 (broken, workaround exists)</option>' +
+          '<option selected>SEV-3 (minor UX)</option><option>SEV-4 (polish/enhancement)</option>' +
+        '</select></div>' +
+        '<div class="bug-field"><label>Feature</label><select id="bug-feat-' + n + '">' +
+          '<option value="16">Console F2 re-tests</option><option value="3">Terminals, keycards, sign-in, logging</option>' +
+        '</select></div>' +
+      '</div>' +
+      '<div class="bug-field"><label>Description</label><input id="bug-desc-' + n + '" placeholder="What went wrong?"></div>' +
+      '<div class="bug-field" style="margin-top:8px"><label>Steps to Reproduce</label><textarea id="bug-steps-' + n + '" placeholder="1. ...\n2. ...\n3. ..."></textarea></div>' +
+      '<div class="bug-field" style="margin-top:8px"><label>Expected vs Actual</label><textarea id="bug-exp-' + n + '" placeholder="Expected: ...\nActual: ..."></textarea></div>' +
+    '</div>';
+}
+
+function exportResults() {
+  var tester = document.getElementById('tester-name').value || 'Unknown';
+  var md = '# ' + document.querySelector('h1').textContent + ' Results\n\n';
+  md += '**Date:** 2026-11-07\n';
+  md += '**Tester:** ' + tester + '\n';
+  md += '**Features:** UAT-6 re-test on build 2449999 (BUGS #69 #71 #72 #78 #79 #80 #84 #85; scenarios 8 10 18 21 22 23)\n\n';
+
+  var pass = 0, fail = 0, skip = 0;
+  for (var k in results) {
+    if (results[k] === 'pass') pass++;
+    else if (results[k] === 'fail') fail++;
+    else if (results[k] === 'skip') skip++;
+  }
+  var untested = scenarios.length - Object.keys(results).length;
+  md += '**Summary:** ' + pass + ' passed, ' + fail + ' failed, ' + skip + ' skipped, ' + untested + ' not tested\n\n---\n\n';
+
+  md += '## Scenarios\n\n';
+  md += '| # | Scenario | Result | Notes |\n';
+  md += '|---|---|---|---|\n';
+  scenarios.forEach(function(s) {
+    var r = results[s.id] || 'not tested';
+    var icon = r === 'pass' ? 'PASS' : r === 'fail' ? 'FAIL' : r === 'skip' ? 'SKIP' : '-';
+    var el = document.getElementById('notes-' + s.id);
+    var notes = el ? el.value.replace(/\|/g, '/').replace(/\n/g, ' ').replace(/`/g, "'").replace(/\[/g, '(').replace(/\]/g, ')').replace(/\*/g, '-') : '';
+    md += '| ' + s.id + ' | ' + s.title + ' | ' + icon + ' | ' + notes + ' |\n';
+  });
+
+  var bugEntries = document.querySelectorAll('.bug-entry');
+  if (bugEntries.length > 0) {
+    md += '\n---\n\n## Bugs Found\n\n';
+    var i = 0;
+    bugEntries.forEach(function(el) {
+      i++;
+      var id = el.id.split('-')[1];
+      var sev = document.getElementById('bug-sev-' + id);
+      var feat = document.getElementById('bug-feat-' + id);
+      var desc = document.getElementById('bug-desc-' + id);
+      var steps = document.getElementById('bug-steps-' + id);
+      var exp = document.getElementById('bug-exp-' + id);
+      md += '### Bug ' + i + '\n';
+      md += '- **Severity:** ' + (sev ? sev.value : '') + '\n';
+      md += '- **Feature:** ' + (feat ? feat.value : '') + '\n';
+      md += '- **Description:** ' + (desc ? desc.value : '') + '\n';
+      md += '- **Steps:** ' + (steps ? steps.value.replace(/\n/g, '; ') : '') + '\n';
+      md += '- **Expected vs Actual:** ' + (exp ? exp.value.replace(/\n/g, '; ') : '') + '\n\n';
+    });
+  }
+
+  var overall = document.getElementById('overall-notes').value;
+  if (overall) {
+    md += '\n---\n\n## Overall Notes\n\n' + overall + '\n';
+  }
+
+  navigator.clipboard.writeText(md).then(function() {
+    var msg = document.getElementById('copy-msg');
+    msg.style.display = 'block';
+    setTimeout(function() { msg.style.display = 'none'; }, 3000);
+  });
+}
+
+renderScenarios();
+</script>
+</body>
+</html>
