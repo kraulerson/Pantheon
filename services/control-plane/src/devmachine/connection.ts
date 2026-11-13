@@ -51,6 +51,8 @@ export interface SshExecStream {
   on(event: "data", cb: (chunk: Buffer) => void): this;
   on(event: "close", cb: (code: number | null) => void): this;
   readonly stderr: { on(event: "data", cb: (chunk: Buffer) => void): unknown };
+  /** Close this channel only (ssh2 `Channel.close()`); the connection pool uses it to abandon a timed-out command. */
+  close?(): void;
 }
 
 /** Minimal slice of the ssh2 `Client` the broker depends on. */
@@ -132,7 +134,7 @@ export interface SshFailureCause {
 const CAUSE_LEVEL_RE = /^[a-z][a-z-]{0,31}$/;
 const CAUSE_CODE_RE = /^[A-Z][A-Z0-9_]{0,63}$/;
 
-function causeOf(err: unknown): SshFailureCause {
+export function causeOf(err: unknown): SshFailureCause {
   const errName = err instanceof Error ? err.name : typeof err;
   const { level, code } = (typeof err === "object" && err !== null ? err : {}) as { readonly level?: unknown; readonly code?: unknown };
   return {
@@ -187,7 +189,7 @@ function makeSession(client: SshClient, stream: SshStream): TerminalSession {
   };
 }
 
-function defaultFactory(): SshClient {
+export function defaultFactory(): SshClient {
   return new Ssh2Client() as unknown as SshClient;
 }
 
@@ -200,7 +202,7 @@ function makeClient(factory: SshClientFactory | undefined, target: SshTarget, ph
 }
 
 /** Bytes-accurate accumulator: keeps at most `cap` bytes, decoded once (incomplete tail dropped). */
-class BoundedCapture {
+export class BoundedCapture {
   private readonly chunks: Buffer[] = [];
   private used = 0;
   constructor(private readonly cap: number) {}

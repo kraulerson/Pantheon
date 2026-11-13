@@ -51,13 +51,13 @@ import { registerEnrollmentRoute } from "./http/routes/enrollment.js";
 import { enrollMachine } from "./devmachine/enrollment.js";
 import { ssh2EnrollmentPort } from "./devmachine/enrollment-ssh.js";
 import { ChildProcessRunner, SshKeygenGenerator } from "./devmachine/index.js";
+import { closeOnDevMachineChange, createConnectionPool } from "./devmachine/connection-pool.js";
 import { KeycardService, SqliteKeycardStore } from "./keycard/index.js";
 import { SqliteSessionStore } from "./session/sqlite-store.js";
 import {
   FileKeyCustody,
   TerminalRegistry,
   connectTerminal,
-  runRemoteCommand,
   listTmuxSessions,
   createTmuxLister,
   defaultKeyDir,
@@ -162,7 +162,11 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   // Live tmux session list for the harness launch bar (M1 task 1) — a non-interactive capture over
   // the same key-only path the terminal uses, wrapped so concurrent page loads / a mashed Refresh
   // share one dial per machine, results are reused for a few seconds, and dials are capped.
-  const exec = (target: SshTarget, handle: string, command: RemoteCommand) => runRemoteCommand(target, handle, command, { custody });
+  // BUGS #86: every non-interactive command shares ONE persistent connection per machine instead of logging in from
+  // scratch. The registry closes a machine's connection whenever that machine is updated, re-provisioned or deleted.
+  const sshPool = createConnectionPool({ custody, log: stderrLogger({ module: "ssh-pool" }) });
+  closeOnDevMachineChange(registry, sshPool);
+  const exec = (target: SshTarget, handle: string, command: RemoteCommand) => sshPool.run(target, handle, command);
   const tmux = createTmuxLister((target, handle) => listTmuxSessions(target, handle, exec));
 
   // Session keycards (M1 task 2, TP-3): hash-only store in the registry DB; session metadata for
@@ -181,7 +185,7 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   consoleLog.info({ event: "console.store_opened", dbPath: cfg.dbPath }, "console store opened");
   const consolePoller = createConsolePoller({
     registry,
-    exec: createProbeExec({ custody }),
+    exec: createProbeExec({ custody }, (target, handle, command, _deps, opts) => sshPool.run(target, handle, command, opts)),
     store: consoleStore,
     settings: consoleSettings.ok ? consoleSettings.settings : DEFAULT_CONSOLE_SETTINGS,
     mask: maskSecrets,
@@ -209,7 +213,7 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
       poller: consolePoller,
       settings: consoleSettings,
       // The expand route caps each dial to the card's own range, so the options are its to set.
-      exec: (target, handle, command, opts) => runRemoteCommand(target, handle, command, { custody }, opts),
+      exec: (target, handle, command, opts) => sshPool.run(target, handle, command, opts),
       mask: maskSecrets,
       // F2 Task 3 (R4): ONE window per process, so every route that consults it sees the same elevation state.
       stepUp: new StepUpWindow(),
@@ -223,6 +227,7 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   // flight never writes to a closed database.
   app.addHook("onClose", async () => {
     await consolePoller.stop();
+    sshPool.closeAll();
     consoleStore.close();
   });
   app.addHook("onListen", async () => {

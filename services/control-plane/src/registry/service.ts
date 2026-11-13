@@ -175,7 +175,21 @@ function assertKeyHandle(value: unknown): string {
 }
 
 export class RegistryService {
+  private readonly devMachineListeners: Array<(machine: DevMachine) => void> = [];
+
   constructor(private readonly repo: RegistryRepository) {}
+
+  /**
+   * Be told after a dev machine is updated, re-provisioned or deleted (BUGS #86: the SSH connection pool closes that
+   * machine's open connection). Called with the machine as it was BEFORE a delete, and as it is after any other change.
+   */
+  onDevMachineChange(listener: (machine: DevMachine) => void): void {
+    this.devMachineListeners.push(listener);
+  }
+
+  private devMachineChanged(machine: DevMachine): void {
+    for (const listener of this.devMachineListeners) listener(machine);
+  }
 
   // ---- Backends ----
 
@@ -344,6 +358,7 @@ export class RegistryService {
       updatedAt: new Date().toISOString()
     };
     this.repo.updateDevMachine(id, next);
+    this.devMachineChanged(next);
     return next;
   }
 
@@ -364,10 +379,13 @@ export class RegistryService {
       updatedAt: new Date().toISOString()
     };
     this.repo.updateDevMachine(id, next);
+    this.devMachineChanged(next);
     return next;
   }
 
   deleteDevMachine(id: string): void {
+    const existing = this.repo.getDevMachine(id);
     this.repo.deleteDevMachine(id);
+    if (existing) this.devMachineChanged(existing);
   }
 }

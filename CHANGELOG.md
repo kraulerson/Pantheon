@@ -19,6 +19,26 @@ for handoff clarity. Categories are ordered by impact severity.
 
 ## [Unreleased]
 
+<!-- BUGS #86: persistent SSH connection per dev machine (Karl's ruling A 2026-11-10; ADR-0011) -->
+
+### Security
+- 2026-11-12 **A machine's shared SSH connection is closed the moment the machine may no longer be used** (BUGS #86,
+  ADR-0011). Disabling or removing a dev machine, re-provisioning it, or changing its address closes the open
+  connection at once; a key that changed or is missing in custody closes it before the next command runs. The key is
+  still read from custody on every command, and sign-in stays key-only. New log lines `ssh.pool_connected` and
+  `ssh.pool_closed` carry the machine's name and a reason, never the ssh2 error text or key material.
+
+### Fixed
+- 2026-11-12 **The console no longer logs in to every dev machine every 5 seconds** (BUGS #86, ADR-0011). The console
+  poller, the tmux listing, reply delivery, session and project creation and card expansion now share one persistent
+  connection per machine, each command on its own channel (at most 8 at once). A silent connection is closed by SSH
+  keepalives; a command that times out closes only its own channel, and three timeouts in a row close the connection;
+  a failed login is retried after a backoff of 1 s doubling to 15 s. Terminal tabs keep their own connections.
+
+### Documentation
+- 2026-11-12 ADR-0011 (one persistent SSH connection per dev machine) and its security audit,
+  `docs/security-audits/bugs-86-persistent-ssh-connection-security-audit.md`.
+
 <!-- UAT-6 remediation: BUGS #69 #80 #72 #79 #85 (Karl's triage A1 2026-10-29/30) -->
 
 ### Security

@@ -37,6 +37,10 @@ connect time, never to the browser/logs — TM-020/#14b); provisions a dev machi
 `ssh-copy-id` (operator types the password once) and records it; then opens **key-only** ssh2
 connections that bring up a remote PTY and expose a reconnectable `TerminalSession`. Ships a
 `provision-devmachine` CLI and a guided `install-debian.sh` for fresh-VM setup.
+Non-interactive commands (console probe, tmux listing, delivery, session create, expand) share ONE persistent
+connection per machine, each on its own exec channel (BUGS #86, ADR-0011, `src/devmachine/connection-pool.ts`); it is
+closed whenever the machine is disabled, removed, re-provisioned or re-addressed, or its key changes. Terminal tabs
+keep their own connections.
 **Key Interfaces:** `src/devmachine/{custody,provisioning,connection,runner,keygen,provision-and-record}.ts`
 (barrel `src/devmachine/index.ts`), `src/cli/provision-devmachine.ts`, `scripts/install-debian.sh`.
 **Related ADRs:** ADR-0005.
