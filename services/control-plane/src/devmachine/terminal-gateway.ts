@@ -128,9 +128,11 @@ export class ManagedTerminal {
     this.clearGrace();
     // One client at a time. A client that is replaced (the same terminal opened from a duplicated browser tab) is
     // told its view has ended, rather than being left looking connected while it receives nothing.
+    // The new sink is in place BEFORE the old one is told: a transport that reports its own close from inside
+    // send() then detaches as a stale sink, and cannot start a grace timer under the new client.
     const replaced = this.sink;
-    if (replaced !== undefined && replaced !== sink) replaced(exitFrame());
     this.sink = sink;
+    if (replaced !== undefined && replaced !== sink) replaced(exitFrame());
     if (this.scrollback.length > 0) sink(outputFrame(this.scrollback));
     if (this.closed) sink(exitFrame());
   }

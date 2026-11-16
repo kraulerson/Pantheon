@@ -176,6 +176,40 @@ describe("terminal WebSocket route — the browser leaves while the SSH dial is 
     });
   }
 
+  for (const url of [
+    "/terminal/mac-studio?tmux=pantheon",
+    "/terminal/mac-studio?tmux=pantheon&session=00000000-0000-4000-8000-000000000000", // a stale id: a new dial
+    "/terminal/mac-studio?shell=1"
+  ]) {
+    it(`ends the SSH session, keeps nothing registered and logs it, on a URL the console uses: ${url}`, async () => {
+      const terminals = new TerminalRegistry();
+      const { sessions, connect } = slowDial(150);
+      const warns: Array<Record<string, unknown>> = [];
+      const log: PollerLogger = { info: () => {}, warn: (obj) => void warns.push(obj), error: () => {} };
+      app = Fastify();
+      await registerTerminalRoute(app, {
+        registry: provisionedRegistry(true),
+        terminals,
+        connect,
+        log,
+        projectsRootFor: () => "/Users/karl/Projects",
+        consoleStore: new SqliteConsoleStore()
+      });
+      await app.ready();
+
+      const client = await app.injectWS(url);
+      await waitFor(() => connect.mock.calls.length === 1);
+      client.terminate();
+      await waitFor(() => sessions.length === 1);
+      await waitFor(() => sessions[0]!.closed, 500);
+      expect(terminals.size).toBe(0);
+      const abandoned = warns.filter((w) => w["event"] === "terminal.open_abandoned");
+      expect(abandoned).toHaveLength(1);
+      expect(abandoned[0]).toMatchObject({ machine: "mac-studio", shell: url.includes("shell=1") });
+      expect(typeof abandoned[0]!["correlationId"]).toBe("string");
+    });
+  }
+
   it("a browser that stays gets its terminal as before", async () => {
     const terminals = new TerminalRegistry();
     const { sessions, connect } = slowDial(50);

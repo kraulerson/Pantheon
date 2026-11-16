@@ -269,6 +269,11 @@ export async function registerTerminalRoute(app: FastifyInstance, deps: Terminal
           // BUGS #49: the browser left while the SSH dial was in flight (a reload or a closed tab during
           // "Connecting…"). Its close event and any close frame are already gone, so nothing would ever detach or
           // close this terminal, and nobody holds its id: end it now.
+          logLine(
+            "warn",
+            { event: "terminal.open_abandoned", machine: logicalName, shell: req.query.shell !== undefined, correlationId: req.id },
+            "terminal open abandoned: the browser left during the dial; session ended"
+          );
           term.close();
           return;
         }

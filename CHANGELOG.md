@@ -32,6 +32,9 @@ for handoff clarity. Categories are ordered by impact severity.
   duplicated browser tab ends the older view, which can no longer type into or close it. Not covered: a browser that
   vanishes without closing its connection (a closed lid, a lost network) is noticed only when the connection itself
   times out.
+- 2026-11-16 **An abandoned terminal open is logged** (BUGS #49 follow-up from the second review). When the browser
+  leaves during the dial and the server ends the new session, it writes one `terminal.open_abandoned` line with the
+  machine, whether it was a machine shell, and the correlation id.
 
 <!-- BUGS #86: persistent SSH connection per dev machine (Karl's ruling A 2026-11-10; ADR-0011) -->
 

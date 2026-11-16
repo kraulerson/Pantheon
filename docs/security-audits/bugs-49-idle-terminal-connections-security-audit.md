@@ -54,9 +54,33 @@ contacted and no repository file was changed by it.
   are untouched.
 - The timer is unref'd and its callback touches only the session, never the store.
 
+## Second review: the post-review changes (2026-11-16)
+
+The fixes for findings 1 and 2 above were written after the first review, so a second fresh reviewer (fable, max
+effort) attacked only those: the dial-race guard, the exit frame to a replaced client, and ignoring a replaced
+client's frames. **Verdict: minor concerns, safe to deploy as is.** It could not break any of the three in any
+ordering, including a model check of every event sequence up to length 6 (3,257,436) plus 1.2 million random ones
+against the real `ManagedTerminal`, `attachSocket` and registry, and the shipped console JavaScript in two jsdom
+windows against the real route.
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| S1 | Minor | Five behaviours unpinned by tests: a replaced client's resize; a replaced client staying ignored after the newer one left; the guard on `?shell=1`, on a stale `?session=` id and on tmux targets | **Fixed.** Tests added (commit after `96bcc70`); the reviewer's mutations of each are killed by them |
+| S2 | Minor | An abandoned dial was ended with no log line | **Fixed.** `terminal.open_abandoned` (warn) with machine, shell and correlation id, asserted on the three console URL shapes |
+| S3 | Nit (theoretical) | `attach()` told the replaced client before swapping the sink in; a transport that reports its own close from inside `send()` would start a grace timer under the new client. Not reachable with ws 8.21.0 | **Fixed.** The sink is swapped first; one test |
+| S4 | Nit (theoretical) | If `term.close()` throws inside the guard, the terminal stays registered with no timer. Not reachable with the real session | Residual |
+| S5 | Nit | A replaced console view shows "[x] disconnected — close tab to dismiss" and cannot recover without a page reload | Residual (a duplicated browser tab) |
+| S6 | Nit | `PROJECT_BIBLE.md` still described the old dropped-socket rule | **Fixed** |
+
+Confirmed by that review: the socket is OPEN when the route handler starts and the guard-to-subscribe lines are
+synchronous, so there is no window between them; no shipped client reconnects by itself, so two tabs cannot
+ping-pong; before the change a replaced tab typed blind into the newer tab's terminal and its close killed the live
+view; the replaced socket receives exactly `{"t":"x"}` and no scrollback; takeover still needs the admin guard, the
+session id and the same machine and target.
+
 ## Verification (2026-11-16, this session)
 
-- `npx vitest run`: 78 files passed, 1 skipped; 1484 tests passed, 5 skipped, 1 todo.
+- `npx vitest run`: 78 files passed, 1 skipped; 1490 tests passed, 5 skipped, 1 todo (after the second-review follow-ups; 1484 at `96bcc70`).
 - `npx tsc -p tsconfig.json --noEmit`: exit 0. `npx eslint .`: exit 0.
 - Mutations killed: detach starts the grace period, attach clears it, stale-socket guard, never-attached grace,
   session end clears the timer, remote exit ends the client, dial-race guard, replaced-client frames ignored,

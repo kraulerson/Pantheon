@@ -327,6 +327,60 @@ describe("detached terminals are closed after a grace period (BUGS #49)", () => 
     expect(session.writes).toEqual(["live"]);
   });
 
+  it("a replaced client cannot resize the newer client's PTY", () => {
+    const session = fakeSession();
+    const term = new ManagedTerminal("t1", session);
+    const older = fakeSocket();
+    attachSocket(older, term);
+    const newer = fakeSocket();
+    attachSocket(newer, term);
+    older.emitMessage(JSON.stringify({ t: "r", c: 10, r: 5 }));
+    expect(session.resizes).toEqual([]);
+  });
+
+  it("a replaced client stays ignored after the newer one has gone; the grace period, not its close frame, ends the session", () => {
+    vi.useFakeTimers();
+    try {
+      const session = fakeSession();
+      const term = new ManagedTerminal("t1", session);
+      const older = fakeSocket();
+      attachSocket(older, term);
+      const newer = fakeSocket();
+      attachSocket(newer, term);
+      newer.emitClose();
+      older.emitMessage(JSON.stringify({ t: "i", d: "late" }));
+      older.emitMessage(JSON.stringify({ t: "c" }));
+      expect(session.writes).toEqual([]);
+      expect(session.closed).toBe(false);
+      vi.advanceTimersByTime(DETACH_GRACE_MS);
+      expect(session.closed).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a replaced client whose transport closes while it is being told does not start a timer under the newer client", () => {
+    vi.useFakeTimers();
+    try {
+      const session = fakeSession();
+      const term = new ManagedTerminal("t1", session);
+      const older = fakeSocket();
+      attachSocket(older, term);
+      const realSend = older.send.bind(older);
+      older.send = (d: string) => {
+        realSend(d);
+        if (d.includes('"x"')) older.emitClose(); // a transport that reports its own close from inside send()
+      };
+      const newer = fakeSocket();
+      attachSocket(newer, term);
+      expect(vi.getTimerCount()).toBe(0);
+      vi.advanceTimersByTime(DETACH_GRACE_MS * 2);
+      expect(session.closed).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("a session that ends by itself while detached leaves no timer behind", () => {
     vi.useFakeTimers();
     try {
