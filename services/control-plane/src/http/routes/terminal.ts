@@ -265,6 +265,13 @@ export async function registerTerminalRoute(app: FastifyInstance, deps: Terminal
         } else {
           term = await openTerminalForMachine(logicalName, deps, target.command === undefined ? {} : { command: target.command });
         }
+        if (term !== existing && socket.readyState !== socket.OPEN) {
+          // BUGS #49: the browser left while the SSH dial was in flight (a reload or a closed tab during
+          // "Connecting…"). Its close event and any close frame are already gone, so nothing would ever detach or
+          // close this terminal, and nobody holds its id: end it now.
+          term.close();
+          return;
+        }
         ws.send(JSON.stringify({ t: "ready", id: term.id }));
         attachSocket(ws, term);
       } catch (err) {

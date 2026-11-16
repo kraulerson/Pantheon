@@ -3,8 +3,8 @@
  * SSH→PTY→WebSocket bridge.
  *
  * `ManagedTerminal` wraps a {@link TerminalSession} with a bounded scrollback ring and an
- * attach/detach lifecycle: a dropped WebSocket DETACHES (the SSH session keeps running) so the
- * operator can reconnect and reattach to a live shell. `attachSocket` wires a {@link DuplexSocket}
+ * attach/detach lifecycle: a dropped WebSocket DETACHES (the SSH session keeps running for
+ * `DETACH_GRACE_MS`, BUGS #49) so the operator can reconnect and reattach to a live shell. `attachSocket` wires a {@link DuplexSocket}
  * to a ManagedTerminal with a tiny JSON frame protocol. `TerminalRegistry` tracks live terminals by
  * id and auto-evicts on close.
  *
@@ -62,6 +62,13 @@ function parseClientFrame(raw: string): ClientFrame | null {
 
 const DEFAULT_SCROLLBACK_BYTES = 64 * 1024;
 
+/**
+ * How long a terminal with no client attached is kept before its SSH session is ended (BUGS #49, Karl's ruling
+ * 2026-11-10). A console page that reloads reattaches well inside it; a tab that never comes back no longer
+ * leaves an SSH session and a tmux client behind on the dev machine.
+ */
+export const DETACH_GRACE_MS = 120_000;
+
 /** Where a terminal was opened: the machine and the (allow-listed) remote command, if any. */
 export interface TerminalOrigin {
   readonly logicalName: string;
@@ -72,6 +79,7 @@ export class ManagedTerminal {
   private scrollback = "";
   private sink: ((frame: string) => void) | undefined;
   private closed = false;
+  private graceTimer: ReturnType<typeof setTimeout> | undefined;
   /**
    * Set by {@link openTerminalForMachine}; a reattach (`?session=<id>`) must present the SAME
    * machine + target or be refused — a session id never silently swaps to another machine's shell.
@@ -85,6 +93,19 @@ export class ManagedTerminal {
   ) {
     this.session.onData((chunk) => this.onOutput(chunk.toString("utf8")));
     this.session.onClose(() => this.onClosed());
+    this.startGrace(); // nobody is attached yet
+  }
+
+  private clearGrace(): void {
+    if (this.graceTimer !== undefined) clearTimeout(this.graceTimer);
+    this.graceTimer = undefined;
+  }
+
+  private startGrace(): void {
+    this.clearGrace();
+    if (this.closed) return;
+    this.graceTimer = setTimeout(() => this.close(), DETACH_GRACE_MS);
+    this.graceTimer.unref?.(); // never keeps the process alive
   }
 
   get isClosed(): boolean {
@@ -98,19 +119,36 @@ export class ManagedTerminal {
 
   private onClosed(): void {
     this.closed = true;
+    this.clearGrace();
     this.sink?.(exitFrame());
   }
 
   /** Attach a client sink (reconnect): replay the scrollback, then stream live output. */
   attach(sink: (frame: string) => void): void {
+    this.clearGrace();
+    // One client at a time. A client that is replaced (the same terminal opened from a duplicated browser tab) is
+    // told its view has ended, rather than being left looking connected while it receives nothing.
+    const replaced = this.sink;
+    if (replaced !== undefined && replaced !== sink) replaced(exitFrame());
     this.sink = sink;
     if (this.scrollback.length > 0) sink(outputFrame(this.scrollback));
     if (this.closed) sink(exitFrame());
   }
 
-  /** Detach the current client WITHOUT killing the SSH session (it survives a dropped socket). */
-  detach(): void {
+  /**
+   * Detach the current client WITHOUT killing the SSH session at once: it survives a dropped socket for
+   * {@link DETACH_GRACE_MS}, then is ended unless a client reattached. With `sink`, only that client is detached —
+   * an old socket whose close arrives after a newer one attached must not silence or time out the newer one.
+   */
+  detach(sink?: (frame: string) => void): void {
+    if (sink !== undefined && this.sink !== sink) return;
     this.sink = undefined;
+    this.startGrace();
+  }
+
+  /** True while `sink` is the attached client (false once it was detached or replaced). */
+  isAttached(sink: (frame: string) => void): boolean {
+    return this.sink === sink;
   }
 
   /** Operator keystrokes → remote PTY (ignored once closed). */
@@ -125,21 +163,24 @@ export class ManagedTerminal {
 
   /** Explicit teardown of the SSH session. */
   close(): void {
+    this.clearGrace();
     this.session.close();
   }
 }
 
-/** Wire a duplex socket to a managed terminal. Socket close => detach (reconnectable); `{t:"c"}` => end. */
+/** Wire a duplex socket to a managed terminal. Socket close => detach (reconnectable for a grace period); `{t:"c"}` => end. */
 export function attachSocket(socket: DuplexSocket, term: ManagedTerminal): void {
-  term.attach((frame) => socket.send(frame));
+  const sink = (frame: string): void => socket.send(frame);
+  term.attach(sink);
   socket.onMessage((raw) => {
     const frame = parseClientFrame(raw);
     if (!frame) return;
+    if (!term.isAttached(sink)) return; // a replaced client no longer drives (or closes) this terminal
     if (frame.t === "i") term.input(frame.d);
     else if (frame.t === "r") term.resize(frame.c, frame.r);
     else term.close(); // explicit tab close: end the SSH session (the registry evicts on close)
   });
-  socket.onClose(() => term.detach());
+  socket.onClose(() => term.detach(sink));
 }
 
 /** Tracks live terminals by id; auto-evicts when the underlying session closes. */

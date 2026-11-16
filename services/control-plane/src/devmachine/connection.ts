@@ -177,6 +177,15 @@ export function remoteCommandFailure(err: unknown): { readonly mayHaveRun: boole
 }
 
 function makeSession(client: SshClient, stream: SshStream): TerminalSession {
+  // BUGS #49: when the remote side ends the PTY (the shell or tmux client exited) the connection has no further
+  // use. Without this it stayed open, idle, for as long as the service ran.
+  stream.on("close", () => {
+    try {
+      client.end();
+    } catch {
+      /* best-effort teardown */
+    }
+  });
   return {
     write: (input) => stream.write(input),
     onData: (cb) => stream.on("data", (chunk) => cb(chunk ?? Buffer.alloc(0))),

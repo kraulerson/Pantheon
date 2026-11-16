@@ -19,6 +19,20 @@ for handoff clarity. Categories are ordered by impact severity.
 
 ## [Unreleased]
 
+<!-- BUGS #49: idle terminal connections (Karl's ruling A 2026-11-10, Defer → Fix Now) -->
+
+### Fixed
+- 2026-11-15 **A terminal tab that goes away no longer leaves an SSH session behind on the dev machine** (BUGS #49;
+  audit `docs/security-audits/bugs-49-idle-terminal-connections-security-audit.md`). When the service sees a
+  browser tab's connection close without an explicit close (a reload, a closed tab), the terminal is kept for 2
+  minutes; a console page that reloads inside that time reattaches to it, and otherwise its SSH session is ended,
+  which detaches its tmux client. A browser that leaves while the terminal is still connecting has its session ended
+  as soon as the connection completes. When the remote shell or tmux client exits, the SSH connection behind it is
+  closed instead of staying open idle. One terminal has one client at a time: opening the same terminal from a
+  duplicated browser tab ends the older view, which can no longer type into or close it. Not covered: a browser that
+  vanishes without closing its connection (a closed lid, a lost network) is noticed only when the connection itself
+  times out.
+
 <!-- BUGS #86: persistent SSH connection per dev machine (Karl's ruling A 2026-11-10; ADR-0011) -->
 
 ### Security

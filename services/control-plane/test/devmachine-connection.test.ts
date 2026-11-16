@@ -178,6 +178,17 @@ describe("connectTerminal", () => {
     expect(client.stream.windowCalls[0]?.slice(0, 2)).toEqual([40, 120]); // setWindow(rows, cols, ...)
   });
 
+  it("ends the SSH connection when the remote side closes the PTY (BUGS #49)", async () => {
+    const client = new FakeClient({ outcome: "ready" });
+    const session = await connectTerminal(TARGET, "harness", { custody, clientFactory: () => client });
+    let closes = 0;
+    session.onClose(() => (closes += 1));
+    expect(client.ended).toBe(false);
+    client.stream.emit("close"); // the remote shell or tmux client exited; no browser asked for it
+    expect(client.ended).toBe(true);
+    expect(closes).toBe(1); // subscribers are still told
+  });
+
   it("close() ends the PTY stream and the client", async () => {
     const client = new FakeClient({ outcome: "ready" });
     const session = await connectTerminal(TARGET, "harness", { custody, clientFactory: () => client });

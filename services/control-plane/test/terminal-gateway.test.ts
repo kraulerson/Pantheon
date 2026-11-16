@@ -16,6 +16,7 @@ import {
   ManagedTerminal,
   TerminalRegistry,
   attachSocket,
+  DETACH_GRACE_MS,
   openTerminalForMachine,
   TerminalError,
   type DuplexSocket
@@ -32,7 +33,7 @@ function fakeSession(): TerminalSession & {
   closed: boolean;
 } {
   let dataCb: (c: Buffer) => void = () => {};
-  let closeCb: () => void = () => {};
+  const closeCbs: Array<() => void> = [];
   const writes: string[] = [];
   const resizes: Array<[number, number]> = [];
   return {
@@ -41,13 +42,13 @@ function fakeSession(): TerminalSession & {
     closed: false,
     write: (s) => writes.push(s),
     onData: (cb) => (dataCb = cb),
-    onClose: (cb) => (closeCb = cb),
+    onClose: (cb) => void closeCbs.push(cb),
     resize: (c, r) => resizes.push([c, r]),
     close() {
       this.closed = true;
     },
     emitData: (s) => dataCb(Buffer.from(s)),
-    emitClose: () => closeCb()
+    emitClose: () => closeCbs.forEach((cb) => cb())
   };
 }
 
@@ -186,6 +187,186 @@ describe("attachSocket (DuplexSocket ↔ ManagedTerminal)", () => {
     attachSocket(socket, term);
     socket.emitClose();
     expect(session.closed).toBe(false);
+  });
+});
+
+describe("detached terminals are closed after a grace period (BUGS #49)", () => {
+  const GRACE = DETACH_GRACE_MS;
+
+  it("a socket that closes without a close frame ends the SSH session once the grace period passes", () => {
+    vi.useFakeTimers();
+    try {
+      const session = fakeSession();
+      const term = new ManagedTerminal("t1", session);
+      const socket = fakeSocket();
+      attachSocket(socket, term);
+      socket.emitClose(); // reload, closed lid, dropped network: no {t:"c"} frame
+      vi.advanceTimersByTime(GRACE - 1);
+      expect(session.closed).toBe(false);
+      vi.advanceTimersByTime(1);
+      expect(session.closed).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a reattach inside the grace period keeps the session, with no later teardown", () => {
+    vi.useFakeTimers();
+    try {
+      const session = fakeSession();
+      const term = new ManagedTerminal("t1", session);
+      const first = fakeSocket();
+      attachSocket(first, term);
+      first.emitClose();
+      vi.advanceTimersByTime(GRACE - 1000);
+      const second = fakeSocket();
+      attachSocket(second, term);
+      vi.advanceTimersByTime(GRACE * 3);
+      expect(session.closed).toBe(false);
+      session.emitData("still here");
+      expect(parsed(second.sent)).toContainEqual({ t: "o", d: "still here" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("each detach starts a fresh grace period", () => {
+    vi.useFakeTimers();
+    try {
+      const session = fakeSession();
+      const term = new ManagedTerminal("t1", session);
+      const first = fakeSocket();
+      attachSocket(first, term);
+      first.emitClose();
+      vi.advanceTimersByTime(GRACE - 1000);
+      const second = fakeSocket();
+      attachSocket(second, term);
+      second.emitClose();
+      vi.advanceTimersByTime(GRACE - 1);
+      expect(session.closed).toBe(false);
+      vi.advanceTimersByTime(1);
+      expect(session.closed).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("an old socket closing after a newer one attached neither silences nor times out the newer one", () => {
+    vi.useFakeTimers();
+    try {
+      const session = fakeSession();
+      const term = new ManagedTerminal("t1", session);
+      const old = fakeSocket();
+      attachSocket(old, term);
+      const fresh = fakeSocket();
+      attachSocket(fresh, term); // the reloaded page reattaches before the old socket's close arrives
+      old.emitClose();
+      session.emitData("live");
+      expect(parsed(fresh.sent)).toContainEqual({ t: "o", d: "live" });
+      vi.advanceTimersByTime(GRACE * 3);
+      expect(session.closed).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a terminal nobody ever attached to is closed after the grace period", () => {
+    vi.useFakeTimers();
+    try {
+      const session = fakeSession();
+      new ManagedTerminal("t1", session);
+      vi.advanceTimersByTime(GRACE);
+      expect(session.closed).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("the grace period is the 2 minutes Karl ruled", () => {
+    expect(DETACH_GRACE_MS).toBe(120_000);
+  });
+
+  it("a tab closing after the remote side already exited starts no timer", () => {
+    vi.useFakeTimers();
+    try {
+      const session = fakeSession();
+      const term = new ManagedTerminal("t1", session);
+      const socket = fakeSocket();
+      attachSocket(socket, term);
+      session.emitClose(); // the remote shell exited while the tab was open
+      socket.emitClose();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a client replaced by a newer one is told its view has ended", () => {
+    const session = fakeSession();
+    const term = new ManagedTerminal("t1", session);
+    const older = fakeSocket();
+    attachSocket(older, term);
+    const newer = fakeSocket();
+    attachSocket(newer, term); // the same terminal opened from a duplicated browser tab
+    expect(parsed(older.sent)).toContainEqual({ t: "x" });
+    expect(parsed(newer.sent)).not.toContainEqual({ t: "x" });
+  });
+
+  it("frames from a replaced client are ignored: it can neither type into nor close the newer client's terminal", () => {
+    const session = fakeSession();
+    const term = new ManagedTerminal("t1", session);
+    const older = fakeSocket();
+    attachSocket(older, term);
+    const newer = fakeSocket();
+    attachSocket(newer, term);
+    older.emitMessage(JSON.stringify({ t: "i", d: "stale keystrokes" }));
+    older.emitMessage(JSON.stringify({ t: "c" }));
+    expect(session.writes).toEqual([]);
+    expect(session.closed).toBe(false);
+    newer.emitMessage(JSON.stringify({ t: "i", d: "live" }));
+    expect(session.writes).toEqual(["live"]);
+  });
+
+  it("a session that ends by itself while detached leaves no timer behind", () => {
+    vi.useFakeTimers();
+    try {
+      const session = fakeSession();
+      const term = new ManagedTerminal("t1", session);
+      const socket = fakeSocket();
+      attachSocket(socket, term);
+      socket.emitClose();
+      expect(vi.getTimerCount()).toBe(1);
+      session.emitClose(); // the remote shell exited during the grace period
+      expect(vi.getTimerCount()).toBe(0);
+      vi.advanceTimersByTime(GRACE * 2);
+      expect(session.closed).toBe(false); // close() is not called on a session that already ended
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("the grace timer is cancelled when the session ends first, and the registry evicts on the grace teardown", () => {
+    vi.useFakeTimers();
+    try {
+      const reg = new TerminalRegistry();
+      const session = fakeSession();
+      // A real session's close() ends the stream, which fires its close subscribers.
+      session.close = function (this: typeof session) {
+        this.closed = true;
+        this.emitClose();
+      };
+      const term = reg.register("t1", session);
+      const socket = fakeSocket();
+      attachSocket(socket, term);
+      socket.emitClose();
+      vi.advanceTimersByTime(GRACE);
+      expect(session.closed).toBe(true);
+      expect(term.isClosed).toBe(true);
+      expect(reg.get("t1")).toBeUndefined();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

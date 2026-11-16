@@ -124,6 +124,73 @@ describe("terminal WebSocket route", () => {
   });
 });
 
+describe("terminal WebSocket route — the browser leaves while the SSH dial is in flight (BUGS #49)", () => {
+  /** A session whose close() ends it, as a real one does, and a dial that takes `dialMs`. */
+  function slowDial(dialMs: number) {
+    const sessions: Array<TerminalSession & { closed: boolean }> = [];
+    const connect = vi.fn(async () => {
+      await new Promise((r) => setTimeout(r, dialMs));
+      const closeCbs: Array<() => void> = [];
+      const session: TerminalSession & { closed: boolean } = {
+        closed: false,
+        write: () => {},
+        onData: () => {},
+        onClose: (cb) => void closeCbs.push(cb),
+        resize: () => {},
+        close() {
+          if (this.closed) return;
+          this.closed = true;
+          closeCbs.forEach((cb) => cb());
+        }
+      };
+      sessions.push(session);
+      return session;
+    });
+    return { sessions, connect };
+  }
+
+  for (const [name, leave] of [
+    ["the connection is dropped (a reload)", (ws: { terminate(): void }) => ws.terminate()],
+    ["the WebSocket is closed without a close frame", (ws: { close(code?: number): void }) => ws.close(1001)],
+    [
+      "the tab is closed (a close frame, then the socket)",
+      (ws: { send(d: string): void; close(): void }) => {
+        ws.send(JSON.stringify({ t: "c" }));
+        ws.close();
+      }
+    ]
+  ] as const) {
+    it(`ends the SSH session and keeps nothing registered when ${name}`, async () => {
+      const terminals = new TerminalRegistry();
+      const { sessions, connect } = slowDial(150);
+      app = Fastify();
+      await registerTerminalRoute(app, { registry: provisionedRegistry(true), terminals, connect, log: QUIET });
+      await app.ready();
+
+      const client = await app.injectWS("/terminal/mac-studio");
+      await waitFor(() => connect.mock.calls.length === 1);
+      (leave as (ws: unknown) => void)(client); // the page still shows "Connecting…"
+      await waitFor(() => sessions.length === 1); // the dial completes after the browser has gone
+      await waitFor(() => sessions[0]!.closed, 500);
+      expect(terminals.size).toBe(0);
+    });
+  }
+
+  it("a browser that stays gets its terminal as before", async () => {
+    const terminals = new TerminalRegistry();
+    const { sessions, connect } = slowDial(50);
+    app = Fastify();
+    await registerTerminalRoute(app, { registry: provisionedRegistry(true), terminals, connect, log: QUIET });
+    await app.ready();
+    const q = frameQueue();
+    const client = await app.injectWS("/terminal/mac-studio", {}, { onInit: (ws) => ws.on("message", q.push) });
+    expect((await q.next())["t"]).toBe("ready");
+    expect(sessions[0]!.closed).toBe(false);
+    expect(terminals.size).toBe(1);
+    client.close();
+  });
+});
+
 describe("terminal WebSocket route — non-upgrade methods", () => {
   it("HEAD /terminal/:name is a 404 like any method the route does not serve — Fastify's automatic HEAD route must not run the WebSocket handler (BUGS #80)", async () => {
     const connect = vi.fn(async () => fakeSession());
