@@ -892,8 +892,12 @@ class FakeTerm {
   rows = 24;
   keyHandler: ((e: KeyboardEvent) => boolean) | undefined;
   titleCb: ((t: string) => void) | undefined;
+  focusCalls = 0;
   constructor(public opts: unknown) {
     FakeTerm.all.push(this);
+  }
+  focus(): void {
+    this.focusCalls += 1;
   }
   loadAddon(): void {}
   open(): void {}
@@ -2181,20 +2185,187 @@ describe("console client: shell drawer", () => {
     return q("[data-drawer]:not([hidden])");
   };
 
-  it("opens ONE shell per machine on ?shell=1 (never tmux or create), and Ctrl+` toggles [data-minimised]", async () => {
+  it("opens ONE shell per machine on ?shell=1 (never tmux or create), and Ctrl+; toggles [data-minimised]", async () => {
     bootConsole(fleet());
     await api().refresh();
     q('[data-machine-tab="mac-mini"]').click();
     const drawer = openDrawer();
     expect(FakeWS.all.map((w) => w.url.replace(/^wss?:\/\/[^/]+/, ""))).toEqual(["/terminal/mac-mini?shell=1"]);
     expect(drawer.hasAttribute("data-minimised")).toBe(false);
-    keydown(document, { key: "`", ctrlKey: true });
+    keydown(document, { key: ";", ctrlKey: true });
     expect(drawer.hasAttribute("data-minimised")).toBe(true);
-    keydown(document, { key: "`", ctrlKey: true });
+    keydown(document, { key: ";", ctrlKey: true });
     expect(drawer.hasAttribute("data-minimised")).toBe(false);
     q("[data-drawer-toggle]").click(); // the bar button does the same
     expect(drawer.hasAttribute("data-minimised")).toBe(true);
     expect(FakeWS.all).toHaveLength(1);
+  });
+
+  it("BUGS #87: the shortcut is Ctrl + semicolon; the old Ctrl + backtick, Ctrl+Shift+; and a bare ; do nothing", async () => {
+    bootConsole(fleet());
+    await api().refresh();
+    q('[data-machine-tab="mac-mini"]').click();
+    for (const init of [
+      { key: "`", code: "Backquote", ctrlKey: true },
+      { key: ":", code: "Semicolon", ctrlKey: true, shiftKey: true },
+      { key: ";", code: "Semicolon" },
+      { key: ";", code: "Semicolon", ctrlKey: true, altKey: true },
+      { key: ";", code: "Semicolon", ctrlKey: true, metaKey: true }
+    ]) {
+      const e = keydown(document, init);
+      expect(document.querySelector("[data-drawer]")).toBeNull();
+      expect(e.defaultPrevented).toBe(false); // not ours: the browser and the page keep the key
+    }
+    const e = keydown(document, { key: ";", code: "Semicolon", ctrlKey: true });
+    expect(document.querySelector("[data-drawer]")).not.toBeNull();
+    expect(e.defaultPrevented).toBe(true);
+  });
+
+  it("BUGS #87: the physical semicolon key works on a layout that reports another character for it", async () => {
+    bootConsole(fleet());
+    await api().refresh();
+    q('[data-machine-tab="mac-mini"]').click();
+    keydown(document, { key: "ö", code: "Semicolon", ctrlKey: true });
+    expect(document.querySelector("[data-drawer]")).not.toBeNull();
+  });
+
+  it("BUGS #87: the help text names the shortcut in words, so it cannot be read as 'Ctrl+' and nothing", () => {
+    document.body.innerHTML = bodyOf(renderConsolePage(MODEL));
+    const help = textOf("[data-drawer-help]");
+    expect(help).toMatch(/Ctrl\s*\+\s*;/);
+    expect(help).toMatch(/semicolon/i);
+    expect(help).not.toContain("`");
+    expect(q("[data-drawer-help]").querySelectorAll("kbd")[1]!.textContent).toBe(";");
+  });
+
+  it("BUGS #87: the drawer stays at the bottom of the window however long the card list is", () => {
+    const html = renderConsolePage(MODEL);
+    const rule = /\.drawer-wrap \{([^}]*)\}/.exec(html)?.[1] ?? "";
+    expect(rule).toMatch(/position:\s*sticky/);
+    expect(rule).toMatch(/bottom:\s*0/);
+    expect(rule).toMatch(/z-index:\s*\d+/); // above the cards it overlaps while pinned
+  });
+
+  it("BUGS #87: opening the drawer with Ctrl+; puts the keyboard in the shell", async () => {
+    bootConsole(fleet());
+    await api().refresh();
+    q('[data-machine-tab="mac-mini"]').click();
+    const before = FakeTerm.all.length;
+    keydown(document, { key: ";", ctrlKey: true });
+    expect(FakeTerm.all).toHaveLength(before + 1);
+    expect(FakeTerm.all[before]!.focusCalls).toBe(1);
+  });
+
+  it("BUGS #87: opening the drawer with the bar button puts the keyboard in the shell too, and so does restoring it", async () => {
+    bootConsole(fleet());
+    await api().refresh();
+    q('[data-machine-tab="mac-mini"]').click();
+    const before = FakeTerm.all.length;
+    openDrawer();
+    const term = FakeTerm.all[before]!;
+    expect(term.focusCalls).toBe(1);
+    keydown(document, { key: ";", ctrlKey: true }); // minimise: focus is not pulled back in
+    expect(term.focusCalls).toBe(1);
+    keydown(document, { key: ";", ctrlKey: true }); // restore
+    expect(term.focusCalls).toBe(2);
+  });
+
+  it("BUGS #87 review: Ctrl+; while the passphrase dialog is open does nothing — no shell opens and the keyboard stays in the dialog", async () => {
+    bootConsole(fleet(), firstOf(closedUntilPost(), firstSubmitNeedsStepUp(HEX_B)));
+    await api().refresh();
+    q('[data-machine-tab="mac-mini"]').click();
+    typeIn(HEX_B, "hello");
+    submitBtn(HEX_B).click(); // the 403 opens the dialog
+    await vi.waitFor(() => expect(document.querySelector("[data-stepup-dialog]")).not.toBeNull());
+    const field = q<HTMLInputElement>("[data-stepup-dialog] input");
+    expect(document.activeElement).toBe(field);
+    const before = FakeTerm.all.length;
+    keydown(document, { key: ";", ctrlKey: true });
+    expect(FakeTerm.all).toHaveLength(before);
+    expect(document.querySelector("[data-drawer]")).toBeNull();
+    expect(document.activeElement).toBe(field);
+  });
+
+  it("BUGS #87 review: with a drawer already open, Ctrl+; while the passphrase dialog is open neither restores it nor moves the keyboard", async () => {
+    bootConsole(fleet(), firstOf(closedUntilPost(), firstSubmitNeedsStepUp(HEX_B)));
+    await api().refresh();
+    q('[data-machine-tab="mac-mini"]').click();
+    const drawer = openDrawer();
+    const term = FakeTerm.all[FakeTerm.all.length - 1]!;
+    keydown(document, { key: ";", ctrlKey: true }); // minimised
+    expect(drawer.hasAttribute("data-minimised")).toBe(true);
+    typeIn(HEX_B, "hello");
+    submitBtn(HEX_B).click();
+    await vi.waitFor(() => expect(document.querySelector("[data-stepup-dialog]")).not.toBeNull());
+    const calls = term.focusCalls;
+    keydown(document, { key: ";", ctrlKey: true });
+    expect(drawer.hasAttribute("data-minimised")).toBe(true);
+    expect(term.focusCalls).toBe(calls);
+  });
+
+  it("BUGS #87 review: Esc in the shell gives the keyboard back to where it was before the drawer opened", async () => {
+    bootConsole(fleet());
+    await api().refresh();
+    q('[data-machine-tab="mac-mini"]').click();
+    const box = q<HTMLTextAreaElement>(`[data-card="${HEX_B}"] [data-reply-box]`);
+    box.focus();
+    keydown(document, { key: ";", ctrlKey: true });
+    const term = FakeTerm.all[FakeTerm.all.length - 1]!;
+    q<HTMLElement>("[data-drawer] .term-host").setAttribute("tabindex", "-1");
+    q<HTMLElement>("[data-drawer] .term-host").focus(); // stands in for xterm taking the keyboard
+    expect(term.keyHandler!(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }))).toBe(false);
+    expect(document.activeElement).toBe(box);
+  });
+
+  it("BUGS #87 review: when the element that had the keyboard is gone, Esc in the shell puts it on the drawer's own button", async () => {
+    bootConsole(fleet());
+    await api().refresh();
+    q('[data-machine-tab="mac-mini"]').click();
+    const temp = document.createElement("button");
+    document.body.appendChild(temp);
+    temp.focus();
+    keydown(document, { key: ";", ctrlKey: true });
+    const term = FakeTerm.all[FakeTerm.all.length - 1]!;
+    temp.remove();
+    expect(term.keyHandler!(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }))).toBe(false);
+    expect(document.activeElement).toBe(q("[data-drawer-toggle]"));
+  });
+
+  it("BUGS #87 review: the page keeps a scroll padding as tall as the pinned drawer, so a focused control is never left under it", async () => {
+    bootConsole(fleet());
+    await api().refresh();
+    const wrap = q<HTMLElement>("[data-drawer-wrap]");
+    let height = 77;
+    Object.defineProperty(wrap, "offsetHeight", { configurable: true, get: () => height });
+    q('[data-machine-tab="mac-mini"]').click();
+    height = 318;
+    openDrawer();
+    expect(document.documentElement.style.scrollPaddingBottom).toBe("326px"); // the drawer plus 8 px of slack
+    height = 77;
+    keydown(document, { key: ";", ctrlKey: true }); // minimised: only the bar is pinned
+    expect(document.documentElement.style.scrollPaddingBottom).toBe("85px");
+  });
+
+  it("BUGS #87 review: a remembered drawer height is cut back when the window gets shorter", async () => {
+    bootConsole(fleet());
+    await api().refresh();
+    q('[data-machine-tab="mac-mini"]').click();
+    openDrawer();
+    const grip = q("[data-drawer-grip]");
+    const original = window.innerHeight;
+    try {
+      Object.defineProperty(window, "innerHeight", { configurable: true, value: 1200 });
+      window.dispatchEvent(new window.Event("resize"));
+      for (let i = 0; i < 80; i += 1) keydown(grip, { key: "ArrowUp" });
+      expect(grip.getAttribute("aria-valuenow")).toBe("1040"); // 1200 - 160
+      Object.defineProperty(window, "innerHeight", { configurable: true, value: 600 });
+      window.dispatchEvent(new window.Event("resize"));
+      expect(grip.getAttribute("aria-valuenow")).toBe("440"); // 600 - 160
+      expect(grip.getAttribute("aria-valuemax")).toBe("440");
+      expect(q<HTMLElement>("[data-drawer-panels]").style.height).toBe("440px");
+    } finally {
+      Object.defineProperty(window, "innerHeight", { configurable: true, value: original });
+    }
   });
 
   it("the same drawer element survives project-tab switches on a machine; another machine gets its own", async () => {
@@ -2253,7 +2424,7 @@ describe("console client: shell drawer", () => {
     expect(FakeWS.all).toHaveLength(1); // no reconnect loop
   });
 
-  it("Esc inside the drawer minimises it and is NOT forwarded to the shell; Ctrl+` inside the terminal is claimed too; the help text names the one swallowed key", async () => {
+  it("Esc inside the drawer minimises it and is NOT forwarded to the shell; Ctrl+; inside the terminal is claimed too; the help text names the one swallowed key", async () => {
     bootConsole(fleet());
     await api().refresh();
     q('[data-machine-tab="mac-mini"]').click();
@@ -2262,7 +2433,9 @@ describe("console client: shell drawer", () => {
     const esc = new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true });
     expect(handler(esc)).toBe(false); // xterm is told to drop it: the shell never sees it
     expect(drawer.hasAttribute("data-minimised")).toBe(true);
-    expect(handler(new window.KeyboardEvent("keydown", { key: "`", ctrlKey: true, bubbles: true }))).toBe(false);
+    const toggle = new window.KeyboardEvent("keydown", { key: ";", ctrlKey: true, bubbles: true, cancelable: true });
+    expect(handler(toggle)).toBe(false);
+    expect(toggle.defaultPrevented).toBe(true); // the browser must not type a ";" into the shell either
     expect(drawer.hasAttribute("data-minimised")).toBe(false);
     expect(handler(new window.KeyboardEvent("keydown", { key: "a", bubbles: true }))).toBe(true); // everything else goes through
     expect(textOf("[data-drawer-help]")).toMatch(/Esc.*minimises.*not sent to the shell/s);
@@ -2571,7 +2744,7 @@ describe("console client: fix round 1", () => {
       expect(q('[data-view="claude"]').getAttribute("aria-pressed")).toBe("false");
       expect(q("[data-cards]").hidden).toBe(false);
       q("[data-drawer-toggle]").click();
-      keydown(document, { key: "`", ctrlKey: true });
+      keydown(document, { key: ";", ctrlKey: true });
       expect(FakeWS.all).toHaveLength(0);
       expect(document.querySelector("[data-drawer]")).toBeNull();
     } finally {

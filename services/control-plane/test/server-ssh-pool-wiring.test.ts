@@ -19,6 +19,18 @@ import { FileKeyCustody } from "../src/devmachine/custody.js";
 
 const { Server, utils } = ssh2;
 
+/**
+ * ssh2's own key generator now and then emits an ed25519 key its own parser refuses ("Malformed OpenSSH private
+ * key", seen about 1 run in 5). Draw again until the pair parses, so the test never fails on its fixture.
+ */
+function generateParsableKeyPair(): { private: string; public: string } {
+  for (let i = 0; i < 20; i += 1) {
+    const pair = utils.generateKeyPairSync("ed25519");
+    if (!(utils.parseKey(pair.private) instanceof Error)) return pair;
+  }
+  throw new Error("ssh2 could not generate a key pair its own parser accepts");
+}
+
 const TOKEN = "admin-token-0123456789abcdef0123456789abcdef";
 const auth = { authorization: `Bearer ${TOKEN}` };
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -33,7 +45,7 @@ interface FakeSshd {
 function startSshd(): Promise<FakeSshd> {
   const stats = { authed: 0, liveAuthed: 0, authMethods: [] as string[] };
   const live = new Set<{ end(): void }>();
-  const server = new Server({ hostKeys: [utils.generateKeyPairSync("ed25519").private] }, (client) => {
+  const server = new Server({ hostKeys: [generateParsableKeyPair().private] }, (client) => {
     let authed = false;
     live.add(client);
     client.on("authentication", (ctx) => {
@@ -96,7 +108,7 @@ async function setup(): Promise<{ app: FastifyInstance; sshd: FakeSshd; id: stri
   const settingsPath = join(dir, "console-settings.json");
   writeFileSync(settingsPath, JSON.stringify({ machines: { box: { projectsRoot: "/tmp/pool-wiring-projects" } } }));
   // The harness keypair is already in custody, so enrollment reuses it and ssh-keygen is not run.
-  const pair = utils.generateKeyPairSync("ed25519");
+  const pair = generateParsableKeyPair();
   await new FileKeyCustody(keyDir).storeKeyPair("harness", pair.private, pair.public);
   const s = (sshd = await startSshd());
   const a = (app = await createServer({ adminToken: TOKEN, dbPath: ":memory:", keyDir, keyHandle: "harness", consoleSettingsPath: settingsPath }));

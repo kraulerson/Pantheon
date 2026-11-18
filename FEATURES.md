@@ -482,8 +482,9 @@ reply does inside Claude Code's input is judged in UAT-6; unit tests cannot prov
   "… reading the session's screen". After Hide or a failed read it says the screen "is not shown here"
   and points to the Claude session. Bidi controls on the screen show as `⟦U+XXXX⟧`. Each Submit
   starts a fresh send for its card; a read from an earlier send never overwrites a later status.
-- **Machine shell drawer:** a drawer at the bottom of the page holds one shell per machine, opened
-  with **Ctrl+backtick** or the bar button, resizable. **Esc inside the drawer minimises it and is not
+- **Machine shell drawer:** a drawer pinned to the bottom of the window holds one shell per machine, opened
+  with **Ctrl + semicolon** (Ctrl+backtick until BUGS #87, 2026-11-17) or the bar button, resizable. Opening it
+  puts the keyboard in the shell; the shortcut does nothing while a dialog is open. **Esc inside the drawer minimises it and is not
   sent to the shell.** Every open is audited write-ahead (`opened_shell`).
 - **Claude-session view:** a **Claude session** switch on a project shows its live session in place
   of the cards; menus are answered there.
@@ -532,7 +533,7 @@ Bible §4, §5, §7, §9 C.9. Audit: `docs/security-audits/maestro-console-f2-se
 
 **Known Limitations:**
 - **Esc in the drawer is swallowed:** it minimises the drawer and is not forwarded to the shell, so
-  programs in the drawer shell (vim, less, fzf) never receive it. Ctrl+backtick and the bar button
+  programs in the drawer shell (vim, less, fzf) never receive it. Ctrl + semicolon and the bar button
   also toggle the drawer. Karl kept this behaviour (A1, 2026-10-20).
 - **Terminal access is not step-up gated (accepted, D18):** anyone holding the operator cookie can
   type into a session through the Claude-session view or the drawer, and can Submit inside Karl's

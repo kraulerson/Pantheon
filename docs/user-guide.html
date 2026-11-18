@@ -472,15 +472,15 @@ reads <em>✓ A1 sent again to confirm, HH:MM — the screen above shows what th
 </ul>
 
 <h4 id="console-drawer">The machine shell drawer</h4>
-<p>A drawer at the bottom of the page holds a plain shell on the selected machine, started in that
-machine's projects root. Open it with <kbd>Ctrl</kbd>+<kbd>`</kbd> (the key above Tab) or with the
+<p>A drawer pinned to the bottom of the window holds a plain shell on the selected machine, started in that
+machine's projects root. Open it with <kbd>Ctrl</kbd> + <kbd>;</kbd> (Ctrl and the semicolon key) or with the
 <strong>Open shell</strong> button on its bar. The same key or <strong>▾ Minimise</strong> hides it, and
 <strong>▴ Restore</strong> brings it back. The shell keeps running while hidden. Drag the grip above
 the bar to change its height (the height is remembered).</p>
 <ul>
   <li><kbd>Esc</kbd> inside the drawer <strong>minimises it and is not sent to the shell</strong>, so
       programs in the drawer shell (vim, less, fzf) never receive it. The drawer's own toggle,
-      <kbd>Ctrl</kbd>+<kbd>`</kbd>, is not sent to the shell either. Karl kept the Esc behaviour
+      <kbd>Ctrl</kbd> + <kbd>;</kbd>, is not sent to the shell either. Karl kept the Esc behaviour
       (A1, 2026-10-20).</li>
   <li>Every time you open a machine shell the harness first writes an audit row, then connects.</li>
   <li>The drawer needs a window at least 900 px wide, and the machine needs a

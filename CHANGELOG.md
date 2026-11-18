@@ -19,6 +19,34 @@ for handoff clarity. Categories are ordered by impact severity.
 
 ## [Unreleased]
 
+<!-- BUGS #87: shell drawer (Karl A1 2026-11-12, Fix Now; shortcut ruling A2 2026-11-17) -->
+
+### Security
+- 2026-11-17 **The shell shortcut does nothing while a dialog is open** (BUGS #87; audit
+  `docs/security-audits/bugs-87-shell-drawer-below-fold-security-audit.md`). With a minimised shell drawer, pressing
+  the shortcut while the passphrase dialog was showing restored the drawer and moved the keyboard into the shell behind
+  the dialog, so what was typed for the prompt would have gone to the dev machine. The shortcut is now ignored until
+  the dialog is closed.
+
+### Changed
+- 2026-11-17 **The shell drawer's shortcut is Ctrl + semicolon** (BUGS #87, Karl's ruling A2). It was Ctrl + backtick,
+  whose on-screen label read as "Ctrl+" followed by nothing. The bar now says "Ctrl + ; (Ctrl and the semicolon
+  key)". Only exactly Ctrl + semicolon counts: with Shift, Alt or Cmd the key is left alone. The old shortcut no
+  longer does anything. Inside the shell the key is claimed and never typed.
+
+### Fixed
+- 2026-11-17 **The shell drawer opens where you can see it** (BUGS #87). The drawer is pinned to the bottom of the
+  window instead of sitting after the last card, where on a long card list it opened thousands of pixels below the
+  fold. Opening it (shortcut or bar button) puts the keyboard in the shell. Esc or the shortcut inside the shell gives
+  the keyboard back to where it was, or to the drawer's own button. The page keeps a scroll padding as tall as the
+  pinned drawer so a control reached with Tab is not left underneath it, and a drawer height chosen in a tall window
+  is cut back when the window gets shorter. Known limit: in the Claude-session view the open drawer covers the lower
+  part of that terminal until the page is scrolled.
+
+### Infrastructure
+- 2026-11-17 `test/server-ssh-pool-wiring.test.ts` no longer fails at random: ssh2's key generator now and then
+  produces a key its own parser refuses (seen 1 run in 5), so the fixture draws again until the pair parses.
+
 <!-- BUGS #49: idle terminal connections (Karl's ruling A 2026-11-10, Defer → Fix Now) -->
 
 ### Fixed

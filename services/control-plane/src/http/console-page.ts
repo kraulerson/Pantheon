@@ -209,7 +209,9 @@ main.cards { padding: var(--console-pad); display: grid; gap: var(--console-gap)
 .claude-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 6px; }
 .term-status { margin: 0; font-family: var(--font-mono); font-size: .8em; color: var(--console-text2); }
 .term-host { flex: 1; min-height: 50vh; }
-.drawer-wrap { border-top: 1px solid var(--console-border); background: var(--console-surface2); }
+/* BUGS #87: the drawer is pinned to the bottom of the WINDOW. It used to sit in page flow after the cards, so on a
+   long card list the shortcut opened it far below the fold and looked dead (spec decision 18: a bottom drawer). */
+.drawer-wrap { position: sticky; bottom: 0; z-index: 5; border-top: 1px solid var(--console-border); background: var(--console-surface2); }
 .drawer-grip { height: 8px; cursor: ns-resize; background: var(--console-border); }
 .drawer-grip:focus-visible { outline: 3px solid var(--console-text); outline-offset: -3px; }
 .drawer-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 4px var(--console-pad); font-size: .85em; }
@@ -1407,8 +1409,43 @@ ${TERMINAL_OPEN_JS}
   // ---- shell drawer (spec 14.2): one per machine, kept alive while hidden; Esc inside it is the one swallowed key ----
   function drawerOf(machine) { return has(drawers, machine) ? drawers[machine] : null; }
   function currentDrawer() { return sel.machine === '*' ? null : drawerOf(sel.machine); }
-  function isToggleKey(e) { return !!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === '\\x60' || e.code === 'Backquote'); }
+  // BUGS #87 (Karl A2, 2026-11-17): Ctrl + semicolon. It was Ctrl + backtick, whose on-screen label read as "Ctrl+"
+  // and nothing, so the operator pressed Ctrl and + (browser zoom on Linux and Windows). Exactly Ctrl: with Shift, Alt
+  // or Cmd the key is not ours. The code check covers a layout that reports another character for the semicolon key. xterm
+  // maps nothing to Ctrl + semicolon, so a terminal that does not claim it sends nothing to its machine.
+  function isToggleKey(e) { return !!e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && (e.key === ';' || e.code === 'Semicolon'); }
   function maxDrawerH() { return Math.max(DRAWER_MIN_H, (win.innerHeight || 800) - 160); }
+  // BUGS #87 review: the drawer is pinned over the bottom of the page, and a browser scrolling a focused control into
+  // view does not know that. A scroll padding as tall as the pinned part keeps a tabbed-to control above it.
+  function syncScrollPadding() {
+    var wrap = q('[data-drawer-wrap]');
+    var h = wrap && !narrow() ? wrap.offsetHeight : 0;
+    doc.documentElement.style.scrollPaddingBottom = h > 0 ? (h + 8) + 'px' : '';
+  }
+  // BUGS #87 review: a height chosen in a tall window must not swamp a shorter one. The stored preference is kept.
+  function onResize() {
+    drawerH = Math.min(maxDrawerH(), Math.max(DRAWER_MIN_H, drawerH));
+    applyDrawerHeight();
+    var d = currentDrawer(); if (d && !d.minimised && d.handle && d.handle.fit) d.handle.fit();
+    syncScrollPadding();
+  }
+  // Where the keyboard was before the shell took it: the same element, or after a re-render the one with its focus
+  // key, or failing both the drawer's own button. Never the top of the page.
+  function rememberFocus(d) {
+    var a = doc.activeElement;
+    if (!a || a === doc.body || d.el.contains(a)) return;
+    d.returnFocus = a; d.returnKey = a.getAttribute ? a.getAttribute('data-focus-key') : null;
+  }
+  function giveFocusBack(d) {
+    var t = d.returnFocus, key = d.returnKey;
+    d.returnFocus = null; d.returnKey = null;
+    if (!(t && doc.contains(t)) && key) {
+      t = null;
+      Array.prototype.forEach.call(doc.querySelectorAll('[data-focus-key]'), function (n) { if (!t && n.getAttribute('data-focus-key') === key) t = n; });
+    }
+    if (!(t && doc.contains(t) && !t.disabled && t.focus)) t = q('[data-drawer-toggle]');
+    if (t && t.focus) t.focus({ preventScroll: true });
+  }
   function applyDrawerHeight() {
     var panels = q('[data-drawer-panels]'); if (panels) panels.style.height = drawerH + 'px';
     var grip = q('[data-drawer-grip]');
@@ -1440,21 +1477,28 @@ ${TERMINAL_OPEN_JS}
     applyDrawerHeight();
     renderDrawerBar();
     if (cur && !cur.minimised && cur.handle && cur.handle.fit) cur.handle.fit();
+    syncScrollPadding();
   }
-  function setMinimised(d, on) {
+  // fromShell: the key came from inside the shell, so the keyboard is there and must be handed back on minimise.
+  function setMinimised(d, on, fromShell) {
+    var inShell = fromShell === true || d.el.contains(doc.activeElement);
+    if (!on) rememberFocus(d);
     d.minimised = on;
     renderDrawers();
     if (!on && d.handle && d.handle.term && d.handle.term.focus) d.handle.term.focus();
+    if (on && inShell) giveFocusBack(d);
   }
   // Keys xterm offers before the shell sees them. Returning false drops the key: the shell never receives it.
   function drawerKey(d, e) {
-    if (isToggleKey(e)) { e.stopPropagation(); setMinimised(d, !d.minimised); return false; }
-    if (e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) { e.stopPropagation(); setMinimised(d, true); return false; }
+    // preventDefault too: xterm does not cancel a key its host claimed, and the browser must not type a ";" into the shell.
+    if (isToggleKey(e)) { e.preventDefault(); e.stopPropagation(); setMinimised(d, !d.minimised, true); return false; }
+    if (e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) { e.stopPropagation(); setMinimised(d, true, true); return false; }
     return true;
   }
   function openDrawer(machine) {
     var panels = q('[data-drawer-panels]'); if (!panels) return null;
-    var d = { machine: machine, el: mk('div', 'drawer'), status: mk('p', 'term-status', '[~] Connecting to a shell on ' + machine + '…'), handle: null, minimised: false, title: '' };
+    var d = { machine: machine, el: mk('div', 'drawer'), status: mk('p', 'term-status', '[~] Connecting to a shell on ' + machine + '…'), handle: null, minimised: false, title: '', returnFocus: null, returnKey: null };
+    rememberFocus(d);
     d.el.setAttribute('data-drawer', ''); d.el.setAttribute('data-machine', machine);
     d.status.setAttribute('data-drawer-status', ''); d.status.setAttribute('role', 'status');
     var host = mk('div', 'term-host');
@@ -1473,6 +1517,8 @@ ${TERMINAL_OPEN_JS}
       onTitle: function (t) { d.title = str(t, 120); renderDrawerBar(); }
     });
     renderDrawers();
+    // BUGS #87: opening the drawer puts the keyboard in the shell, as restoring it does.
+    if (d.handle && d.handle.term && d.handle.term.focus) d.handle.term.focus();
     return d;
   }
   function toggleDrawer() {
@@ -1481,7 +1527,9 @@ ${TERMINAL_OPEN_JS}
     if (!d) openDrawer(sel.machine); else setMinimised(d, !d.minimised);
   }
   function onDocKey(e) {
-    if (isToggleKey(e)) { e.preventDefault(); toggleDrawer(); return; }
+    // BUGS #87 review: never while a dialog is open — the keyboard would move into the shell behind the passphrase
+    // prompt, and what was typed for the prompt would go to the machine.
+    if (isToggleKey(e)) { e.preventDefault(); if (modals.length === 0) toggleDrawer(); return; }
     if (e.key === 'Escape' && modals.length === 0) {
       var d = currentDrawer();
       if (d && !d.minimised && d.el.contains(doc.activeElement)) { e.preventDefault(); setMinimised(d, true); }
@@ -1742,6 +1790,8 @@ ${TERMINAL_OPEN_JS}
   function shutdown() {
     stop();
     doc.removeEventListener('keydown', onDocKey);
+    win.removeEventListener('resize', onResize);
+    doc.documentElement.style.scrollPaddingBottom = '';
     clearStepUpTimer();
     Object.keys(cardUi).forEach(function (k) { clearPaneTimer(cardUi[k]); });
     Object.keys(claudeTerms).forEach(function (k) { var h = claudeTerms[k].handle; if (h && h.close) h.close(); });
@@ -1753,6 +1803,7 @@ ${TERMINAL_OPEN_JS}
   win.addEventListener('focus', onWake);
   doc.addEventListener('visibilitychange', function () { if (!doc.hidden) onWake(); });
   doc.addEventListener('keydown', onDocKey);
+  win.addEventListener('resize', onResize);
   (function wireControls() {
     var fa = q('[data-fold-all]'); if (fa) fa.addEventListener('click', foldAll);
     var vc = q('[data-view="cards"]'), vl = q('[data-view="claude"]');
@@ -1762,6 +1813,7 @@ ${TERMINAL_OPEN_JS}
     var stored = parseInt(lsGet('console.drawer.height'), 10);
     if (isFinite(stored)) drawerH = Math.min(maxDrawerH(), Math.max(DRAWER_MIN_H, stored));
     applyDrawerHeight();
+    syncScrollPadding();
     var grip = q('[data-drawer-grip]');
     if (!grip) return;
     grip.addEventListener('keydown', function (e) {
@@ -1858,7 +1910,7 @@ ${CONSOLE_CSS}
   <div class="drawer-bar">
     <strong data-drawer-title>Shell · choose a machine</strong>
     <button type="button" data-drawer-toggle aria-expanded="false" disabled>Open shell</button>
-    <span class="hint" id="drawer-help" data-drawer-help><kbd>Ctrl</kbd>+<kbd>&#96;</kbd> shows or hides the shell. <kbd>Esc</kbd> inside the shell minimises it and is not sent to the shell — it is the only key this drawer swallows.</span>
+    <span class="hint" id="drawer-help" data-drawer-help><kbd>Ctrl</kbd> + <kbd>;</kbd> (Ctrl and the semicolon key) shows or hides the shell. <kbd>Esc</kbd> inside the shell minimises it and is not sent to the shell — it is the only key this drawer swallows.</span>
   </div>
   <div class="drawer-panels" data-drawer-panels hidden></div>
 </section>

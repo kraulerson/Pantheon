@@ -828,8 +828,10 @@ and the typing ones (Submit, New Session) require the step-up window.
   read succeeds, then "Check the staged change above, then type ‹id› again and press Submit to confirm". Hide, a failed read or an empty capture leaves the fallback "the session's screen
   is not shown here". Bidi controls show as `⟦U+XXXX⟧`.
 - **View switch:** **Cards | Claude session** per project (desktop widths, 900 px or more).
-- **Shell drawer:** one per machine, **Ctrl+backtick** or the bar button, resizable; Esc inside it
-  minimises it and is not forwarded, and Ctrl+backtick toggles the drawer and is not forwarded either; programs in the shell
+- **Shell drawer:** one per machine, pinned to the bottom of the window, **Ctrl + semicolon** (Ctrl+backtick until
+  BUGS #87, 2026-11-17) or the bar button, resizable; opening it puts the keyboard in the shell; Esc inside it
+  minimises it, is not forwarded and returns the keyboard to where it was; Ctrl + semicolon toggles the drawer and is
+  not forwarded either, and does nothing while a dialog is open; programs in the shell
   (vim, less, fzf) never receive Esc. Karl kept the Esc behaviour (A1, 2026-10-20).
 - **New session:** **+ New session** on a machine lists the projects root's folders and offers **Create
   project**; both need the step-up. A trust prompt on a new folder is answered in the Claude session.
