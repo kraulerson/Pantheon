@@ -1018,58 +1018,398 @@ async function fillPassphraseAndConfirm(pass = "correct horse"): Promise<void> {
   q("[data-stepup-confirm]").click();
 }
 
-describe("console client: fold (trial finding 4)", () => {
-  it("opens needs-you cards and folds the rest to a '▸ TL;DR' toggle; the toggle flips hidden and remembers it under console.fold.<id>", async () => {
-    bootConsole(fleet());
-    await api().refresh();
-    const tldr = (id: string): HTMLElement => q(`[data-card="${id}"] [data-tldr]`);
-    const toggle = (id: string): HTMLElement => q(`[data-card="${id}"] [data-fold-toggle]`);
-    expect(tldr(HEX_A).hidden).toBe(false); // needsYou → open by default
-    expect(toggle(HEX_A).textContent).toBe("▾ TL;DR");
-    expect(toggle(HEX_A).getAttribute("aria-expanded")).toBe("true");
-    expect(tldr(HEX_B).hidden).toBe(true);
-    expect(toggle(HEX_B).textContent).toBe("▸ TL;DR");
-    expect(toggle(HEX_B).getAttribute("aria-expanded")).toBe("false");
-    expect(textOf(`[data-card="${HEX_B}"] [data-title]`)).toBe("#361 deployed"); // the title line is always there
+describe("console client: cards collapse to one line (Karl's ruling A1, 2026-11-18)", () => {
+  const HEX_F = "f".repeat(32);
+  const HEX_1 = "1".repeat(32);
+  const HEX_2 = "2".repeat(32);
+  const collapsed = (id: string): boolean => q(`[data-card="${id}"]`).hasAttribute("data-collapsed");
+  const toggle = (id: string): HTMLElement => q(`[data-card="${id}"] [data-fold-toggle]`);
+  const ids = (sel: string): string[] => qa(sel).map((a) => a.getAttribute("data-card") ?? "").sort();
+  const openIds = (): string[] => ids("[data-card]:not([data-collapsed])");
+  const collapsedIds = (): string[] => ids("[data-card][data-collapsed]");
 
-    toggle(HEX_B).click();
-    expect(tldr(HEX_B).hidden).toBe(false);
-    expect(window.localStorage.getItem(`console.fold.${HEX_B}`)).toBe("open");
-    toggle(HEX_A).click();
-    expect(tldr(HEX_A).hidden).toBe(true);
-    expect(window.localStorage.getItem(`console.fold.${HEX_A}`)).toBe("closed");
-    // a re-render (selection change) keeps what the operator chose, not the default
-    q('[data-machine-tab="mac-mini"]').click();
-    expect(tldr(HEX_B).hidden).toBe(false);
-    expect(tldr(HEX_A).hidden).toBe(true);
+  /**
+   * fleet() plus: solo gets an older card (D) and a newer one (E), so its NEEDS YOU card (A) is no longer its newest;
+   * lancache gets an older card (F); and "oldproj", whose session has ended, has one card (1).
+   */
+  function busyFleet(): StatePayload {
+    const f = fleet();
+    f.sessions.push(session({ machine: "mac-mini", tmuxSession: "oldproj", endedAt: "2026-10-17T12:00:00.000Z" }));
+    f.cards.push(
+      card({ id: HEX_D, machine: "mac-mini", projectKey: "solo", title: "an older solo reply", createdAt: "2026-10-17T17:10:00.000Z" }),
+      card({ id: HEX_E, machine: "mac-mini", projectKey: "solo", title: "the newest solo reply", createdAt: "2026-10-17T17:58:00.000Z" }),
+      card({ id: HEX_F, machine: "mac-mini", projectKey: "lancache", title: "an older lancache reply", createdAt: "2026-10-17T17:00:00.000Z" }),
+      card({ id: HEX_1, machine: "mac-mini", projectKey: "oldproj", title: "last words of an ended session", createdAt: "2026-10-17T11:59:00.000Z" })
+    );
+    return f;
+  }
+  const withNewerSoloCard = (): StatePayload => {
+    const f = busyFleet();
+    f.cards.push(card({ id: HEX_2, machine: "mac-mini", projectKey: "solo", title: "the newest of all", createdAt: "2026-10-17T17:59:30.000Z" }));
+    return f;
+  };
+
+  it("by default the newest card of each project whose session is running is open, and every other card is collapsed", async () => {
+    bootConsole(busyFleet());
+    await api().refresh();
+    expect(openIds()).toEqual([HEX_B, HEX_C, HEX_E].sort());
+    expect(collapsedIds()).toEqual([HEX_1, HEX_A, HEX_D, HEX_F].sort()); // A still NEEDS YOU, but is not solo's newest
   });
 
-  it("'Fold all' / 'Expand all' names the next action and applies to every card shown", async () => {
-    bootConsole(fleet());
+  it("a collapsed card keeps its mark, project, title and age, and its control says Open with the title in its name", async () => {
+    bootConsole(busyFleet());
+    await api().refresh();
+    expect(collapsed(HEX_A)).toBe(true);
+    expect(textOf(`[data-card="${HEX_A}"] [data-kind-label]`)).toBe("! WAITING FOR YOU");
+    expect(textOf(`[data-card="${HEX_A}"] .tag`)).toContain("Solo");
+    expect(textOf(`[data-card="${HEX_A}"] [data-title]`)).toBe("R-452-2: may an agent attest single authority?");
+    expect(textOf(`[data-card="${HEX_A}"] [data-age]`)).not.toBe("");
+    expect(toggle(HEX_A).textContent).toBe("▸ Open");
+    expect(toggle(HEX_A).getAttribute("aria-expanded")).toBe("false");
+    expect(toggle(HEX_A).getAttribute("aria-label")).toBe("Open: R-452-2: may an agent attest single authority?");
+    expect(toggle(HEX_E).textContent).toBe("▾ Collapse");
+    expect(toggle(HEX_E).getAttribute("aria-expanded")).toBe("true");
+    expect(toggle(HEX_E).getAttribute("aria-label")).toBe("Collapse: the newest solo reply");
+    expect(q<HTMLElement>(`[data-card="${HEX_E}"] [data-tldr]`).hidden).toBe(false); // an open card shows its summary
+  });
+
+  it("the stylesheet makes a collapsed card one line: only the head, the title and the control show, and the title is cut with an ellipsis", () => {
+    const html = renderConsolePage(MODEL);
+    expect(html).toContain(".card[data-collapsed] > :not(.head):not(h3):not(.fold-toggle) { display: none !important; }");
+    const row = /\.card\[data-collapsed\] \{([^}]*)\}/.exec(html)?.[1] ?? "";
+    expect(row).toMatch(/display:\s*flex/);
+    expect(row).toMatch(/flex-wrap:\s*nowrap/);
+    const title = /\.card\[data-collapsed\] h3 \{([^}]*)\}/.exec(html)?.[1] ?? "";
+    expect(title).toMatch(/white-space:\s*nowrap/);
+    expect(title).toMatch(/text-overflow:\s*ellipsis/);
+  });
+
+  it("the control opens and collapses a card; the choice lasts across re-renders and polls for this page load and nothing is stored", async () => {
+    const setItem = vi.spyOn(window.localStorage, "setItem");
+    let serving = busyFleet();
+    bootConsole(() => serving);
+    await api().refresh();
+    toggle(HEX_D).click();
+    expect(collapsed(HEX_D)).toBe(false);
+    expect(toggle(HEX_D).textContent).toBe("▾ Collapse");
+    toggle(HEX_E).click();
+    expect(collapsed(HEX_E)).toBe(true);
+    q('[data-machine-tab="mac-mini"]').click(); // a re-render keeps what the operator chose, not the default
+    expect(collapsed(HEX_D)).toBe(false);
+    expect(collapsed(HEX_E)).toBe(true);
+    serving = withNewerSoloCard(); // and so does a poll that brings a new card
+    await api().refresh();
+    expect(collapsed(HEX_D)).toBe(false);
+    expect(collapsed(HEX_E)).toBe(true);
+    // Not remembered beyond the page: a stored "open" would keep old cards tall for ever, a stored "closed" would hide
+    // a card that needs the operator later.
+    expect(setItem.mock.calls.filter((c) => /^console\.(card|fold)\./.test(String(c[0])))).toEqual([]);
+    setItem.mockRestore();
+  });
+
+  it("a click anywhere on a collapsed card's line opens it; a click on an open card's text does not collapse it", async () => {
+    bootConsole(busyFleet());
+    await api().refresh();
+    q("[data-fold-all]").click(); // everything collapsed: the button now offers Expand all
+    expect(textOf("[data-fold-all]")).toBe("Expand all");
+    q(`[data-card="${HEX_D}"] [data-title]`).click();
+    expect(collapsed(HEX_D)).toBe(false);
+    expect(textOf("[data-fold-all]")).toBe("Fold all"); // the button follows what is on the page
+    q(`[data-card="${HEX_D}"] [data-title]`).click();
+    expect(collapsed(HEX_D)).toBe(false);
+    toggle(HEX_D).click();
+    expect(textOf("[data-fold-all]")).toBe("Expand all");
+  });
+
+  it("selecting text on a collapsed card's line does not open it", async () => {
+    bootConsole(busyFleet());
+    await api().refresh();
+    const sel = vi.spyOn(window, "getSelection").mockReturnValue({ toString: () => "R-452-2" } as unknown as Selection);
+    try {
+      q(`[data-card="${HEX_A}"] [data-title]`).click();
+      expect(collapsed(HEX_A)).toBe(true);
+    } finally {
+      sel.mockRestore();
+    }
+    q(`[data-card="${HEX_A}"] [data-title]`).click();
+    expect(collapsed(HEX_A)).toBe(false);
+  });
+
+  it("choices stored by the old fold (console.fold.<id>) are ignored, so the new default applies to everyone", async () => {
+    window.localStorage.setItem(`console.fold.${HEX_D}`, "open");
+    window.localStorage.setItem(`console.fold.${HEX_E}`, "closed");
+    bootConsole(busyFleet());
+    await api().refresh();
+    expect(collapsed(HEX_D)).toBe(true);
+    expect(collapsed(HEX_E)).toBe(false);
+  });
+
+  it("when a newer card arrives, the project's previous newest collapses; a card the operator opened by hand stays open", async () => {
+    let serving = busyFleet();
+    bootConsole(() => serving);
+    await api().refresh();
+    toggle(HEX_D).click(); // opened by hand
+    serving = withNewerSoloCard();
+    await api().refresh();
+    expect(collapsed(HEX_2)).toBe(false);
+    expect(collapsed(HEX_E)).toBe(true);
+    expect(collapsed(HEX_D)).toBe(false);
+  });
+
+  it("a card with an unsent reply in its box is not collapsed when a newer card arrives", async () => {
+    let serving = busyFleet();
+    bootConsole(() => serving);
+    await api().refresh();
+    typeIn(HEX_E, "half a reply");
+    serving = withNewerSoloCard();
+    await api().refresh();
+    expect(collapsed(HEX_E)).toBe(false);
+    expect(box(HEX_E).value).toBe("half a reply");
+    expect(collapsed(HEX_2)).toBe(false);
+  });
+
+  it("a card that holds the keyboard is not collapsed by a poll; once the keyboard has left, the next render collapses it", async () => {
+    let serving = busyFleet();
+    bootConsole(() => serving);
+    await api().refresh();
+    q<HTMLAnchorElement>(`[data-card="${HEX_E}"] a[data-open-terminal-link]`).focus();
+    serving = withNewerSoloCard();
+    await api().refresh();
+    expect(collapsed(HEX_E)).toBe(false);
+    expect(document.activeElement).toBe(q(`[data-card="${HEX_E}"] a[data-open-terminal-link]`));
+    q<HTMLElement>("[data-fold-all]").focus();
+    q('[data-machine-tab="mac-mini"]').click();
+    expect(collapsed(HEX_E)).toBe(true);
+  });
+
+  it("a card of an ended session, or of a session the page no longer knows, is never the open one; the running session's newest is", async () => {
+    const f = busyFleet();
+    f.sessions.push(session({ machine: "mac-mini", tmuxSession: "solo-old", projectKey: "solo", sessionId: "s-solo-old@mac-mini", endedAt: "2026-10-17T17:59:00.000Z" }));
+    f.cards.push(
+      card({ id: HEX_2, machine: "mac-mini", projectKey: "solo", sessionId: "s-solo-old@mac-mini", title: "from solo's ended session", createdAt: "2026-10-17T17:59:30.000Z" }),
+      card({ id: "9".repeat(32), machine: "mac-mini", projectKey: "ghost", sessionId: "s-gone@mac-mini", title: "its session row is gone", createdAt: "2026-10-17T17:59:40.000Z" })
+    );
+    bootConsole(f);
+    await api().refresh();
+    expect(collapsed(HEX_2)).toBe(true);
+    expect(collapsed("9".repeat(32))).toBe(true);
+    expect(collapsed(HEX_E)).toBe(false);
+  });
+
+  it("'Fold all' / 'Expand all' names the next action and applies to every card shown, for this page load only", async () => {
+    bootConsole(busyFleet());
     await api().refresh();
     const all = q("[data-fold-all]");
-    expect(all.textContent).toBe("Fold all"); // the needs-you card is open
+    expect(all.textContent).toBe("Fold all"); // some cards are open
     all.click();
-    expect(qa("[data-tldr]").every((t) => t.hidden)).toBe(true);
+    expect(openIds()).toEqual([]);
     expect(all.textContent).toBe("Expand all");
     all.click();
-    expect(qa("[data-tldr]").every((t) => !t.hidden)).toBe(true);
+    expect(collapsedIds()).toEqual([]);
     expect(all.textContent).toBe("Fold all");
-    expect(window.localStorage.getItem(`console.fold.${HEX_C}`)).toBe("open");
+    expect(window.localStorage.getItem(`console.card.${HEX_E}`)).toBeNull();
+    expect(window.localStorage.getItem(`console.card.${HEX_1}`)).toBeNull();
   });
 
-  it("survives localStorage throwing (private window): the default fold still applies", async () => {
-    const spy = vi.spyOn(window.localStorage, "getItem").mockImplementation(() => {
-      throw new Error("blocked");
-    });
-    try {
-      bootConsole(fleet());
-      await api().refresh();
-      expect(q<HTMLElement>(`[data-card="${HEX_A}"] [data-tldr]`).hidden).toBe(false);
-      expect(q<HTMLElement>(`[data-card="${HEX_B}"] [data-tldr]`).hidden).toBe(true);
-    } finally {
-      spy.mockRestore();
+  it("a card collapsed by 'Fold all' opens again when it starts to need the operator; one already needing them stays as they left it", async () => {
+    // homelab's only card (C) is its newest and needs the operator from the start.
+    const base = (): StatePayload => {
+      const f = busyFleet();
+      f.cards = f.cards.map((c) => (c.id === HEX_C ? { ...c, needsYou: true, needsKind: "waiting" as const } : c));
+      return f;
+    };
+    let serving = base();
+    bootConsole(() => serving);
+    await api().refresh();
+    expect(collapsed(HEX_C)).toBe(false);
+    q("[data-fold-all]").click();
+    expect(collapsed(HEX_B)).toBe(true); // lancache's newest, collapsed by hand
+    expect(collapsed(HEX_C)).toBe(true);
+    const next = base();
+    next.cards = next.cards.map((c) => (c.id === HEX_B ? { ...c, needsYou: true, needsKind: "menu_on_screen" as const, updatedAt: "2026-10-17T18:01:00.000Z" } : c));
+    serving = next;
+    await api().refresh();
+    expect(collapsed(HEX_B)).toBe(false); // something new happened on this card: the default applies again
+    expect(textOf(`[data-card="${HEX_B}"] [data-kind-label]`)).toBe("! MENU ON SCREEN");
+    expect(collapsed(HEX_C)).toBe(true); // C needed the operator before and after: their choice stands
+  });
+
+  it("the collapsed line keeps the mark, project, title and age and drops the rest, so the title survives a narrow window", async () => {
+    const html = renderConsolePage(MODEL);
+    expect(html).toContain(".card[data-collapsed] .where, .card[data-collapsed] .chip, .card[data-collapsed] .meta-rest { display: none; }");
+    const title = /\.card\[data-collapsed\] h3 \{([^}]*)\}/.exec(html)?.[1] ?? "";
+    expect(title).toMatch(/min-width:\s*8em/); // the head gives way before the title does
+    // An old card of a session that needs the operator is not itself the card that needs them: no state colour on its line.
+    expect(html).toContain(".card[data-collapsed]:not([data-needs-you]) { --state-colour: var(--console-border); --state-style: solid; --state-text: var(--console-text2); }");
+    expect(html).toMatch(/@media \(max-width: 760px\) \{[^}]*\.card\[data-collapsed\] \{ flex-wrap: wrap; \}/);
+
+    bootConsole(busyFleet());
+    await api().refresh();
+    const meta = q(`[data-card="${HEX_B}"] [data-age]`);
+    expect(meta.textContent).toMatch(/ · 4 tool calls · with reasoning$/); // the whole meta, as before
+    expect(meta.querySelector(".age")!.textContent).not.toContain("tool call"); // the age alone is what a collapsed line shows
+    expect(meta.querySelector(".meta-rest")!.textContent).toBe(" · 4 tool calls · with reasoning");
+    expect(q(`[data-card="${HEX_A}"] [data-title]`).getAttribute("title")).toBe("R-452-2: may an agent attest single authority?");
+  });
+
+  it("the same project key on two machines keeps one open card per machine", async () => {
+    const f = busyFleet();
+    f.sessions.push(session({ machine: "linux-dev", tmuxSession: "solo" }));
+    f.cards.push(card({ id: HEX_2, machine: "linux-dev", projectKey: "solo", title: "solo on the other machine", createdAt: "2026-10-17T17:20:00.000Z" }));
+    bootConsole(f);
+    await api().refresh();
+    expect(collapsed(HEX_2)).toBe(false);
+    expect(collapsed(HEX_E)).toBe(false);
+  });
+
+  it("two cards of one project with the same time: exactly one is open", async () => {
+    const f = fleet();
+    f.cards.push(card({ id: HEX_D, machine: "linux-dev", projectKey: "homelab", title: "same instant", createdAt: "2026-10-17T17:30:00.000Z" }));
+    bootConsole(f);
+    await api().refresh();
+    expect([collapsed(HEX_C), collapsed(HEX_D)].filter((x) => !x)).toHaveLength(1);
+  });
+
+  it("a card the operator collapsed by hand stays collapsed even with an unsent reply in its box", async () => {
+    let serving = busyFleet();
+    bootConsole(() => serving);
+    await api().refresh();
+    typeIn(HEX_E, "half a reply");
+    toggle(HEX_E).click();
+    serving = withNewerSoloCard();
+    await api().refresh();
+    expect(collapsed(HEX_E)).toBe(true);
+    expect(box(HEX_E).value).toBe("half a reply"); // kept for when it is opened again
+  });
+
+  describe("a card is not collapsed in the middle of something", () => {
+    const HEX_9 = "9".repeat(32);
+    const DISMISS = (id: string): string => `/console/api/cards/${id}/dismiss`;
+    const PANE = (id: string): string => `/console/api/cards/${id}/pane`;
+    /** busyFleet() with lancache's newest card (B) turned into `over`, and a state that adds a still newer lancache card. */
+    function lancacheNewest(over: Partial<ConsoleCardRow>): { now: () => StatePayload; newer: () => StatePayload } {
+      const now = (): StatePayload => {
+        const f = busyFleet();
+        f.cards = f.cards.map((c) => (c.id === HEX_B ? { ...c, ...over } : c));
+        return f;
+      };
+      const newer = (): StatePayload => {
+        const f = now();
+        f.cards.push(card({ id: HEX_9, machine: "mac-mini", projectKey: "lancache", title: "a newer lancache card", createdAt: "2026-10-17T17:59:50.000Z" }));
+        return f;
+      };
+      return { now, newer };
     }
+    const lookAway = (): void => q<HTMLElement>("[data-fold-all]").focus();
+    const later = (ms: number): (() => void) => {
+      const base = Date.now();
+      const spy = vi.spyOn(Date, "now").mockImplementation(() => base + ms);
+      return () => spy.mockRestore();
+    };
+
+    it("while the keyboard is on one of its option or section buttons; resting on a collapsed card's own control does not pop that card open", async () => {
+      const st = lancacheNewest({ asksYou: true, needsYou: true, needsKind: "reply_question", options: ["A1", "A2"] });
+      let serving = st.now();
+      bootConsole(() => serving);
+      await api().refresh();
+      const opt = (): HTMLButtonElement => q<HTMLButtonElement>(`[data-card="${HEX_B}"] [data-option="A1"]`);
+      opt().focus(); // focus key opt:<id>:A1
+      expect(document.activeElement).toBe(opt());
+      serving = st.newer();
+      await api().refresh();
+      expect(collapsed(HEX_B)).toBe(false);
+      q<HTMLElement>(`[data-card="${HEX_B}"] [data-expand="full"]`).focus(); // focus key expand:<id>:full
+      serving = st.now();
+      await api().refresh();
+      serving = st.newer();
+      await api().refresh();
+      expect(collapsed(HEX_B)).toBe(false);
+      toggle(HEX_F).focus(); // a collapsed card's own control, focus key fold:<id>
+      serving = st.now();
+      await api().refresh();
+      expect(collapsed(HEX_F)).toBe(true);
+      expect(document.activeElement).toBe(toggle(HEX_F)); // and the keyboard is still where it was
+    });
+
+    it("while the passphrase dialog opened from it is showing, and for a minute after its outcome line is written", async () => {
+      const st = lancacheNewest({ needsYou: true, needsKind: "sentinel", options: ["A1", "A2"] });
+      let serving = st.now();
+      bootConsole(() => serving, firstOf(closedUntilPost(), (c) => (c.path === submitPath(HEX_B) ? replyOk("sent — waiting for the session") : undefined)));
+      await api().refresh();
+      q(`[data-card="${HEX_B}"] [data-option="A1"]`).click();
+      await vi.waitFor(() => expect(document.querySelector("[data-stepup-dialog]")).not.toBeNull());
+      serving = st.newer(); // a newer card arrives while the dialog is open
+      await api().refresh();
+      expect(collapsed(HEX_B)).toBe(false);
+      await fillPassphraseAndConfirm("hunter2");
+      await vi.waitFor(() => expect(textOf(`[data-card="${HEX_B}"] [data-send-status]`)).toMatch(/^✓ sent/));
+      lookAway();
+      q('[data-machine-tab="mac-mini"]').click(); // a render with the keyboard elsewhere
+      expect(collapsed(HEX_B)).toBe(false); // the outcome line is less than a minute old
+      const restore = later(61_000);
+      try {
+        q('[data-machine-tab="mac-mini"]').click();
+        expect(collapsed(HEX_B)).toBe(true);
+      } finally {
+        restore();
+      }
+    });
+
+    it("while a send is in flight, however long it takes", async () => {
+      const st = lancacheNewest({ needsYou: true, needsKind: "sentinel", options: ["A1", "A2"] });
+      let serving = st.now();
+      let answer: (r: FetchReply) => void = () => undefined;
+      const pending = new Promise<FetchReply>((res) => (answer = res));
+      bootConsole(() => serving, firstOf(elevated, (c) => (c.path === submitPath(HEX_B) ? (pending as unknown as FetchReply) : undefined)));
+      await api().refresh();
+      q(`[data-card="${HEX_B}"] [data-option="A1"]`).click();
+      await vi.waitFor(() => expect(textOf(`[data-card="${HEX_B}"] [data-send-status]`)).toBe("… sending"));
+      lookAway();
+      const restore = later(5 * 60_000); // long after the minute its "sending" line would hold it
+      try {
+        serving = st.newer();
+        await api().refresh();
+        expect(collapsed(HEX_B)).toBe(false);
+      } finally {
+        restore();
+      }
+      answer(replyOk("sent — waiting for the session"));
+      await vi.waitFor(() => expect(textOf(`[data-card="${HEX_B}"] [data-send-status]`)).toMatch(/^✓ sent/));
+    });
+
+    it("while a dismiss is in flight", async () => {
+      const st = lancacheNewest({ asksYou: true, needsYou: true, needsKind: "reply_question", options: ["A1", "A2"] });
+      let serving = st.now();
+      let answer: (r: FetchReply) => void = () => undefined;
+      const pending = new Promise<FetchReply>((res) => (answer = res));
+      bootConsole(() => serving, (c) => (c.path === DISMISS(HEX_B) ? (pending as unknown as FetchReply) : undefined));
+      await api().refresh();
+      q(`[data-card="${HEX_B}"] [data-dismiss]`).click();
+      lookAway();
+      serving = st.newer();
+      await api().refresh();
+      expect(collapsed(HEX_B)).toBe(false);
+      answer({ status: 200, body: {} });
+      await vi.waitFor(() => expect(textOf(`[data-card="${HEX_B}"] [data-send-status]`)).toBe("✓ dismissed"));
+    });
+
+    it("while a commit approval that still needs the operator has the session's screen open; once it no longer needs them it collapses", async () => {
+      const st = lancacheNewest({ kind: "commit_approval", needsYou: true, needsKind: "sentinel", options: ["A1", "A2"] });
+      let serving = st.now();
+      bootConsole(() => serving, (c) => (c.path === PANE(HEX_B) ? { status: 200, body: { tail: "❯ A1\n  Staged change", capturedAt: "2026-10-17T18:03:05.000Z", truncated: false } } : undefined));
+      await api().refresh();
+      q(`[data-card="${HEX_B}"] [data-pane-show]`).click();
+      await vi.waitFor(() => expect(document.querySelector(`[data-card="${HEX_B}"] pre`)).not.toBeNull());
+      lookAway();
+      serving = st.newer();
+      await api().refresh();
+      expect(collapsed(HEX_B)).toBe(false); // mid-approval: the screen stays in view
+      const done = st.newer();
+      done.cards = done.cards.map((c) => (c.id === HEX_B ? { ...c, needsYou: false, needsKind: null, answeredAt: "2026-10-17T18:04:00.000Z" } : c));
+      serving = done;
+      await api().refresh();
+      expect(collapsed(HEX_B)).toBe(true); // approved: it is history now
+    });
   });
 });
 

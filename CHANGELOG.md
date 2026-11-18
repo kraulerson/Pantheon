@@ -19,6 +19,23 @@ for handoff clarity. Categories are ordered by impact severity.
 
 ## [Unreleased]
 
+<!-- Console cards collapse to one line (Karl's request 2026-11-17, ruling A1 2026-11-18) -->
+
+### Changed
+- 2026-11-18 **Console cards collapse to one line, except the newest card of each running project** (Karl's
+  ruling A1; audit `docs/security-audits/console-cards-collapse-to-one-line-security-audit.md`). Only the newest
+  card of each project whose session is still running is shown in full. Every other card is a single line with
+  its mark (for example "! NEEDS YOU"), project, title and age, and opens with a click on the line or on its
+  "▸ Open" control; under 760 px wide the title moves to a second line. Before, cards that needed you were open
+  and the rest were "folded", which hid only the summary text, so every card stayed tall.
+  - Your choices (per card, or "Fold all" / "Expand all") last until the page is reloaded. Nothing is stored any
+    more, and choices stored by the old fold are ignored.
+  - Cards that need you are still pinned on top and keep their mark and coloured edge, but are one line unless
+    they are their project's newest. An old card of a session that needs you no longer carries that colour.
+  - A card is not collapsed in the middle of something: an unsent reply in its box, a send or a dismiss under
+    way, a result line less than a minute old, a commit approval in progress, a passphrase dialog opened from
+    it, or the keyboard inside it. A card you collapsed opens again if it starts to need you.
+
 <!-- BUGS #87: shell drawer (Karl A1 2026-11-12, Fix Now; shortcut ruling A2 2026-11-17) -->
 
 ### Security

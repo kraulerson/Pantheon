@@ -769,6 +769,16 @@ and the typing ones (Submit, New Session) require the step-up window.
   `! COMMIT APPROVAL` / `REPLY`), the session's state chip, its age and tool-call count, the masked
   title and the masked TL;DR (clipped to six lines). Below that come **▸ full text · ▸ why · ▸ what it
   did** and **Open terminal ↗** (opens the Terminals tab).
+- **Collapsed cards (Karl's ruling A1, 2026-11-18; replaces the fold of trial finding 4):** only the newest
+  card of each project whose session is still running is open; every other card is ONE line (mark, project,
+  title, age; two lines under 760 px) that opens with a click or its **▸ Open** control. The operator's choice
+  (per card, or **Fold all / Expand all**) lasts for the page load; nothing is stored, and the old
+  `console.fold.<id>` choices are ignored. A card is not collapsed in the middle of something: an unsent reply
+  in its box, a send or dismiss in flight, an outcome line less than a minute old, a commit approval under way,
+  a passphrase dialog opened from it, or the keyboard inside it. A card collapsed by hand opens again if it
+  starts to need the operator. NEEDS YOU cards are still pinned on top and keep their mark and edge, as one
+  line unless they are their project's newest; an old card of a session that needs the operator has no state
+  colour on its line.
 - **States (CB):** each state is a glyph + a word, with a coloured top edge whose STYLE also differs.
   `!` NEEDS YOU (orange, solid) · `⟳` WORKING (grey, dashed) · `✓` IDLE (blue, solid) · `$` IN SHELL ·
   `?` UNKNOWN STATUS ‹value› (never mapped to IDLE) · `○` ENDED (an ended row overrides any stored

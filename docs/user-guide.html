@@ -353,6 +353,17 @@ use, so a new session appears by itself.</p>
       top. A card shows the project, what kind of item it is (for example
       <em>! MENU ON SCREEN</em>), the session's state, its age, the reply's TL;DR (or its first lines when
       it has none), and how many tool calls it made.</li>
+  <li><strong>Collapsed cards.</strong> Only the newest card of each project whose session is still
+      running is shown in full. Every other card is a single line with its mark (for example
+      <em>! NEEDS YOU</em>), project, title and age; in a window narrower than 760 px the title moves to a
+      second line. Click the line, or press its <strong>▸ Open</strong> control, to open it;
+      <strong>▾ Collapse</strong> closes it again. <strong>Fold all</strong> / <strong>Expand all</strong>
+      above the cards does the same for every card shown. These choices last until you reload the page.
+      A card that needs you is still pinned on top and keeps its mark and coloured edge, but it is one
+      line unless it is its project's newest. A card is not collapsed in the middle of something: while
+      its box holds an unsent reply, while a send or a dismiss is under way, for a minute after its
+      result line appears, while a commit approval is in progress, or while the keyboard is inside
+      it.</li>
   <li><strong>▸ full text · ▸ why · ▸ what it did</strong> under each card. These are read from the
       machine when you press them, shown once, and never saved by the harness. If the machine cannot be
       reached you see <em>Can't load the full text now</em> and the card itself stays.</li>

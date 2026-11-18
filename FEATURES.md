@@ -387,6 +387,13 @@ is planned.
   machine's projects (one per tmux session, with glyph, name and border from the settings file).
 - **Cards:** each Claude reply becomes a card with its masked TL;DR, age and tool-call count.
   **▸ full text · ▸ why · ▸ what it did** are read live from the machine on demand and never stored.
+- **Collapsed cards (Karl's ruling A1, 2026-11-18):** only the newest card of each project whose session is
+  still running is open. Every other card is one line (mark, project, title, age; two lines under 760 px) that
+  opens with a click or its **▸ Open** control; **▾ Collapse** closes it, and **Fold all / Expand all**
+  applies to every card shown. Choices last for the page load and nothing is stored. A card is not collapsed
+  in the middle of something: an unsent reply in its box, a send or dismiss in flight, an outcome line less
+  than a minute old, a commit approval under way, a passphrase dialog opened from it, or the keyboard inside
+  it. A card collapsed by hand opens again if it starts to need the operator.
 - **NEEDS YOU:** a session needs you when its session file says `waiting`, when a permission, trust or
   `AskUserQuestion` menu is on its screen (even while it is `busy`), or when a pending-approval file
   exists. Those cards are pinned on top and the tab title counts them.

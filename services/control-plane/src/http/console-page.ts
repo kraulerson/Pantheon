@@ -146,6 +146,20 @@ main.cards { padding: var(--console-pad); display: grid; gap: var(--console-gap)
 .kind { font-size: .78em; font-weight: 600; letter-spacing: .05em; color: var(--state-text, var(--console-text2)); }
 .chip, .meta, .where { font-size: .82em; color: var(--console-text2); }
 .card h3 { margin: 0; font-size: 1em; font-weight: 600; overflow-wrap: anywhere; }
+/* Karl A1 (2026-11-18): a collapsed card is ONE line — its mark, project, title and age — and opens with a click. */
+.card[data-collapsed] { display: flex; flex-wrap: nowrap; align-items: baseline; gap: 10px; padding-top: 6px; padding-bottom: 6px; cursor: pointer; }
+.card[data-collapsed] > :not(.head):not(h3):not(.fold-toggle) { display: none !important; }
+.card[data-collapsed] .head { flex: 0 1 auto; flex-wrap: nowrap; min-width: 0; white-space: nowrap; overflow: hidden; }
+/* The line is the mark, the project, the title and the age. The machine, the session chip and the rest of the meta
+   are left to the open card, and the title keeps a floor, so on a narrower window the head gives way first. */
+.card[data-collapsed] .where, .card[data-collapsed] .chip, .card[data-collapsed] .meta-rest { display: none; }
+.card[data-collapsed] h3 { flex: 1 1 12em; min-width: 8em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 400; }
+.card[data-collapsed] .fold-toggle { flex: 0 0 auto; }
+/* An old card of a session that needs you is not the card that needs you: no state colour on its line. The card that
+   does keeps its edge and its "! …" mark. */
+.card[data-collapsed]:not([data-needs-you]) { --state-colour: var(--console-border); --state-style: solid; --state-text: var(--console-text2); }
+/* Narrow windows: two lines — the mark, project, age and the control on the first, the title (still cut with an ellipsis) on the second. */
+@media (max-width: 760px) { .card[data-collapsed] { flex-wrap: wrap; } .card[data-collapsed] .head { order: 1; flex: 1 1 0; } .card[data-collapsed] .fold-toggle { order: 2; } .card[data-collapsed] h3 { order: 3; flex-basis: 100%; } }
 .reason, .hint { margin: 0; font-size: .85em; color: var(--console-text2); overflow-wrap: anywhere; }
 /* a face may run to 1024 chars: clip it to six lines, the buttons below fetch the rest */
 .tldr { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 80ch; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; overflow: hidden; }
@@ -617,7 +631,7 @@ ${TERMINAL_OPEN_JS}
   function projectFor(c) { var k = c.machine + SEP + c.projectKey; return has(view.byId, k) ? view.byId[k] : null; }
   function projectOf(machine, key) { var k = machine + SEP + key; return view && has(view.byId, k) ? view.byId[k] : null; }
   function uiFor(id) {
-    if (!has(cardUi, id)) cardUi[id] = { open: {}, view: null, status: '', fetching: null, text: '', key: null, keyText: null, busy: false, dismissing: false, sendStatus: '', fold: null, needsYou: false, pane: null, paneStatus: '', paneFetching: null, paneGen: 0, paneTimer: null, sendSeq: 0, confirmText: null, nextStep: null };
+    if (!has(cardUi, id)) cardUi[id] = { open: {}, view: null, status: '', fetching: null, text: '', key: null, keyText: null, busy: false, dismissing: false, sendStatus: '', fold: null, needsYou: null, holdUntil: 0, asking: false, pane: null, paneStatus: '', paneFetching: null, paneGen: 0, paneTimer: null, sendSeq: 0, confirmText: null, nextStep: null };
     return cardUi[id];
   }
   function findCard(id) {
@@ -636,14 +650,22 @@ ${TERMINAL_OPEN_JS}
     if (c.kind === 'menu') return 'MENU · earlier';
     return 'REPLY';
   }
-  function metaText(c, now) {
+  function metaParts(c, now) {
     var meta = [age(c.createdAt, now)];
     if (num(c.toolCallCount) > 0) meta.push(plural(num(c.toolCallCount), 'tool call', 'tool calls'));
     if (num(c.thinkingChars) > 0) meta.push('with reasoning');
     // M-2 (ruling T11-20): the stored answer time, so it survives a reload and shows on every device.
     if (typeof c.answeredAt === 'string' && c.answeredAt) meta.push('answered ' + hhmm(c.answeredAt));
     if (typeof c.dismissedAt === 'string' && c.dismissedAt) meta.push('dismissed');
-    return meta.join(' · ');
+    return meta;
+  }
+  function metaText(c, now) { return metaParts(c, now).join(' · '); }
+  // The age in its own span: a collapsed card's line shows the age and hides the rest.
+  function fillMeta(node, c, now) {
+    var parts = metaParts(c, now);
+    clear(node);
+    node.appendChild(mk('span', 'age', parts[0]));
+    node.appendChild(mk('span', 'meta-rest', parts.length > 1 ? ' · ' + parts.slice(1).join(' · ') : ''));
   }
   function renderCard(c, now) {
     var ui = uiFor(c.id);
@@ -660,16 +682,27 @@ ${TERMINAL_OPEN_JS}
     if (sel.machine === '*') head.appendChild(mk('span', 'where', 'on ' + c.machine));
     var kind = mk('span', 'kind', kindLabel(c)); kind.setAttribute('data-kind-label', ''); head.appendChild(kind);
     if (sv) { var chip = mk('span', 'chip', sv.glyph + ' ' + sv.word); chip.setAttribute('data-session-state', sv.state); head.appendChild(chip); }
-    var metaEl = mk('span', 'meta', metaText(c, now)); metaEl.setAttribute('data-age', '');
+    var metaEl = mk('span', 'meta'); metaEl.setAttribute('data-age', ''); fillMeta(metaEl, c, now);
     var when = new Date(c.createdAt); if (!isNaN(when.getTime())) metaEl.title = when.toLocaleString();
     head.appendChild(metaEl);
     art.appendChild(head);
-    var title = mk('h3', 'title', str(c.title, 120) || '(untitled)'); title.setAttribute('data-title', ''); art.appendChild(title);
+    var title = mk('h3', 'title', str(c.title, 120) || '(untitled)'); title.setAttribute('data-title', ''); title.setAttribute('title', title.textContent); art.appendChild(title);
     if (sv && sv.reason) { var r = mk('p', 'reason', 'waiting for: ' + sv.reason); r.setAttribute('data-reason', ''); art.appendChild(r); }
-    ui.needsYou = c.needsYou === true;
+    // A card that starts to need the operator is news: a "collapsed" choice made before that no longer applies.
+    var needs = c.needsYou === true;
+    if (ui.needsYou === false && needs && ui.fold === 'closed') ui.fold = null;
+    ui.needsYou = needs;
     var fold = mk('button', 'fold-toggle'); fold.type = 'button'; fold.setAttribute('data-fold-toggle', ''); fold.setAttribute('data-focus-key', 'fold:' + c.id);
     fold.addEventListener('click', function () { setFold(c.id, !foldOpen(c.id)); syncFoldAll(); });
     art.appendChild(fold);
+    // A click anywhere on a collapsed card's line opens it (its own control does the same for the keyboard).
+    art.addEventListener('click', function (e) {
+      if (!art.hasAttribute('data-collapsed')) return;
+      var t = e.target;
+      if (t && t.closest && t.closest('button, a, textarea, input')) return;
+      if (win.getSelection && String(win.getSelection()) !== '') return; // the operator was selecting text, not opening
+      setFold(c.id, true); syncFoldAll();
+    });
     var tldr = mk('div', 'tldr', str(c.tldrMasked, 1024)); tldr.setAttribute('data-tldr', ''); art.appendChild(tldr);
     if (p && !p.reachable) art.appendChild(mk('p', 'hint', 'not reachable — this session has no tmux pane; start it in tmux to reach it from here.'));
     var actions = mk('div', 'actions');
@@ -929,25 +962,60 @@ ${TERMINAL_OPEN_JS}
   function ssGet(k) { try { return win.sessionStorage.getItem(k); } catch (e) { return null; } }
   function ssSet(k, v) { try { win.sessionStorage.setItem(k, v); } catch (e) {} }
 
-  // ---- fold (trial finding 4): needs-you cards open, the rest folded; the choice is remembered per card ----
+  // ---- collapse (Karl A1, 2026-11-18; replaces the fold of trial finding 4) ----
+  // Open by default: the newest card of each project whose session is still running. Every other card is ONE line (its
+  // mark, project, title and age) that opens with a click. The operator's own choice lasts for this page load only:
+  // a stored "open" would keep old cards tall for ever, a stored "closed" would hide a card that needs them later.
+  // A card is never collapsed in the middle of something (inUse below) unless the operator collapsed it themselves.
+  var OUTCOME_HOLD_MS = 60000;
+  var newestRunning = map(); // card id → true, recomputed for the cards in scope on every render
+  var focusCard = null;      // the card that held the keyboard when the current render began
+  // The card a focus key belongs to. A card's own Open/Collapse control is not "inside" it: the keyboard resting on a
+  // collapsed line must not pop it open.
+  function cardIdOfKey(key) {
+    var k = String(key || '');
+    if (k.indexOf('fold:') === 0) return null;
+    var m = /:([0-9a-f]{32})(?::|$)/.exec(k);
+    return m ? m[1] : null;
+  }
+  function markNewestRunning(list) {
+    newestRunning = map();
+    var best = map(); // machine|project → its newest card whose session is running
+    list.forEach(function (c) {
+      var ses = sessionFor(c);
+      if (!ses || !ses.view || ses.view.state === 'ended') return;
+      var k = c.machine + SEP + c.projectKey;
+      if (!has(best, k) || String(c.createdAt) > String(best[k].createdAt)) best[k] = c;
+    });
+    Object.keys(best).forEach(function (k) { newestRunning[best[k].id] = true; });
+  }
+  function inUse(id, ui) {
+    return ui.text !== ''                                          // an unsent reply in its box
+      || ui.busy === true || ui.dismissing === true                // a send or a dismiss in flight
+      || Date.now() < ui.holdUntil                                 // its outcome line is less than a minute old
+      || (ui.needsYou === true && (!!ui.pane || !!ui.nextStep))    // a commit approval under way: its screen, its next step
+      || ui.asking === true                                        // its option button is waiting on the passphrase dialog
+      || focusCard === id;                                         // the keyboard is inside it
+  }
   function foldOpen(id) {
     var ui = uiFor(id);
     if (ui.fold === 'open') return true;
     if (ui.fold === 'closed') return false;
-    var s = lsGet('console.fold.' + id);
-    if (s === 'open') return true;
-    if (s === 'closed') return false;
-    return ui.needsYou;
+    return has(newestRunning, id) || inUse(id, ui);
   }
   function applyFold(art, id) {
     var open = foldOpen(id);
-    var t = art.querySelector('[data-tldr]'); if (t) t.hidden = !open;
+    if (open) art.removeAttribute('data-collapsed'); else art.setAttribute('data-collapsed', '');
     var b = art.querySelector('[data-fold-toggle]');
-    if (b) { b.textContent = (open ? '▾ ' : '▸ ') + 'TL;DR'; b.setAttribute('aria-expanded', open ? 'true' : 'false'); }
+    if (b) {
+      var t = art.querySelector('[data-title]');
+      b.textContent = open ? '▾ Collapse' : '▸ Open';
+      b.setAttribute('aria-expanded', open ? 'true' : 'false');
+      b.setAttribute('aria-label', (open ? 'Collapse' : 'Open') + ': ' + (t ? t.textContent : ''));
+    }
   }
   function setFold(id, open) {
     var ui = uiFor(id); ui.fold = open ? 'open' : 'closed';
-    lsSet('console.fold.' + id, ui.fold);
     var art = findCard(id); if (art) applyFold(art, id);
   }
   function syncFoldAll() {
@@ -1177,6 +1245,7 @@ ${TERMINAL_OPEN_JS}
   }
   function setSend(id, text) {
     var ui = uiFor(id); ui.sendStatus = text;
+    ui.holdUntil = text ? Date.now() + OUTCOME_HOLD_MS : 0; // long enough to read it, even if a newer card is already there
     var art = findCard(id); var s = art ? art.querySelector('[data-send-status]') : null;
     if (s && s.textContent !== text) s.textContent = text;
     if (s) s.setAttribute('data-state', stateOf(text));
@@ -1324,8 +1393,13 @@ ${TERMINAL_OPEN_JS}
   }
   // A sentinel button sends ONLY its option id, and only inside a step-up window.
   function sendSentinel(id, optionId) {
-    if (uiFor(id).busy) return;
-    ensureElevated(function () { submit(id, optionId); }, function (kind) { setSend(id, stepUpWords(kind)); });
+    var ui = uiFor(id);
+    if (ui.busy || ui.asking) return;
+    // Held open while the passphrase dialog may be showing: the dialog takes the keyboard, and a button clicked with
+    // the mouse does not hold it in every browser, so the card says so itself. Every way out of the dialog comes back
+    // through one of these two callbacks.
+    ui.asking = true;
+    ensureElevated(function () { ui.asking = false; submit(id, optionId); }, function (kind) { ui.asking = false; setSend(id, stepUpWords(kind)); });
   }
   function dismiss(id) {
     var ui = uiFor(id);
@@ -1676,6 +1750,7 @@ ${TERMINAL_OPEN_JS}
   function renderCards(now) {
     var main = el.cards; clear(main);
     var list = cardsInScope();
+    markNewestRunning(list);
     if (list.length === 0) { var e = mk('p', 'empty', 'no cards for this selection yet'); e.setAttribute('data-empty', ''); main.appendChild(e); return; }
     list.forEach(function (c) { main.appendChild(renderCard(c, now)); });
   }
@@ -1689,6 +1764,7 @@ ${TERMINAL_OPEN_JS}
   }
   function render() {
     var focusKey = focusedKey(), focusSel = focusedSelection();
+    focusCard = cardIdOfKey(focusKey);
     var now = Date.now();
     renderMachineTabs(); renderProjectTabs(); renderMachineBanners(); renderCards(now); renderSummary();
     applyView(); renderDrawers(); syncFoldAll(); syncGates();
@@ -1723,7 +1799,7 @@ ${TERMINAL_OPEN_JS}
       var id = arts[i].getAttribute('data-card'), meta = arts[i].querySelector('[data-age]');
       if (!meta || !has(byId, id)) continue;
       var t = metaText(byId[id], now);
-      if (meta.textContent !== t) meta.textContent = t;
+      if (meta.textContent !== t) fillMeta(meta, byId[id], now);
     }
   }
   function renderDisabled(entry) {
