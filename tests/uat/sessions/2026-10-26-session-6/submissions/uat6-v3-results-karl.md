@@ -58,3 +58,16 @@ own key handling. No project was created (the page was "not elevated" and the pa
 - 2 step 5: whether the bar button opens the drawer.
 - 3: the A1 button's copy-only behaviour and Dismiss.
 - 5, 6, 7, 8: not run.
+
+## Carried to UAT-7 (Karl A1, 2026-11-18)
+
+Scenarios 2, 3, 6 and 8 are carried to UAT-7, which falls due after the next feature. No v4 page is built, and
+UAT-6 stays open until then.
+
+- 2: the drawer step must say Ctrl + semicolon (BUGS #87 moved the shortcut).
+- 3: the A1 button's copy-only behaviour, and Dismiss.
+- 6: a revoked keycard is refused and every keycard step is logged.
+- 8: a real commit approval answered from the Pantheon card by typing A1 twice.
+
+Not carried: 1 is superseded by BUGS #87 (the shortcut moved; Karl verified it in Zen on 2026-11-18). 5 and 7 passed
+in the Chrome re-run above (7 without the sign-in-again half of its step 5) and were not re-run in Zen.
