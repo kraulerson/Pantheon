@@ -19,6 +19,26 @@ for handoff clarity. Categories are ordered by impact severity.
 
 ## [Unreleased]
 
+<!-- BUGS #88: red dependency audit (Karl A1 2026-11-18, A2 2026-11-19) -->
+
+### Security
+- 2026-11-19 **Dependency advisories cleared in both services (BUGS #88; audit
+  `docs/security-audits/bugs-88-dependency-audit-security-audit.md`).** `npm audit` reported 20 advisories in
+  `services/control-plane` and 19 in `services/obsidian-mcp`, 2 of them critical (tinypool, under the test runner),
+  and CI stopped at its audit step, so the license, lockfile-integrity and governance steps never ran. Now 0 in both.
+  Production: `hono` 4.13.13 → 4.13.19 and `@hono/node-server` 1.19.17 → 2.1.9, both under the MCP SDK. None of
+  their advisories was reachable in our code. Under the new adapter obsidian-mcp no longer sends a `content-type` on
+  three body-less answers, and accepts a `Host` written as `LOCALHOST`, `127.1` or `0x7f.0.0.1`, which it used to
+  answer with 400.
+
+### Infrastructure
+- 2026-11-19 **Test and lint tooling upgraded (BUGS #88).** vitest and `@vitest/coverage-v8` 3.2.7 → 4.1.12 (a major
+  version; the 3.x line has no fixed release) and typescript-eslint 8.46.0 → 8.73.0, in both services. No test,
+  source or configuration file needed a change, and the review found no test weakened by the upgrade. New
+  `test/dependency-floors.test.ts` in both services fails if a lockfile change brings one of the audited packages
+  back into its vulnerable range. Development tooling now needs Node `^20.19.0 || ^22.13.0 || >=24`.
+  CI is expected to stop next at "Governance - Phase gate check", a step no run has reached before.
+
 <!-- Console cards collapse to one line (Karl's request 2026-11-17, ruling A1 2026-11-18) -->
 
 ### Changed
