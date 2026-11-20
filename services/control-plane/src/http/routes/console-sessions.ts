@@ -84,7 +84,7 @@ export interface ConsoleRouteShared {
 }
 
 /** A machine name as the registry admits it (`LOGICAL_NAME_RE`, capped like the settings key): anything else is refused with a fixed text, never echoed. */
-const MACHINE_NAME_RE = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$/;
+export const MACHINE_NAME_RE = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$/;
 /** Per-list budget, connect + `find` over the root. */
 const LIST_EXEC: Required<RemoteCommandOptions> = { timeoutMs: 6000, maxOutputBytes: LIST_PROJECTS_MAX_OUTPUT_BYTES };
 /** Per-create budget, connect + the create script (one `mkdir`, one `tmux new-session`); its one record fits the 64 KiB default. */

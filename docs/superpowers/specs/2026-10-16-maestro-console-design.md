@@ -209,7 +209,7 @@ No full text, reasoning or tool output is stored (R1). Size: card faces only (�
 | Machine unreachable / probe timeout | machine tab `✕ UNREACHABLE since HH:MM` | cards kept; retry next poll |
 | A complete line is not JSON, or a `user`/`assistant` line lacks `uuid`, `timestamp` or `message`; or `sessions/*.json` lacks `pid`/`sessionId`/`status` | tab `⚠ CAN'T READ — format changed` | other line types are counted and ignored; the count is shown on the tab |
 | Unknown `status` value | `? UNKNOWN STATUS ‹value›` | never mapped to IDLE |
-| Session ended | `○ ENDED`; "ended" list after 12 h (proposed default) | cards kept to retention |
+| Session ended | `○ ENDED`; "ended" list after 12 h (proposed default; not built). Since 2026-11-19 the operator closes an ended project's tab by hand: `2026-11-19-console-close-ended-project-design.md` | cards kept to retention |
 | Target changed at Submit | "The session this card came from has ended or was cleared" | audit `refused_target_changed` |
 | Menu visible at Submit | "This session is showing a prompt — open its terminal" | audit `refused_menu_visible` |
 | Send failed | error on the card; text kept | audit `failed` |

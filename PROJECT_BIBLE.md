@@ -486,6 +486,7 @@ no recalled content, no `trusted` column, no secret.)*
 | `transcript_size` | INTEGER NOT NULL DEFAULT 0 | transcript size at the last poll (the "no new bytes since the previous poll" test for closing an open turn) |
 | `last_seen_at` | TEXT NOT NULL | ISO UTC |
 | `ended_at` | TEXT | ISO UTC; set when the process is gone (`markEnded`) |
+| `closed_at` | TEXT | ISO UTC; set when the operator closes the ended project's tab (`closeProject`, 2026-11-19). Added on open by `ensureColumn`. A session is closed only while `ended_at` is also set; the state API then leaves it and its cards out. Never set by `upsertSession`, which clears it when the session is seen alive again (a resumed session keeps its id); never sent to the page. To undo a close by hand: `UPDATE console_session SET closed_at = NULL WHERE machine = ? AND project_key = ?` |
 | `version` | INTEGER NOT NULL DEFAULT 1 | bumped on every update |
 | `created_at`, `updated_at` | TEXT NOT NULL | ISO UTC |
 

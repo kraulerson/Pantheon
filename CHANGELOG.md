@@ -19,6 +19,23 @@ for handoff clarity. Categories are ordered by impact severity.
 
 ## [Unreleased]
 
+<!-- Close an ended project's tab (Karl's rulings A2 and A1, 2026-11-19) -->
+
+### Data Model
+- 2026-11-19 **`console_session.closed_at`** (TEXT, nullable), added on open by the store's additive column
+  step; no rebuild and no data change. Rollback: the previous build selects named columns and ignores it.
+
+### Added
+- 2026-11-19 **✕ Close on an ended project's tab** (design
+  `docs/superpowers/specs/2026-11-19-console-close-ended-project-design.md`; audit
+  `docs/security-audits/console-close-ended-project-security-audit.md`). A project whose sessions have all
+  ended kept its tab for ever. It now has a **✕ Close** control beside the tab: closing takes the tab and
+  that project's cards out of the console in every browser. Nothing is deleted; the cards stay until the
+  90-day retention. `POST /console/api/machines/:name/close-project` with `{"projectKey": "…"}` (sign-in, no
+  passphrase; 409 while a session of the project is still running) and one `console.project_closed` log
+  line per close. A new session in a closed project brings its tab back with that session only; a closed
+  session that is continued comes back with its cards. There is no reopen control.
+
 <!-- BUGS #88: red dependency audit (Karl A1 2026-11-18, A2 2026-11-19) -->
 
 ### Security

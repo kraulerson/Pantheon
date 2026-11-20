@@ -102,7 +102,7 @@ const faceOf = (turn: Turn, over: Partial<CardFace> = {}): CardFace => ({
   ...over
 });
 
-const sessionRow = (over: Partial<Omit<ConsoleSessionRow, "version" | "createdAt" | "updatedAt">> = {}): Omit<ConsoleSessionRow, "version" | "createdAt" | "updatedAt"> => ({
+const sessionRow = (over: Partial<Omit<ConsoleSessionRow, "version" | "createdAt" | "updatedAt" | "closedAt">> = {}): Omit<ConsoleSessionRow, "version" | "createdAt" | "updatedAt" | "closedAt"> => ({
   machine: "Mac-Mini",
   tmuxSession: "pantheon-harness",
   paneId: "%1",
@@ -2228,5 +2228,113 @@ describe("GET /console/api/cards/:id/pane (Task 12)", () => {
     expect(refused.body).not.toContain("%1; id");
     expect(made.exec.calls).toEqual([]);
     expect(submitLines(made.log, "console.pane_view").warn).toEqual([expect.objectContaining({ reason: "plan_refused" })]);
+  });
+});
+
+describe("POST /console/api/machines/:name/close-project", () => {
+  const closeUrl = (machine: string): string => `/console/api/machines/${encodeURIComponent(machine)}/close-project`;
+  const SID_B = "6e09d39d-0000-4000-8000-000000000002";
+  const SID_LIVE = "6e09d39d-0000-4000-8000-000000000003";
+  const KEY = "scratch dir@Linux-Dev";
+  const closedIn = (made: Made, machine: string): (string | null)[] => made.store.listSessions(machine).map((r) => r.closedAt);
+
+  it("closes an ended project with sign-in alone: 200 { closed }, no-store, one info line; state then omits its sessions and cards, a needs-you card included; a second close answers 0", async () => {
+    const made = makeApp({ login: true });
+    ({ app } = made);
+    made.store.upsertSession(sessionRow({ machine: "Linux-Dev", sessionId: SID, projectKey: KEY, tmuxSession: "scratch", endedAt: T1 }), T0);
+    made.store.upsertSession(sessionRow({ machine: "Linux-Dev", sessionId: SID_B, projectKey: KEY, tmuxSession: "scratch", endedAt: T1 }), T0);
+    made.store.upsertSession(sessionRow({ sessionId: SID_LIVE }), T0);
+    made.store.upsertCard(faceOf(turns[0]!, { machine: "Linux-Dev", projectKey: KEY }), ASKS, 90, T0);
+    made.store.upsertCard(faceOf(turns[1]!, { machine: "Linux-Dev", projectKey: KEY, sessionId: SID_B }), NO_NEEDS, 90, T0);
+    const kept = made.store.upsertCard(faceOf(turns[0]!, { sessionId: SID_LIVE }), ASKS, 90, T0);
+
+    const res = await made.app.inject({ method: "POST", url: closeUrl("Linux-Dev"), headers: admin, payload: { projectKey: KEY } });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["cache-control"]).toBe("no-store");
+    expect(res.json()).toEqual({ closed: 2 });
+    expect(closedIn(made, "Linux-Dev")).toEqual([expect.stringMatching(ISO_RE), expect.stringMatching(ISO_RE)]);
+    expect(closedIn(made, "Mac-Mini")).toEqual([null]);
+    expect(made.exec.calls).toEqual([]);
+
+    const state = (await made.app.inject({ method: "GET", url: "/console/api/state", headers: admin })).json() as {
+      sessions: { sessionId: string; closedAt?: unknown }[];
+      cards: { id: string }[];
+    };
+    expect(state.sessions.map((s) => s.sessionId)).toEqual([SID_LIVE]);
+    expect(state.sessions[0]).not.toHaveProperty("closedAt");
+    expect(state.cards.map((c) => c.id)).toEqual([kept.id]);
+
+    // A cookie session works too, and closing again marks nothing.
+    const cookie = await login(made.app);
+    const again = await made.app.inject({ method: "POST", url: closeUrl("Linux-Dev"), headers: { cookie }, payload: { projectKey: KEY } });
+    expect(again.statusCode).toBe(200);
+    expect(again.json()).toEqual({ closed: 0 });
+    expect(submitLines(made.log, "console.project_closed").info).toEqual([
+      { event: "console.project_closed", machine: "Linux-Dev", projectKey: KEY, sessions: 2, correlationId: expect.stringMatching(UUID_RE) as string },
+      { event: "console.project_closed", machine: "Linux-Dev", projectKey: KEY, sessions: 0, correlationId: expect.stringMatching(UUID_RE) as string }
+    ]);
+  });
+
+  it("409 while a session of the project is live: nothing is marked, state still lists the project, no log line", async () => {
+    const made = makeApp({ login: true });
+    ({ app } = made);
+    made.store.upsertSession(sessionRow({ sessionId: SID, endedAt: T1 }), T0);
+    made.store.upsertSession(sessionRow({ sessionId: SID_LIVE }), T0);
+    const res = await made.app.inject({ method: "POST", url: closeUrl("Mac-Mini"), headers: admin, payload: { projectKey: "pantheon-harness" } });
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toEqual({ error: "a session in this project is still running" });
+    expect(res.headers["cache-control"]).toBe("no-store");
+    expect(closedIn(made, "Mac-Mini")).toEqual([null, null]);
+    const state = (await made.app.inject({ method: "GET", url: "/console/api/state", headers: admin })).json() as { sessions: { sessionId: string }[] };
+    expect(state.sessions.map((s) => s.sessionId).sort()).toEqual([SID, SID_LIVE].sort());
+    expect(submitLines(made.log, "console.project_closed").info).toEqual([]);
+  });
+
+  it("400 for a malformed machine name or project key, 404 for an unknown project, 401 without a credential, 403 cross-site and same-site, 415 for a form body, no HEAD; nothing is marked", async () => {
+    const made = makeApp({ login: true });
+    ({ app } = made);
+    made.store.upsertSession(sessionRow({ sessionId: SID, endedAt: T1 }), T0);
+    const cookie = await login(made.app);
+    const body = { projectKey: "pantheon-harness" };
+
+    const badName = await made.app.inject({ method: "POST", url: closeUrl("bad name!"), headers: admin, payload: body });
+    expect(badName.statusCode).toBe(400);
+    expect(badName.json()).toEqual({ error: "unexpected machine name" });
+    const refused = [{}, { projectKey: 7 }, { projectKey: "" }, { projectKey: "x".repeat(513) }, { projectKey: "a\nb" }, { projectKey: "a\u007fb" }, { projectKey: "a\u0000b" }, { projectKey: "a\tb" }, { projectKey: "a\ud800" }, { projectKey: "\udc00a" }, { projectKey: ["pantheon-harness"] }];
+    for (const payload of refused) {
+      const res = await made.app.inject({ method: "POST", url: closeUrl("Mac-Mini"), headers: admin, payload });
+      expect(res.statusCode, JSON.stringify(payload)).toBe(400);
+      expect(res.json()).toEqual({ error: "unexpected project key" });
+      expect(res.headers["cache-control"]).toBe("no-store");
+    }
+    // The poller can store `<folder>@<machine>` keys well past 200 characters; every key it can store must be closable.
+    for (const projectKey of ["x".repeat(512), `${"f".repeat(255)}@${"m".repeat(64)}`, "caf\u00e9 \ud83d\ude00@Linux-Dev"]) {
+      const res = await made.app.inject({ method: "POST", url: closeUrl("Mac-Mini"), headers: admin, payload: { projectKey } });
+      expect(res.statusCode, projectKey.slice(0, 20)).toBe(404);
+    }
+    for (const [machine, projectKey] of [["Mac-Mini", "nope"], ["Linux-Dev", "pantheon-harness"]] as const) {
+      const res = await made.app.inject({ method: "POST", url: closeUrl(machine), headers: admin, payload: { projectKey } });
+      expect(res.statusCode, `${machine} ${projectKey}`).toBe(404);
+      expect(res.json()).toEqual({ error: "no such project" });
+    }
+    const anon = await made.app.inject({ method: "POST", url: closeUrl("Mac-Mini"), payload: body });
+    expect(anon.statusCode).toBe(401);
+    expect(anon.json()).toEqual({ error: "unauthenticated" });
+    for (const site of ["cross-site", "same-site"]) {
+      const res = await made.app.inject({ method: "POST", url: closeUrl("Mac-Mini"), headers: { cookie, "sec-fetch-site": site }, payload: body });
+      expect(res.statusCode, site).toBe(403);
+      expect(res.json()).toEqual({ error: "cross_origin_rejected" });
+    }
+    const form = await made.app.inject({
+      method: "POST",
+      url: closeUrl("Mac-Mini"),
+      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+      payload: "projectKey=pantheon-harness"
+    });
+    expect(form.statusCode).toBe(415);
+    const head = await made.app.inject({ method: "HEAD", url: closeUrl("Mac-Mini"), headers: admin });
+    expect(head.statusCode).toBe(404);
+    expect(closedIn(made, "Mac-Mini")).toEqual([null]);
+    expect(submitLines(made.log, "console.project_closed").info).toEqual([]);
   });
 });

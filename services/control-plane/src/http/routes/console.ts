@@ -15,6 +15,8 @@
  *                                         200 { outcome, at, message } for every reported outcome;
  *                                         400 / 403 / 404 / 409 / 503 labelled      Cache-Control: no-store
  *   POST /console/api/cards/:id/dismiss → { dismissedAt } (no step-up: nothing is typed)   Cache-Control: no-store
+ *   POST /console/api/machines/:name/close-project → { projectKey } hides an ended project's tab and cards:
+ *                                         200 { closed }; 400 / 404 / 409 labelled (no step-up)  Cache-Control: no-store
  *   GET  /console/api/machines/:name/projects  → the projects root's folders (F2 Task 8; `console-sessions.ts`)
  *   POST /console/api/machines/:name/sessions  → New Session / New Project (step-up; `console-sessions.ts`)
  *
@@ -83,7 +85,7 @@ import type { SessionStore } from "../auth/session.js";
 import { cookieSessionId, requireElevated, sessionIdHash, type StepUpWindow } from "../auth/step-up.js";
 import { requestBase } from "../base-path.js";
 import { renderConsolePage } from "../console-page.js";
-import { registerConsoleSessionRoutes, type ConsoleRouteShared } from "./console-sessions.js";
+import { MACHINE_NAME_RE, registerConsoleSessionRoutes, type ConsoleRouteShared } from "./console-sessions.js";
 import type { HarnessRoutesDeps } from "./harness.js";
 
 /** A card id is the store's 32-hex digest; anything else is refused with a fixed message (never echoed). */
@@ -170,7 +172,7 @@ export interface ConsoleRoutesDeps {
 export type ConsoleWiring = Pick<ConsoleRoutesDeps, "store" | "poller" | "settings" | "exec" | "mask" | "stepUp" | "log">;
 
 /**
- * Ruling T11-15 (IV-2, F-7): the console's four POST routes (step-up, Submit, Dismiss, New Session) take JSON only —
+ * Ruling T11-15 (IV-2, F-7): the console's POST routes (step-up, Submit, Dismiss, New Session, close-project) take JSON only —
  * a form body, a text body or no body at all is 415 before the route's own rules (formbody stays for `/login`), so a
  * same-site form post can never reach them and the strict UTF-8 JSON parser is the only door to their bodies.
  */
@@ -180,6 +182,23 @@ async function jsonOnly(req: FastifyRequest, reply: FastifyReply): Promise<void>
     reply.header("Cache-Control", "no-store");
     await reply.code(415).send({ error: "unsupported_media_type" });
   }
+}
+
+// A project key is free text (a tmux session name, or `<folder>@<machine>`), so only its size and shape are bounded.
+// The bound is above anything the poller can store (a 255-byte folder name, `@`, a 64-character machine name), so
+// every tab the console shows can be closed.
+const PROJECT_KEY_MAX_CHARS = 512;
+// eslint-disable-next-line no-control-regex -- the control characters are the point of the check
+const PROJECT_KEY_CONTROL_RE = /[\u0000-\u001f\u007f]/;
+// A lone surrogate half is rewritten to U+FFFD when SQLite binds it, so it would match a different key than the one sent.
+const LONE_SURROGATE_RE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+
+/** The `projectKey` of a close-project body: a well-formed string of 1 to 512 characters on one line, else `undefined`. */
+function closeProjectKey(body: unknown): string | undefined {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return undefined;
+  const { projectKey } = body as { readonly projectKey?: unknown };
+  if (typeof projectKey !== "string" || projectKey.length === 0 || projectKey.length > PROJECT_KEY_MAX_CHARS) return undefined;
+  return PROJECT_KEY_CONTROL_RE.test(projectKey) || LONE_SURROGATE_RE.test(projectKey) ? undefined : projectKey;
 }
 
 /** `POST /console/api/step-up` takes exactly one of `passphrase: string` or `revoke: true` (ruling P-1). */
@@ -195,7 +214,7 @@ function stepUpRequest(body: unknown): StepUpRequest | undefined {
 }
 
 /** A session as the API shows it: the stored row minus `cwd`, `procStart` and `waitingFor` (final review M1). */
-export type ConsoleApiSession = Omit<ConsoleSessionRow, "cwd" | "procStart" | "waitingFor">;
+export type ConsoleApiSession = Omit<ConsoleSessionRow, "cwd" | "procStart" | "waitingFor" | "closedAt">;
 
 export type ConsoleApiSettings =
   | { readonly pollSeconds: number; readonly allTabAreas: readonly string[]; readonly projects: Readonly<Record<string, ProjectSettings>> }
@@ -445,12 +464,12 @@ export function registerConsoleRoutes(app: FastifyInstance, deps: ConsoleRoutesD
   // ---- State the page polls (guarded; JSON; no-store) ----
   app.get("/console/api/state", { exposeHeadRoute: false }, async (_req, reply): Promise<ConsoleStatePayload> => {
     reply.header("Cache-Control", "no-store");
-    const flagged = deps.store.listCards({ needsYouOnly: true }, STATE_CARD_LIMIT);
+    const flagged = deps.store.listCards({ needsYouOnly: true, openOnly: true }, STATE_CARD_LIMIT);
     const listed = new Set(flagged.map((c) => c.id));
-    const newest = deps.store.listCards({}, STATE_CARD_LIMIT).filter((c) => !listed.has(c.id));
+    const newest = deps.store.listCards({ openOnly: true }, STATE_CARD_LIMIT).filter((c) => !listed.has(c.id));
     return {
       machines: deps.poller.health(),
-      sessions: deps.store.listSessions().map(apiSession),
+      sessions: deps.store.listOpenSessions().map(apiSession),
       cards: [...flagged, ...newest],
       settings: settings.ok
         ? { pollSeconds: settings.settings.pollSeconds, allTabAreas: settings.settings.allTabAreas, projects: settings.settings.projects }
@@ -791,6 +810,38 @@ export function registerConsoleRoutes(app: FastifyInstance, deps: ConsoleRoutesD
     }
     logEvent("info", { event: "console.card_dismissed", cardId: card.id, correlationId: req.id }, "console card dismissed");
     return { dismissedAt: card.dismissedAt };
+  });
+
+  // ---- Close an ended project's tab (design 2026-11-19): marks the project's ended sessions closed, so the state
+  // route stops listing them and their cards. Nothing is deleted and nothing is typed, so no step-up, like Dismiss.
+  // Guarded; JSON only; no-store; no HEAD. One info line per close. ----
+  app.post<{ Params: { name: string } }>("/console/api/machines/:name/close-project", { exposeHeadRoute: false, preValidation: jsonOnly }, async (req, reply) => {
+    reply.header("Cache-Control", "no-store");
+    const machine = req.params.name;
+    if (!MACHINE_NAME_RE.test(machine)) {
+      reply.code(400);
+      return { error: "unexpected machine name" };
+    }
+    const projectKey = closeProjectKey(req.body);
+    if (projectKey === undefined) {
+      reply.code(400);
+      return { error: "unexpected project key" };
+    }
+    const result = deps.store.closeProject(machine, projectKey, new Date().toISOString());
+    if (result.outcome === "unknown") {
+      reply.code(404);
+      return { error: "no such project" };
+    }
+    if (result.outcome === "live") {
+      reply.code(409);
+      return { error: "a session in this project is still running" };
+    }
+    logEvent(
+      "info",
+      { event: "console.project_closed", machine, projectKey: deps.mask(projectKey), sessions: result.sessions, correlationId: req.id },
+      "console project closed"
+    );
+    return { closed: result.sessions };
   });
 
   // ---- New-session flow (F2 Task 8): the projects root's folders and New Session / New Project, behind the same

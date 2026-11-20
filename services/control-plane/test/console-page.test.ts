@@ -2833,6 +2833,8 @@ describe("console client: new session", () => {
     expect(q('[data-view="claude"]').getAttribute("aria-pressed")).toBe("true");
     expect(FakeWS.all.map((w) => w.url.replace(/^wss?:\/\/[^/]+/, ""))).toEqual(["/terminal/mac-mini?tmux=alpha"]);
     expect(document.querySelector("[data-session-dialog]")).toBeNull();
+    // A tab the poll has not seen yet has no session to end, so it has no Close control.
+    expect(document.querySelector('[data-close-project][data-project="alpha"]')).toBeNull();
   });
 
   it("a failed creation shows the server's message in the dialog and inserts nothing", async () => {
@@ -3090,5 +3092,240 @@ describe("console client: fix round 1", () => {
     } finally {
       delete (window as unknown as { matchMedia?: unknown }).matchMedia;
     }
+  });
+});
+
+describe("closing an ended project", () => {
+  const ENDED = "2026-10-17T17:00:00.000Z";
+  const KEY = "scratch dir@linux-dev";
+  const CLOSE = "/console/api/machines/linux-dev/close-project";
+  const closeBtn = (machine: string, key: string): HTMLButtonElement | null =>
+    (qa("[data-close-project]") as HTMLButtonElement[]).find((b) => b.getAttribute("data-machine") === machine && b.getAttribute("data-project") === key) ?? null;
+  const tabFor = (machine: string, key: string): HTMLElement | null =>
+    qa("[data-project-tab]").find((b) => b.getAttribute("data-machine") === machine && b.getAttribute("data-project-tab") === key) ?? null;
+  const closeStatus = (): string[] => qa("[data-close-status]").map((n) => n.textContent ?? "");
+  const closePosts = (): Call[] => calls().filter((c) => c.path.endsWith("/close-project"));
+
+  /** fleet plus: an ended, not-reachable project on linux-dev with a card, an ended project on mac-mini, and an old ended session beside solo's live one. */
+  function withEnded(): StatePayload {
+    const f = fleet();
+    return {
+      ...f,
+      sessions: [
+        ...f.sessions,
+        session({ machine: "linux-dev", tmuxSession: "scratch", projectKey: KEY, reachable: false, endedAt: ENDED, sessionId: "s-ended-1" }),
+        session({ machine: "mac-mini", tmuxSession: "done", endedAt: ENDED }),
+        session({ machine: "mac-mini", tmuxSession: "solo", endedAt: ENDED, sessionId: "s-solo-old" })
+      ],
+      cards: [...f.cards, card({ id: HEX_D, machine: "linux-dev", projectKey: KEY, sessionId: "s-ended-1", title: "scratch reply" })]
+    };
+  }
+  /** The same state with one card title changed, so the page really redraws (an identical payload is deduplicated). */
+  const redrawn = (s: StatePayload, mark: string): StatePayload => ({ ...s, cards: s.cards.map((c) => (c.id === HEX_C ? { ...c, title: `Backups verified ${mark}` } : c)) });
+  const withoutScratch = (): StatePayload => {
+    const s = withEnded();
+    return { ...s, sessions: s.sessions.filter((x) => x.projectKey !== KEY), cards: s.cards.filter((c) => c.projectKey !== KEY) };
+  };
+
+  it("is offered only when every session of the project has ended, in either tab group, as its own labelled button beside the tab", async () => {
+    bootConsole(withEnded());
+    await api().refresh();
+    expect(qa("[data-close-project]").map((b) => `${b.getAttribute("data-machine")}/${b.getAttribute("data-project")}`).sort()).toEqual([`linux-dev/${KEY}`, "mac-mini/done"]);
+    const b = closeBtn("linux-dev", KEY)!;
+    expect(b.tagName).toBe("BUTTON");
+    expect(b.getAttribute("type")).toBe("button");
+    expect(b.textContent).toBe("✕ Close");
+    expect(b.getAttribute("aria-label")).toBe(`Close ${KEY} on linux-dev`);
+    expect(closeBtn("mac-mini", "done")!.getAttribute("aria-label")).toBe("Close done on mac-mini");
+    expect(b.closest("[data-project-tab]")).toBeNull();
+    expect(b.previousElementSibling).toBe(tabFor("linux-dev", KEY));
+    expect(b.closest("[data-unreachable-group]")).not.toBeNull();
+    expect(document.querySelector("[data-project-tab] [data-close-project]")).toBeNull();
+  });
+
+  it("posts the project key in a JSON body; on 200 the tab and its cards go at once, the selection falls back to All projects, and a stale poll does not bring them back", async () => {
+    let serving = withEnded();
+    bootConsole(() => serving, (c) => (c.path === CLOSE ? { status: 200, body: { closed: 1 } } : undefined));
+    await api().refresh();
+    tabFor("linux-dev", KEY)!.click();
+    expect(tabFor("linux-dev", KEY)!.getAttribute("aria-pressed")).toBe("true");
+    closeBtn("linux-dev", KEY)!.click();
+    await vi.waitFor(() => expect(tabFor("linux-dev", KEY)).toBeNull());
+    expect(closePosts()).toEqual([{ method: "POST", path: CLOSE, body: { projectKey: KEY } }]);
+    const sent = (fetchFn.mock.calls as [string, { headers?: Record<string, string> }][]).find(([u]) => String(u) === CLOSE)![1];
+    expect(sent.headers?.["content-type"]).toBe("application/json");
+    expect(q('[data-project-tab="*"]').getAttribute("aria-pressed")).toBe("true");
+    expect(document.querySelector(`[data-card="${HEX_D}"]`)).toBeNull();
+    expect(document.querySelector(`[data-card="${HEX_C}"]`)).not.toBeNull();
+    expect(closeStatus()).toEqual([]);
+
+    serving = redrawn(withEnded(), "1");
+    await api().refresh(); // a poll that was answered before the close still carries the ended session
+    expect(document.querySelector(`[data-card="${HEX_C}"]`)!.textContent).toContain("Backups verified 1");
+    expect(tabFor("linux-dev", KEY)).toBeNull();
+    expect(document.querySelector(`[data-card="${HEX_D}"]`)).toBeNull();
+
+    // A live session is never hidden, even while the page still hides the project's ended one.
+    const stale = withEnded();
+    serving = { ...stale, sessions: [...stale.sessions, session({ machine: "linux-dev", tmuxSession: "scratch", projectKey: KEY, reachable: false, sessionId: "s-new" })] };
+    await api().refresh();
+    expect(tabFor("linux-dev", KEY)).not.toBeNull();
+    expect(tabFor("linux-dev", KEY)!.getAttribute("data-state")).toBe("idle");
+    expect(closeBtn("linux-dev", KEY)).toBeNull();
+    expect(document.querySelector(`[data-card="${HEX_D}"]`)).toBeNull();
+  });
+
+  it("stops hiding the project once a poll no longer carries its closed sessions: a session that ends there later shows its tab and control", async () => {
+    let serving = withEnded();
+    bootConsole(() => serving, (c) => (c.path === CLOSE ? { status: 200, body: { closed: 1 } } : undefined));
+    await api().refresh();
+    closeBtn("linux-dev", KEY)!.click();
+    await vi.waitFor(() => expect(tabFor("linux-dev", KEY)).toBeNull());
+    serving = withoutScratch();
+    await api().refresh();
+    const later = withoutScratch();
+    serving = { ...later, sessions: [...later.sessions, session({ machine: "linux-dev", tmuxSession: "scratch", projectKey: KEY, reachable: false, endedAt: ENDED, sessionId: "s-later" })] };
+    await api().refresh();
+    expect(tabFor("linux-dev", KEY)).not.toBeNull();
+    expect(closeBtn("linux-dev", KEY)).not.toBeNull();
+  });
+
+  it("puts the machine name in the request path encoded", async () => {
+    const f = fleet();
+    bootConsole({ ...f, sessions: [...f.sessions, session({ machine: "odd/name x", tmuxSession: "gone", endedAt: ENDED })] }, (c) =>
+      c.path.endsWith("/close-project") ? { status: 200, body: { closed: 1 } } : undefined
+    );
+    await api().refresh();
+    closeBtn("odd/name x", "gone")!.click();
+    await vi.waitFor(() => expect(closePosts()).toHaveLength(1));
+    expect(closePosts()[0]).toEqual({ method: "POST", path: "/console/api/machines/odd%2Fname%20x/close-project", body: { projectKey: "gone" } });
+  });
+
+  it("a 409 leaves the tab and says why in words; a second press is possible", async () => {
+    let n = 0;
+    let serving = withEnded();
+    bootConsole(() => serving, (c) => {
+      if (c.path !== CLOSE) return undefined;
+      n += 1;
+      return n === 1 ? { status: 409, body: { error: "a session in this project is still running" } } : { status: 200, body: { closed: 1 } };
+    });
+    await api().refresh();
+    closeBtn("linux-dev", KEY)!.click();
+    await vi.waitFor(() => expect(closeStatus()).toEqual(["✕ not closed — a session in this project is still running"]));
+    expect(tabFor("linux-dev", KEY)).not.toBeNull();
+    const status = q("[data-close-status]");
+    expect(status.getAttribute("role")).toBe("alert");
+    expect(status.getAttribute("data-project")).toBe(KEY);
+    serving = redrawn(withEnded(), "2");
+    await api().refresh(); // the reason survives a redraw
+    expect(document.querySelector(`[data-card="${HEX_C}"]`)!.textContent).toContain("Backups verified 2");
+    expect(closeStatus()).toHaveLength(1);
+    expect(closeBtn("linux-dev", KEY)!.hasAttribute("aria-disabled")).toBe(false);
+    closeBtn("linux-dev", KEY)!.click();
+    await vi.waitFor(() => expect(tabFor("linux-dev", KEY)).toBeNull());
+    expect(closeStatus()).toEqual([]);
+  });
+
+  it("a refusal's reason goes once the project is live again, and does not come back when it next ends (review finding 3)", async () => {
+    let serving = withEnded();
+    bootConsole(() => serving, (c) => (c.path === CLOSE ? { status: 409, body: { error: "a session in this project is still running" } } : undefined));
+    await api().refresh();
+    closeBtn("linux-dev", KEY)!.click();
+    await vi.waitFor(() => expect(closeStatus()).toHaveLength(1));
+    const live = withEnded();
+    serving = { ...live, sessions: [...live.sessions, session({ machine: "linux-dev", tmuxSession: "scratch", projectKey: KEY, reachable: false, sessionId: "s-alive" })] };
+    await api().refresh();
+    expect(closeBtn("linux-dev", KEY)).toBeNull();
+    expect(closeStatus()).toEqual([]);
+    serving = redrawn(withEnded(), "3");
+    await api().refresh();
+    expect(closeBtn("linux-dev", KEY)).not.toBeNull();
+    expect(closeStatus()).toEqual([]);
+  });
+
+  it("no answer at all leaves the tab and says so; an answer without an error text names the status", async () => {
+    let n = 0;
+    bootConsole(withEnded(), (c) => {
+      if (c.path !== CLOSE) return undefined;
+      n += 1;
+      if (n === 1) throw new Error("network down");
+      return { status: 500, body: null };
+    });
+    await api().refresh();
+    closeBtn("linux-dev", KEY)!.click();
+    await vi.waitFor(() => expect(closeStatus()).toEqual(["✕ not closed — no answer from the harness"]));
+    closeBtn("linux-dev", KEY)!.click();
+    await vi.waitFor(() => expect(closeStatus()).toEqual(["✕ not closed — HTTP 500"]));
+    expect(tabFor("linux-dev", KEY)).not.toBeNull();
+  });
+
+  it("is marked aria-disabled while its request is in flight and keeps the keyboard, so a double press sends one request; then the keyboard moves to All projects", async () => {
+    let answer: (r: FetchReply) => void = () => undefined;
+    const pending = new Promise<FetchReply>((res) => (answer = res));
+    let serving = withEnded();
+    bootConsole(() => serving, (c) => (c.path === CLOSE ? (pending as unknown as FetchReply) : undefined));
+    await api().refresh();
+    closeBtn("linux-dev", KEY)!.focus();
+    closeBtn("linux-dev", KEY)!.click();
+    await vi.waitFor(() => expect(closeBtn("linux-dev", KEY)!.getAttribute("aria-disabled")).toBe("true"));
+    // A disabled button cannot hold focus in a browser, so the real attribute is never set.
+    expect(closeBtn("linux-dev", KEY)!.disabled).toBe(false);
+    expect(document.activeElement).toBe(closeBtn("linux-dev", KEY));
+    expect(closeBtn("linux-dev", KEY)!.textContent).toBe("✕ Closing…");
+    expect(closeBtn("linux-dev", KEY)!.getAttribute("aria-label")).toBe(`Closing ${KEY} on linux-dev`);
+    closeBtn("linux-dev", KEY)!.click();
+    serving = redrawn(withEnded(), "4");
+    await api().refresh(); // a redraw keeps the mark and the keyboard
+    expect(document.querySelector(`[data-card="${HEX_C}"]`)!.textContent).toContain("Backups verified 4");
+    expect(closeBtn("linux-dev", KEY)!.getAttribute("aria-disabled")).toBe("true");
+    expect(document.activeElement).toBe(closeBtn("linux-dev", KEY));
+    answer({ status: 200, body: { closed: 1 } });
+    await vi.waitFor(() => expect(tabFor("linux-dev", KEY)).toBeNull());
+    expect(closePosts()).toHaveLength(1);
+    expect(document.activeElement).toBe(q('[data-project-tab="*"]'));
+  });
+
+  it("a refused close leaves the keyboard on the control, and a close answered while the keyboard is elsewhere does not pull it away", async () => {
+    let n = 0;
+    bootConsole(withEnded(), (c) => {
+      if (c.path !== CLOSE) return undefined;
+      n += 1;
+      return n === 1 ? { status: 409, body: { error: "a session in this project is still running" } } : { status: 200, body: { closed: 1 } };
+    });
+    await api().refresh();
+    closeBtn("linux-dev", KEY)!.focus();
+    closeBtn("linux-dev", KEY)!.click();
+    await vi.waitFor(() => expect(closeStatus()).toHaveLength(1));
+    expect(document.activeElement).toBe(closeBtn("linux-dev", KEY));
+    expect(closeBtn("linux-dev", KEY)!.hasAttribute("aria-disabled")).toBe(false);
+    closeBtn("linux-dev", KEY)!.click();
+    q('[data-project-tab="lancache"]').focus();
+    await vi.waitFor(() => expect(tabFor("linux-dev", KEY)).toBeNull());
+    expect(document.activeElement).toBe(q('[data-project-tab="lancache"]'));
+  });
+
+  it("a selected project that the state no longer carries (closed in another browser) gives way to All projects", async () => {
+    let serving = withEnded();
+    bootConsole(() => serving);
+    await api().refresh();
+    tabFor("linux-dev", KEY)!.click();
+    serving = withoutScratch();
+    await api().refresh();
+    expect(tabFor("linux-dev", KEY)).toBeNull();
+    expect(q('[data-project-tab="*"]').getAttribute("aria-pressed")).toBe("true");
+    expect(document.querySelector(`[data-card="${HEX_C}"]`)).not.toBeNull();
+  });
+
+  it("keeps the keyboard on the control across a redraw", async () => {
+    let serving = withEnded();
+    bootConsole(() => serving);
+    await api().refresh();
+    const before = closeBtn("mac-mini", "done")!;
+    before.focus();
+    serving = redrawn(withEnded(), "5");
+    await api().refresh();
+    expect(closeBtn("mac-mini", "done")).not.toBe(before); // the row was rebuilt: this is a new node
+    expect(document.activeElement).toBe(closeBtn("mac-mini", "done"));
+    expect(closeBtn("mac-mini", "done")!.getAttribute("data-focus-key")).toBe("closeproject:mac-mini|done");
   });
 });

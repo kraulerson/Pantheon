@@ -41,6 +41,12 @@ export interface ConsoleSessionRow {
   readonly transcriptSize: number;
   readonly lastSeenAt: string;
   readonly endedAt: string | null;
+  /**
+   * When the operator closed this ended session's project tab ({@link SqliteConsoleStore.closeProject}). The session
+   * counts as closed only while `endedAt` is also set. `upsertSession` never sets it, and clears it when the session
+   * is seen alive again: a resumed session keeps its id, and must not vanish by itself when it next ends.
+   */
+  readonly closedAt: string | null;
   readonly version: number;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -79,6 +85,7 @@ interface SessionDbRow {
   transcript_size: unknown;
   last_seen_at: string;
   ended_at: string | null;
+  closed_at: string | null;
   version: unknown;
   created_at: string;
   updated_at: string;
@@ -286,7 +293,9 @@ const CARD_F2_COLUMNS: readonly { readonly column: string; readonly ddl: string 
 ];
 
 const SESSION_COLUMNS =
-  "machine, session_id, tmux_session, pane_id, claude_pid, proc_start, cwd, project_key, reachable, status, waiting_for, state, state_reason, transcript_offset, transcript_size, last_seen_at, ended_at, version, created_at, updated_at";
+  "machine, session_id, tmux_session, pane_id, claude_pid, proc_start, cwd, project_key, reachable, status, waiting_for, state, state_reason, transcript_offset, transcript_size, last_seen_at, ended_at, version, created_at, updated_at, closed_at";
+/** A session whose project tab was closed and which has not been seen alive since: ended and closed, both. */
+const SESSION_IS_CLOSED = "(ended_at IS NOT NULL AND closed_at IS NOT NULL)";
 const CARD_COLUMNS =
   "id, session_id, turn_uuid, machine, project_key, kind, title, tldr_masked, byte_start, byte_end, tool_call_count, thinking_chars, needs_you, needs_kind, dismissed_at, purge_after, version, created_at, updated_at, asks_you, options_json, answered_at";
 const SUBMIT_LOG_COLUMNS =
@@ -351,6 +360,8 @@ export class SqliteConsoleStore {
     this.db.pragma("journal_mode = WAL");
     this.db.exec(SCHEMA);
     for (const c of CARD_F2_COLUMNS) this.ensureColumn("console_card", c.column, c.ddl);
+    // The close-ended-project mark (design 2026-11-19): additive, like the F2 card columns.
+    this.ensureColumn("console_session", "closed_at", "TEXT");
   }
 
   /**
@@ -382,6 +393,7 @@ export class SqliteConsoleStore {
       transcriptSize: count(r.transcript_size),
       lastSeenAt: r.last_seen_at,
       endedAt: r.ended_at,
+      closedAt: r.closed_at,
       version: count(r.version),
       createdAt: r.created_at,
       updatedAt: r.updated_at
@@ -450,7 +462,7 @@ export class SqliteConsoleStore {
    * `ended_at` is overwritten with the supplied value, so an upsert after {@link markEnded} with
    * `endedAt: null` resurrects the session: the poller must upsert only sessions it currently sees alive.
    */
-  upsertSession(row: Omit<ConsoleSessionRow, "version" | "createdAt" | "updatedAt">, now: string): void {
+  upsertSession(row: Omit<ConsoleSessionRow, "version" | "createdAt" | "updatedAt" | "closedAt">, now: string): void {
     this.db
       .prepare(
         `INSERT INTO console_session (machine, session_id, tmux_session, pane_id, claude_pid, proc_start, cwd, project_key, reachable, status, waiting_for, state, state_reason, transcript_offset, transcript_size, last_seen_at, ended_at, version, created_at, updated_at)
@@ -461,7 +473,9 @@ export class SqliteConsoleStore {
            reachable = excluded.reachable, status = excluded.status, waiting_for = excluded.waiting_for, state = excluded.state,
            state_reason = excluded.state_reason, transcript_offset = excluded.transcript_offset,
            transcript_size = excluded.transcript_size, last_seen_at = excluded.last_seen_at,
-           ended_at = excluded.ended_at, version = console_session.version + 1, updated_at = excluded.updated_at`
+           ended_at = excluded.ended_at,
+           closed_at = CASE WHEN excluded.ended_at IS NULL THEN NULL ELSE console_session.closed_at END,
+           version = console_session.version + 1, updated_at = excluded.updated_at`
       )
       .run({
         machine: row.machine,
@@ -492,6 +506,41 @@ export class SqliteConsoleStore {
       .prepare(`SELECT ${SESSION_COLUMNS} FROM console_session ${where} ORDER BY last_seen_at DESC, rowid DESC LIMIT ?`)
       .all(...args, MAX_SESSIONS) as SessionDbRow[];
     return rows.map((r) => SqliteConsoleStore.toSession(r));
+  }
+
+  /** As {@link listSessions} for every machine, without the sessions whose project tab was closed. */
+  listOpenSessions(): ConsoleSessionRow[] {
+    const rows = this.db
+      .prepare(`SELECT ${SESSION_COLUMNS} FROM console_session WHERE NOT ${SESSION_IS_CLOSED} ORDER BY last_seen_at DESC, rowid DESC LIMIT ?`)
+      .all(MAX_SESSIONS) as SessionDbRow[];
+    return rows.map((r) => SqliteConsoleStore.toSession(r));
+  }
+
+  /**
+   * Closes a project's tab: marks every ended, unclosed session of `machine` and `projectKey` with `closed_at`.
+   * Nothing is deleted. `live` (nothing marked) while any session there has not ended; `unknown` when there is no
+   * session at all; `sessions` is how many rows this call marked, 0 when the project was closed already. One
+   * transaction, so a session cannot come alive between the check and the mark.
+   */
+  closeProject(
+    machine: string,
+    projectKey: string,
+    now: string
+  ): { readonly outcome: "closed"; readonly sessions: number } | { readonly outcome: "live" } | { readonly outcome: "unknown" } {
+    return this.db.transaction(() => {
+      const counts = this.db
+        .prepare(`SELECT COUNT(*) AS total, COALESCE(SUM(ended_at IS NULL), 0) AS live FROM console_session WHERE machine = ? AND project_key = ?`)
+        .get(machine, projectKey) as { total: unknown; live: unknown };
+      if (count(counts.total) === 0) return { outcome: "unknown" } as const;
+      if (count(counts.live) > 0) return { outcome: "live" } as const;
+      const done = this.db
+        .prepare(
+          `UPDATE console_session SET closed_at = ?, version = version + 1, updated_at = ?
+           WHERE machine = ? AND project_key = ? AND ended_at IS NOT NULL AND closed_at IS NULL`
+        )
+        .run(now, now, machine, projectKey);
+      return { outcome: "closed", sessions: done.changes } as const;
+    })();
   }
 
   /** Sets `ended_at`; the session's cards stay until they expire. A no-op for an unknown session. */
@@ -554,9 +603,13 @@ export class SqliteConsoleStore {
     return row;
   }
 
-  /** Newest first (by the turn's `created_at`). A non-positive or non-integer `limit` throws `RangeError`. */
+  /**
+   * Newest first (by the turn's `created_at`). A non-positive or non-integer `limit` throws `RangeError`.
+   * `openOnly` leaves out the cards of sessions whose project tab was closed, in the query, so the limit is not
+   * spent on them.
+   */
   listCards(
-    filter: { readonly machine?: string; readonly projectKey?: string; readonly needsYouOnly?: boolean },
+    filter: { readonly machine?: string; readonly projectKey?: string; readonly needsYouOnly?: boolean; readonly openOnly?: boolean },
     limit = DEFAULT_CARD_LIMIT
   ): ConsoleCardRow[] {
     const clauses: string[] = [];
@@ -570,6 +623,11 @@ export class SqliteConsoleStore {
       args.push(filter.projectKey);
     }
     if (filter.needsYouOnly === true) clauses.push("needs_you = 1");
+    if (filter.openOnly === true) {
+      clauses.push(
+        `NOT EXISTS (SELECT 1 FROM console_session s WHERE s.machine = console_card.machine AND s.session_id = console_card.session_id AND ${SESSION_IS_CLOSED})`
+      );
+    }
     const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
     if (!Number.isInteger(limit) || limit <= 0) throw new RangeError(`listCards limit must be a positive integer, got ${String(limit)}`);
     const rows = this.db

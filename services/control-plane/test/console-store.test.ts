@@ -28,7 +28,7 @@ const face = (over: Partial<CardFace> = {}): CardFace => ({
   ...over
 });
 
-const session = (over: Partial<Omit<ConsoleSessionRow, "version" | "createdAt" | "updatedAt">> = {}): Omit<ConsoleSessionRow, "version" | "createdAt" | "updatedAt"> => ({
+const session = (over: Partial<Omit<ConsoleSessionRow, "version" | "createdAt" | "updatedAt" | "closedAt">> = {}): Omit<ConsoleSessionRow, "version" | "createdAt" | "updatedAt" | "closedAt"> => ({
   machine: "Mac-Mini",
   tmuxSession: "work",
   paneId: "%1",
@@ -193,7 +193,7 @@ describe("SqliteConsoleStore", () => {
     const textAllowed = new Set([
       "id", "session_id", "turn_uuid", "machine", "project_key", "kind", "title", "tldr_masked", "needs_kind",
       "dismissed_at", "purge_after", "created_at", "updated_at", "options_json", "answered_at",
-      "tmux_session", "pane_id", "proc_start", "cwd", "status", "waiting_for", "state", "state_reason", "last_seen_at", "ended_at",
+      "tmux_session", "pane_id", "proc_start", "cwd", "status", "waiting_for", "state", "state_reason", "last_seen_at", "ended_at", "closed_at",
       // console_submit_log: labels plus Karl's own masked words (text_masked, ≤ 4 KiB) — nothing a session wrote.
       "at", "idempotency_key", "row_kind", "outcome", "reason", "status_at_send", "card_id", "text_masked", "pane_tail_hash"
     ]);
@@ -251,6 +251,7 @@ describe("SqliteConsoleStore", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toEqual({
       ...session({ transcriptOffset: 50, transcriptSize: 120, lastSeenAt: T1 }),
+      closedAt: null,
       version: 2,
       createdAt: T0,
       updatedAt: T1
@@ -719,5 +720,160 @@ describe("SqliteConsoleStore F2 submit log", () => {
     for (const outcome of ["created_session", "created_project", "refused_name", "refused_root"] as const) {
       expect(s.appendSubmitLog({ at: T1, idempotencyKey: randomUUID(), rowKind: "result", outcome, machine: "Mac-Mini", reason: "x" }).outcome).toBe(outcome);
     }
+  });
+});
+
+describe("closing an ended project", () => {
+  const ended = (sessionId: string, over: Partial<Omit<ConsoleSessionRow, "version" | "createdAt" | "updatedAt" | "closedAt">> = {}) =>
+    session({ sessionId, endedAt: T1, ...over });
+  const closedAtOf = (s: SqliteConsoleStore, sessionId: string, machine = "Mac-Mini"): string | null | undefined =>
+    s.listSessions(machine).find((r) => r.sessionId === sessionId)?.closedAt;
+
+  it("adds closed_at to a database created without it, and a second open is a no-op", () => {
+    const dir = mkdtempSync(join(tmpdir(), "console-store-closed-"));
+    try {
+      const file = join(dir, "old.db");
+      const raw = new Database(file);
+      raw.exec(F1_SCHEMA);
+      expect((raw.pragma("table_info(console_session)") as { name: string }[]).map((c) => c.name)).not.toContain("closed_at");
+      raw.close();
+
+      const first = new SqliteConsoleStore(file);
+      const col = ((first as unknown as { db: Database.Database }).db.pragma("table_info(console_session)") as { name: string; type: string; notnull: number; dflt_value: string | null }[]).find(
+        (c) => c.name === "closed_at"
+      );
+      expect(col).toMatchObject({ type: "TEXT", notnull: 0, dflt_value: null });
+      first.close();
+      expect(() => new SqliteConsoleStore(file).close()).not.toThrow();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("marks only the ended sessions of that machine and project", () => {
+    const s = new SqliteConsoleStore();
+    s.upsertSession(ended("a"), T0);
+    s.upsertSession(ended("b"), T0);
+    s.upsertSession(ended("c", { projectKey: "other" }), T0);
+    s.upsertSession(ended("d", { machine: "Linux-Dev" }), T0);
+    expect(s.closeProject("Mac-Mini", "proj", T2)).toEqual({ outcome: "closed", sessions: 2 });
+    expect(closedAtOf(s, "a")).toBe(T2);
+    expect(closedAtOf(s, "b")).toBe(T2);
+    expect(closedAtOf(s, "c")).toBeNull();
+    expect(closedAtOf(s, "d", "Linux-Dev")).toBeNull();
+  });
+
+  it("refuses while a session of the project is live, and marks nothing", () => {
+    const s = new SqliteConsoleStore();
+    s.upsertSession(ended("a"), T0);
+    s.upsertSession(session({ sessionId: "b" }), T0);
+    expect(s.closeProject("Mac-Mini", "proj", T2)).toEqual({ outcome: "live" });
+    expect(closedAtOf(s, "a")).toBeNull();
+  });
+
+  it("answers unknown for a machine and project with no session", () => {
+    const s = new SqliteConsoleStore();
+    s.upsertSession(ended("a"), T0);
+    expect(s.closeProject("Mac-Mini", "nope", T2)).toEqual({ outcome: "unknown" });
+    expect(s.closeProject("Linux-Dev", "proj", T2)).toEqual({ outcome: "unknown" });
+  });
+
+  it("a second close marks nothing and keeps the first time", () => {
+    const s = new SqliteConsoleStore();
+    s.upsertSession(ended("a"), T0);
+    expect(s.closeProject("Mac-Mini", "proj", T1)).toEqual({ outcome: "closed", sessions: 1 });
+    expect(s.closeProject("Mac-Mini", "proj", T2)).toEqual({ outcome: "closed", sessions: 0 });
+    expect(closedAtOf(s, "a")).toBe(T1);
+  });
+
+  it("listOpenSessions leaves out closed sessions and keeps what was not closed", () => {
+    const s = new SqliteConsoleStore();
+    s.upsertSession(ended("a"), T0);
+    s.upsertSession(ended("c", { projectKey: "other" }), T0);
+    s.upsertSession(session({ sessionId: "live", projectKey: "busy" }), T0);
+    s.closeProject("Mac-Mini", "proj", T2);
+    expect(s.listOpenSessions().map((r) => r.sessionId).sort()).toEqual(["c", "live"]);
+    expect(s.listSessions().map((r) => r.sessionId).sort()).toEqual(["a", "c", "live"]);
+  });
+
+  it("a closed session seen alive again is listed again with its cards, and the mark is cleared", () => {
+    const s = new SqliteConsoleStore();
+    s.upsertSession(ended("a"), T0);
+    s.upsertCard(face({ sessionId: "a", projectKey: "proj" }), ASKS, 90, T0);
+    s.closeProject("Mac-Mini", "proj", T1);
+    expect(s.listCards({ openOnly: true })).toEqual([]);
+    s.upsertSession(session({ sessionId: "a" }), T2);
+    expect(s.listOpenSessions().map((r) => r.sessionId)).toEqual(["a"]);
+    expect(s.listCards({ openOnly: true, needsYouOnly: true })).toHaveLength(1);
+    expect(closedAtOf(s, "a")).toBeNull();
+  });
+
+  it("a closed session that is resumed and ends again stays on show until it is closed again (review finding 1)", () => {
+    const s = new SqliteConsoleStore();
+    s.upsertSession(ended("a"), T0);
+    s.upsertCard(face({ sessionId: "a", projectKey: "proj" }), NO_NEEDS, 90, T0);
+    s.closeProject("Mac-Mini", "proj", T1);
+    s.upsertSession(session({ sessionId: "a" }), T2); // claude --resume keeps the session id
+    s.markEnded("Mac-Mini", "a", T2);
+    expect(s.listOpenSessions().map((r) => r.sessionId)).toEqual(["a"]);
+    expect(s.listCards({ openOnly: true })).toHaveLength(1);
+    expect(s.closeProject("Mac-Mini", "proj", T2)).toEqual({ outcome: "closed", sessions: 1 });
+    expect(s.listOpenSessions()).toEqual([]);
+  });
+
+  it("a resumed session that moves to another project does not carry the mark there", () => {
+    const s = new SqliteConsoleStore();
+    s.upsertSession(ended("a"), T0);
+    s.closeProject("Mac-Mini", "proj", T1);
+    s.upsertSession(session({ sessionId: "a", projectKey: "other" }), T2);
+    s.markEnded("Mac-Mini", "a", T2);
+    expect(s.listOpenSessions().map((r) => `${r.projectKey}:${r.sessionId}`)).toEqual(["other:a"]);
+  });
+
+  it("an upsert of a session that is already ended keeps the mark", () => {
+    const s = new SqliteConsoleStore();
+    s.upsertSession(ended("a"), T0);
+    s.closeProject("Mac-Mini", "proj", T1);
+    s.upsertSession(ended("a"), T2);
+    expect(closedAtOf(s, "a")).toBe(T1);
+    expect(s.listOpenSessions()).toEqual([]);
+  });
+
+  it("listCards with openOnly hides by machine and session together: the same session id on another machine keeps its cards", () => {
+    const s = new SqliteConsoleStore();
+    s.upsertSession(ended("same"), T0);
+    s.upsertSession(session({ sessionId: "same", machine: "Linux-Dev" }), T0);
+    s.upsertCard(face({ sessionId: "same", projectKey: "proj", machine: "Linux-Dev", turnUuid: "other-machine" }), NO_NEEDS, 90, T0);
+    s.closeProject("Mac-Mini", "proj", T1);
+    expect(s.listCards({ openOnly: true }).map((c) => c.machine)).toEqual(["Linux-Dev"]);
+  });
+
+  it("a new session in a closed project is listed, and the closed one stays out", () => {
+    const s = new SqliteConsoleStore();
+    s.upsertSession(ended("a"), T0);
+    s.closeProject("Mac-Mini", "proj", T1);
+    s.upsertSession(session({ sessionId: "new" }), T2);
+    expect(s.listOpenSessions().map((r) => r.sessionId)).toEqual(["new"]);
+  });
+
+  it("listCards with openOnly leaves out a closed session's cards, a needs-you card included, without spending the limit on them", () => {
+    const s = new SqliteConsoleStore();
+    s.upsertSession(ended("gone"), T0);
+    s.upsertSession(session({ sessionId: "live", projectKey: "busy" }), T0);
+    for (const n of [1, 2]) s.upsertCard(face({ sessionId: "live", projectKey: "busy", turnUuid: `l${n}`, createdAt: T0 }), NO_NEEDS, 90, T0);
+    s.upsertCard(face({ sessionId: "gone", projectKey: "proj", turnUuid: "g1", createdAt: T2 }), NO_NEEDS, 90, T0);
+    s.upsertCard(face({ sessionId: "gone", projectKey: "proj", turnUuid: "g2", createdAt: T2 }), NO_NEEDS, 90, T0);
+    s.upsertCard(face({ sessionId: "gone", projectKey: "proj", turnUuid: "g3", createdAt: T2 }), ASKS, 90, T0);
+    s.closeProject("Mac-Mini", "proj", T2);
+    expect(s.listCards({ openOnly: true }, 2).map((c) => c.sessionId)).toEqual(["live", "live"]);
+    expect(s.listCards({ openOnly: true, needsYouOnly: true })).toEqual([]);
+    expect(s.listCards({}, 10)).toHaveLength(5);
+  });
+
+  it("listCards with openOnly keeps the cards of an ended session that was not closed", () => {
+    const s = new SqliteConsoleStore();
+    s.upsertSession(ended("a"), T0);
+    s.upsertCard(face({ sessionId: "a", projectKey: "proj" }), ASKS, 90, T0);
+    expect(s.listCards({ openOnly: true })).toHaveLength(1);
   });
 });

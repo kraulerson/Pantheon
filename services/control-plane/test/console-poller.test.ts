@@ -197,7 +197,7 @@ function harness(
   return { poller, store, exec, asks, logs, clock };
 }
 
-type SeedRow = Omit<ConsoleSessionRow, "version" | "createdAt" | "updatedAt">;
+type SeedRow = Omit<ConsoleSessionRow, "version" | "createdAt" | "updatedAt" | "closedAt">;
 const seedRow = (over: Partial<SeedRow> = {}): SeedRow => ({
   machine: "Mac-Mini",
   tmuxSession: "Pantheon",

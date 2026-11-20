@@ -628,7 +628,7 @@ function sessionRow(
   place: Placement,
   c: Cursor,
   view: ReturnType<typeof stateFor>
-): Omit<ConsoleSessionRow, "version" | "createdAt" | "updatedAt"> {
+): Omit<ConsoleSessionRow, "version" | "createdAt" | "updatedAt" | "closedAt"> {
   return {
     machine: run.name,
     tmuxSession: place.tmuxSession,

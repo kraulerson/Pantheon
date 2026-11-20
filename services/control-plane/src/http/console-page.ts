@@ -195,6 +195,7 @@ main.cards { padding: var(--console-pad); display: grid; gap: var(--console-gap)
 .view-switch button[aria-pressed="true"] { outline: 2px solid var(--console-text); outline-offset: -2px; font-weight: 600; }
 .view-switch button:disabled, .reply button:disabled, .tab-action:disabled, .modal button:disabled { opacity: .55; cursor: not-allowed; border-style: dashed; }
 .tab-action { align-self: end; margin-bottom: 8px; background: transparent; }
+.tab-msg { align-self: center; font-size: .8em; padding: 0 6px 8px 0; }
 .desktop-note { display: none; margin: 0; padding: var(--console-pad); font-size: .8em; color: var(--console-text2); }
 .fold-toggle { background: transparent; justify-self: start; }
 .reply { display: grid; gap: calc(var(--console-gap) * .7); border-top: 1px dashed var(--console-border); padding-top: var(--console-gap); }
@@ -338,6 +339,9 @@ ${TERMINAL_OPEN_JS}
   var stepUp = { until: null, known: false, unavailable: false, note: '', timer: null, modal: null, sessionModal: null };
   var viewMode = map(); // machine|key → 'cards' | 'claude' (per project, this page load)
   var pending = map(); // machine|tmux → a project tab inserted before the poll has seen its session
+  // Close an ended project's tab (design 2026-11-19). Both maps live for this page load only, never in localStorage.
+  var closeUi = map(); // machine|project → { busy, error, node }: a close in flight, or why the last one was refused
+  var closedLocal = map(); // machine|project → true: closed here; its ended sessions stay hidden until a poll stops sending them
   var claudeTerms = map(); // machine|tmux → { panel, status, note, handle }
   var drawers = map(); // machine → { machine, el, status, handle, minimised, title }
   var drawerH = DRAWER_DEFAULT_H, modals = [], modalSeq = 0;
@@ -365,7 +369,7 @@ ${TERMINAL_OPEN_JS}
 
   function buildView(body) {
     var settings = body.settings;
-    var machines = map(), machineOrder = [], projects = [], byId = map(), sessionsById = map(), excluded = map();
+    var machines = map(), machineOrder = [], projects = [], byId = map(), sessionsById = map(), excluded = map(), closedSeen = map();
     function machineOf(name) {
       if (!has(machines, name)) { machines[name] = { name: name, health: null, projects: [], counts: {}, worst: 'none' }; machineOrder.push(name); }
       return machines[name];
@@ -378,6 +382,9 @@ ${TERMINAL_OPEN_JS}
       var sid = s.machine + SEP + s.sessionId;
       if (isHiddenKey(settings, s.projectKey)) { excluded[sid] = true; return; }
       var v = sessionView(s);
+      // Closed on this page a moment ago: a poll answered before the close still carries the ended session.
+      // A session that is not ended is never hidden here, so a new session in the project shows at once.
+      if (v.state === 'ended' && has(closedLocal, s.machine + SEP + s.projectKey)) { excluded[sid] = true; closedSeen[s.machine + SEP + s.projectKey] = true; return; }
       var entry = { row: s, view: v };
       sessionsById[sid] = entry;
       var m = machineOf(s.machine);
@@ -414,7 +421,7 @@ ${TERMINAL_OPEN_JS}
       if (RANK[m.worst] > RANK[all.worst]) all.worst = m.worst;
     });
     all.needsYou = all.counts.needs_you | 0;
-    return { machines: machines, machineOrder: machineOrder, projects: projects, byId: byId, sessionsById: sessionsById, excluded: excluded, all: all };
+    return { machines: machines, machineOrder: machineOrder, projects: projects, byId: byId, sessionsById: sessionsById, excluded: excluded, closedSeen: closedSeen, all: all };
   }
 
   function countsText(counts) {
@@ -517,6 +524,54 @@ ${TERMINAL_OPEN_JS}
     b.addEventListener('click', function () { select(p.machine, p.key); });
     return b;
   }
+  // ---- close an ended project's tab: offered only when every session of the project has ended. The control is a
+  // sibling of the tab (a button cannot sit inside a button), reached with Tab like "+ New session". ----
+  function closeUiFor(pid) { if (!has(closeUi, pid)) closeUi[pid] = { busy: false, error: '', node: null }; return closeUi[pid]; }
+  function setCloseError(ui, p, text) {
+    ui.error = text;
+    if (!text) { ui.node = null; return; }
+    // ONE stable alert node per project, rewritten only when its text changes (a node re-created on every
+    // redraw would be announced on every redraw)
+    if (!ui.node) {
+      ui.node = mk('span', 'tab-msg'); ui.node.setAttribute('role', 'alert'); ui.node.setAttribute('data-close-status', '');
+      ui.node.setAttribute('data-machine', p.machine); ui.node.setAttribute('data-project', p.key);
+    }
+    if (ui.node.textContent !== text) ui.node.textContent = text;
+  }
+  function dropMissingSelection() { if (sel.project !== null && !view.projects.some(projectSelected)) sel.project = null; }
+  function closeProject(p) {
+    var pid = p.machine + SEP + p.key, ui = closeUiFor(pid);
+    if (ui.busy) return;
+    ui.busy = true; setCloseError(ui, p, ''); render();
+    function failed(why) { ui.busy = false; setCloseError(ui, p, '✕ not closed — ' + why); if (view) render(); }
+    send('POST', BASE + '/console/api/machines/' + encodeURIComponent(p.machine) + '/close-project', { projectKey: p.key }).then(function (r) {
+      if (r.status !== 200) { failed(r.body && typeof r.body.error === 'string' && r.body.error ? str(r.body.error, 120) : 'HTTP ' + r.status); return; }
+      delete closeUi[pid];
+      closedLocal[pid] = true;
+      if (!payload) return;
+      // The control and its tab are about to go: a keyboard that is on either moves to All projects instead of
+      // being dropped; a keyboard that is elsewhere is left alone.
+      var fk = focusedKey(), mine = fk === 'closeproject:' + pid || fk === 'project:' + pid;
+      view = buildView(payload); dropMissingSelection(); render();
+      var allTab = mine && el.projectTabs ? el.projectTabs.querySelector('[data-project-tab="*"]') : null;
+      if (allTab) allTab.focus();
+    }, function () { failed('no answer from the harness'); });
+  }
+  function appendProject(parent, p) {
+    parent.appendChild(projectTab(p));
+    if (p.pending || p.sessions.length === 0 || p.live !== 0) return;
+    var pid = p.machine + SEP + p.key, ui = has(closeUi, pid) ? closeUi[pid] : null, busy = !!(ui && ui.busy);
+    // In flight the words change (not only a dimmed look), and the control is aria-disabled, never disabled: a
+    // disabled button cannot hold the keyboard, and closeProject ignores a second press itself.
+    var b = mk('button', 'tab-action', busy ? '✕ Closing…' : '✕ Close'); b.type = 'button';
+    b.setAttribute('data-close-project', ''); b.setAttribute('data-machine', p.machine); b.setAttribute('data-project', p.key);
+    b.setAttribute('data-focus-key', 'closeproject:' + pid);
+    b.setAttribute('aria-label', (busy ? 'Closing ' : 'Close ') + p.display + ' on ' + str(p.machine, 60));
+    if (busy) b.setAttribute('aria-disabled', 'true');
+    b.addEventListener('click', function () { closeProject(p); });
+    parent.appendChild(b);
+    if (ui && ui.node) parent.appendChild(ui.node);
+  }
   function renderProjectTabs() {
     var nav = el.projectTabs; clear(nav);
     var scopeName = sel.machine === '*' ? 'all machines' : sel.machine;
@@ -528,11 +583,11 @@ ${TERMINAL_OPEN_JS}
     var ps = projectsInScope();
     var reachable = ps.filter(function (p) { return p.reachable; }).sort(byWorstThenName);
     var unreachable = ps.filter(function (p) { return !p.reachable; }).sort(byWorstThenName);
-    reachable.forEach(function (p) { nav.appendChild(projectTab(p)); });
+    reachable.forEach(function (p) { appendProject(nav, p); });
     if (unreachable.length) {
       var g = mk('div', 'group'); g.setAttribute('data-unreachable-group', '');
       g.appendChild(mk('span', 'group-label', 'not reachable — start it in tmux:'));
-      unreachable.forEach(function (p) { g.appendChild(projectTab(p)); });
+      unreachable.forEach(function (p) { appendProject(g, p); });
       nav.appendChild(g);
     }
     if (ps.length === 0) {
@@ -1828,10 +1883,19 @@ ${TERMINAL_OPEN_JS}
     var key = dedupKey(body);
     if (key === lastKey && view !== null) { refreshAges(); return; } // only per-tick churn changed: leave the DOM (and the operator's focus) alone
     var nextView = buildView(body);
-    var prevPayload = payload, prevView = view;
+    var prevPayload = payload, prevView = view, prevProject = sel.project;
     payload = body; view = nextView;
-    try { render(); } catch (e) { payload = prevPayload; view = prevView; throw e; }
+    // A selected project the state no longer carries (closed here or in another browser) gives way to All projects.
+    dropMissingSelection();
+    try { render(); } catch (e) { payload = prevPayload; view = prevView; sel.project = prevProject; throw e; }
     lastKey = key; // adopted only once the render succeeded, so a throw is never masked by the dedup
+    Object.keys(closedLocal).forEach(function (pid) { if (!has(view.closedSeen, pid)) delete closedLocal[pid]; });
+    // A refusal's reason belongs to the ended project it was given for: once the project is gone or live again
+    // it is dropped, so it cannot reappear, untrue, when the project next ends.
+    Object.keys(closeUi).forEach(function (pid) {
+      var p = has(view.byId, pid) ? view.byId[pid] : null;
+      if (!closeUi[pid].busy && (!p || p.live !== 0)) delete closeUi[pid];
+    });
   }
 
   // ---- poll loop ----

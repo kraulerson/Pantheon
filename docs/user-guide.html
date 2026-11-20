@@ -364,6 +364,16 @@ use, so a new session appears by itself.</p>
       its box holds an unsent reply, while a send or a dismiss is under way, for a minute after its
       result line appears, while a commit approval is in progress, or while the keyboard is inside
       it.</li>
+  <li><strong>✕ Close on an ended project.</strong> When every session of a project has ended, its tab
+      shows <em>○ ENDED</em> and a <strong>✕ Close</strong> button appears beside it. Press it to take
+      the tab and that project's cards off the console, in every browser. Nothing is deleted: the cards
+      stay in the database until they expire on their own. You need to be signed in; no passphrase is
+      asked. If a session of that project is still running, the tab stays and the page says
+      <em>✕ not closed — a session in this project is still running</em>. If you later start a new
+      session in the same project, its tab comes back and shows the new session only; if you continue
+      the closed session itself, it comes back with its cards and stays until you close it again. While
+      a close is under way the button reads <strong>✕ Closing…</strong>. A closed tab cannot be reopened
+      from the page.</li>
   <li><strong>▸ full text · ▸ why · ▸ what it did</strong> under each card. These are read from the
       machine when you press them, shown once, and never saved by the harness. If the machine cannot be
       reached you see <em>Can't load the full text now</em> and the card itself stays.</li>

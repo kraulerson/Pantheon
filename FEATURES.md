@@ -394,6 +394,12 @@ is planned.
   in the middle of something: an unsent reply in its box, a send or dismiss in flight, an outcome line less
   than a minute old, a commit approval under way, a passphrase dialog opened from it, or the keyboard inside
   it. A card collapsed by hand opens again if it starts to need the operator.
+- **Close an ended project's tab (Karl's rulings A2 and A1, 2026-11-19):** a project tab whose sessions have
+  all ended has a **✕ Close** control beside it. Closing takes the tab and that project's cards out of the
+  console in every browser; nothing is deleted, and the cards stay in the database until the 90-day
+  retention. It needs sign-in but not the passphrase, and is refused while any session of the project is
+  still running. If a new session later starts in that project, its tab is back and shows that session
+  only; a closed session that is itself continued comes back with its cards. There is no reopen control.
 - **NEEDS YOU:** a session needs you when its session file says `waiting`, when a permission, trust or
   `AskUserQuestion` menu is on its screen (even while it is `busy`), or when a pending-approval file
   exists. Those cards are pinned on top and the tab title counts them.
