@@ -19,6 +19,20 @@ for handoff clarity. Categories are ordered by impact severity.
 
 ## [Unreleased]
 
+<!-- BUGS #58: phase gate check on a CI runner (Karl A1, 2026-11-21) -->
+
+### Infrastructure
+- 2026-11-21 **The phase gate check no longer stops CI over developer tools (BUGS #58, partly fixed).** With the
+  dependency audit fixed, CI reached `Governance - Phase gate check` for the first time and failed there:
+  `scripts/check-phase-gate.sh` asked "Install now? [Y/n]" for Semgrep, Snyk CLI, Claude Code and Lighthouse, and a
+  runner has no keyboard. Two behaviours of the current Solo Orchestrator script are brought over: the script asks
+  nothing and installs nothing when no terminal is attached, and on a CI runner (`CI=true`) the missing tools are
+  listed but not counted. A question that gets no answer at a terminal now means no. On a workstation a missing
+  tool still blocks, and every other phase gate check blocks everywhere. New
+  `tests/test-check-phase-gate-noninteractive.sh` (run by hand; audit
+  `docs/security-audits/bugs-58-phase-gate-ci-security-audit.md`). Still open under #58: the changelog and
+  session-state check scripts do not exist in this project, so their CI steps do nothing.
+
 <!-- Close an ended project's tab (Karl's rulings A2 and A1, 2026-11-19) -->
 
 ### Data Model

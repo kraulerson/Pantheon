@@ -505,6 +505,22 @@ if [ "$current_phase" -lt 1 ] && [ -n "$gate_0_to_1" ]; then
   issues=$((issues + 1))
 fi
 
+# Asks a yes/no question, but only of a person. With no terminal on standard input, with $CI set to anything, or
+# with SOIF_NONINTERACTIVE set, it asks nothing and answers no: `read` at end of file fails under `set -e` and
+# stopped this whole script in CI (BUGS #58), and an install command must never run unattended.
+# Ported from solo-orchestrator's check-phase-gate.sh (prompt_yes_no, as read at f6a4edd). Pressing Enter still
+# means yes, as before. A question that gets no answer at all (the input ends, a read timeout, Ctrl-D) means no:
+# inside a function called from `if`, `set -e` no longer stops the script when `read` fails.
+prompt_yes_no() {
+  local message="$1" reply=""
+  if [ ! -t 0 ] || [ -n "${CI:-}" ] || [ -n "${SOIF_NONINTERACTIVE:-}" ]; then
+    echo -e "${YELLOW}[WARN]${NC} Not asking (no terminal, a CI runner, or SOIF_NONINTERACTIVE): skipping the question \"$message\" and answering no."
+    return 1
+  fi
+  read -rp "$(echo -e "${BOLD}${message}${NC}: ")" reply || return 1
+  [[ ! "$reply" =~ ^[Nn] ]]
+}
+
 # --- Tool Resolution Check (for phase transitions) ---
 # If transitioning to a new phase, check for deferred tools that are now needed
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -546,8 +562,7 @@ if [ -f "$TOOL_PREFS" ] && [ -x "$RESOLVER" ] && command -v jq &>/dev/null; then
           echo -e "${CYAN}The following can be auto-installed:${NC}"
           echo "$auto_installable" | jq -r '.[] | "  • \(.name)"'
           echo ""
-          read -rp "$(echo -e "${BOLD}Install now? [Y/n]${NC}: ")" install_reply
-          if [[ ! "$install_reply" =~ ^[Nn] ]]; then
+          if prompt_yes_no "Install now? [Y/n]"; then
             echo "$auto_installable" | jq -r '.[] | .install_command // empty' | while IFS= read -r cmd; do
               [ -z "$cmd" ] && continue
               echo -e "  ${CYAN}Running:${NC} $cmd"
@@ -570,8 +585,7 @@ if [ -f "$TOOL_PREFS" ] && [ -x "$RESOLVER" ] && command -v jq &>/dev/null; then
           if command -v docker &>/dev/null && docker info &>/dev/null; then
             echo ""
             echo -e "${CYAN}Qdrant MCP can be set up now (Docker is running):${NC}"
-            read -rp "$(echo -e "${BOLD}Start Qdrant container and register MCP? [Y/n]${NC}: ")" qd_reply
-            if [[ ! "$qd_reply" =~ ^[Nn] ]]; then
+            if prompt_yes_no "Start Qdrant container and register MCP? [Y/n]"; then
               # Check if container already exists
               if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^qdrant$"; then
                 docker start qdrant 2>/dev/null && echo -e "  ${GREEN}[OK]${NC} Existing Qdrant container started"
@@ -599,7 +613,15 @@ if [ -f "$TOOL_PREFS" ] && [ -x "$RESOLVER" ] && command -v jq &>/dev/null; then
           fi
         fi
 
-        issues=$((issues + 1))
+        # On a CI runner the list above stays printed but is not counted: these are the developer's tools, and a
+        # runner never has them. Keyed on CI=true alone (what GitHub sets), never on the terminal, so a hook or a
+        # script on the workstation still blocks, and so does CI=false or CI=0. After solo-orchestrator's
+        # check-phase-gate.sh (BL-137, as read at f6a4edd), which accepts any non-empty $CI.
+        if [ "${CI:-}" = "true" ]; then
+          echo -e "${CYAN}[note]${NC} CI runner (CI=true): the required tools belong on the developer's machine, not this runner — listed above, not counted."
+        else
+          issues=$((issues + 1))
+        fi
       fi
     fi
   fi
