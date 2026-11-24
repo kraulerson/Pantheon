@@ -23,7 +23,10 @@ function card(over: Partial<Keycard> = {}): Keycard {
   };
 }
 
-const base = { backends: [], mcpServers: [], serviceEndpoints: [] };
+// A fixed clock for every render in this file. Without it the page reads the real clock, and the fixture card
+// above (expires 2026-11-23) turned from active to expired on that day: "expired" outranks "invalid", so the
+// corrupt-scopes test went red in CI on 2026-11-24 with no code change.
+const base = { backends: [], mcpServers: [], serviceEndpoints: [], now: "2026-08-25T14:00:00.000Z" };
 
 describe("renderConfigPage — Session Keycards section", () => {
   it("renders the section with a labeled mint form offering exactly the three read scopes", () => {

@@ -19,6 +19,15 @@ for handoff clarity. Categories are ordered by impact severity.
 
 ## [Unreleased]
 
+<!-- A date-dependent test turned CI red on 2026-11-24 -->
+
+### Fixed
+- 2026-11-24 **A keycard page test no longer depends on today's date.** `test/config-page-keycards.test.ts` rendered
+  the page on the real clock with a fixture card that expires on 2026-11-23. From that day the card counted as
+  expired, which outranks invalid, so "a card with corrupt (empty) scopes is shown as invalid" failed in CI run
+  45416943090 with no code change behind it. Every render in that file now uses a fixed clock. Test only; the
+  product is unchanged.
+
 <!-- BUGS #58: phase gate check on a CI runner (Karl A1, 2026-11-21) -->
 
 ### Infrastructure
